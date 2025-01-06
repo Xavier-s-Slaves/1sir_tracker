@@ -1,6 +1,6 @@
-import streamlit as st
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+import streamlit as st # type: ignore
+import gspread # type: ignore
+from oauth2client.service_account import ServiceAccountCredentials # type: ignore
 from datetime import datetime, timedelta
 from collections import defaultdict
 import difflib
