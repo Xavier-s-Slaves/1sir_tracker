@@ -1,6 +1,6 @@
-import streamlit as st # type: ignore
-import gspread # type: ignore
-from oauth2client.service_account import ServiceAccountCredentials # type: ignore
+import streamlit as st  # type: ignore
+import gspread  # type: ignore
+from oauth2client.service_account import ServiceAccountCredentials  # type: ignore
 from datetime import datetime, timedelta
 from collections import defaultdict
 import difflib
@@ -50,6 +50,7 @@ SHEET_CONDUCTS = worksheets["conducts"]
 # ------------------------------------------------------------------------------
 # 3) Helper Functions + Caching
 # ------------------------------------------------------------------------------
+
 def ensure_str(value) -> str:
     """
     Convert any value to a string and strip leading/trailing whitespaces.
@@ -113,18 +114,24 @@ def get_nominal_records():
 @st.cache_data(ttl=300)
 def get_parade_records():
     """
-    Returns all rows from Parade_State as a list of dicts, cached.
+    Returns all rows from Parade_State as a list of dicts, including row numbers, cached.
     """
-    records = SHEET_PARADE.get_all_records()
-    # Ensure all relevant fields are strings and properly formatted
-    for row in records:
-        row['4D_Number'] = is_valid_4d(row.get('4D_Number', ''))
-        row['Company'] = ensure_str(row.get('Company', ''))
-        row['Start_Date_DDMMYYYY'] = ensure_date_str(row.get('Start_Date_DDMMYYYY', ''))
-        row['End_Date_DDMMYYYY'] = ensure_date_str(row.get('End_Date_DDMMYYYY', ''))
-        row['Status'] = ensure_str(row.get('Status', ''))
-    # Remove any records with invalid 4D_Number
-    records = [row for row in records if row['4D_Number']]
+    all_values = SHEET_PARADE.get_all_values()  # includes header row at index 0
+    records = []
+    header = all_values[0]
+    for idx, row in enumerate(all_values[1:], start=2):  # Start at row 2 in Google Sheets
+        record = dict(zip(header, row))
+        # Include row number for updating
+        record['_row_num'] = idx
+        # Ensure all relevant fields are strings and properly formatted
+        record['4D_Number'] = is_valid_4d(record.get('4D_Number', ''))
+        record['Company'] = ensure_str(record.get('Company', ''))
+        record['Start_Date_DDMMYYYY'] = ensure_date_str(record.get('Start_Date_DDMMYYYY', ''))
+        record['End_Date_DDMMYYYY'] = ensure_date_str(record.get('End_Date_DDMMYYYY', ''))
+        record['Status'] = ensure_str(record.get('Status', ''))
+        # Remove any records with invalid 4D_Number
+        if record['4D_Number']:
+            records.append(record)
     return records
 
 @st.cache_data(ttl=300)
@@ -154,23 +161,75 @@ def get_company_strength(company: str) -> int:
 
 def get_company_personnel(company: str):
     """
-    Returns a list of dicts for 'Update Parade' (or similar)
-    with placeholders for Status, Start_Date, End_Date.
+    Returns a list of dicts for 'Update Parade' with existing parade statuses.
+    Includes placeholders for Status, Start_Date, End_Date.
     Only from Nominal_Roll, filtered by the given company.
+    Includes '_row_num' to track the row in Parade_State.
     """
-    records = get_nominal_records()
+    nominal_records = get_nominal_records()
+    parade_records = get_parade_records()
+    
+    # Create a mapping from 4D_Number to their parade statuses
+    parade_map = defaultdict(list)
+    for row in parade_records:
+        four_d = row.get('4D_Number', '').strip().upper()
+        parade_map[four_d].append(row)
+    
     data = []
-    for row in records:
+    today = datetime.now()
+    for row in nominal_records:
         c = row.get('Company', '')
         if normalize_name(c) == normalize_name(company):
+            four_d = row.get('4D_Number', '').strip().upper()
+            name = row.get('Name', '')
+            # Retrieve all parade statuses for the person
+            person_parades = parade_map.get(four_d, [])
+            if person_parades:
+                # Calculate the proximity of each parade status to today
+                parade_proximity = []
+                for parade in person_parades:
+                    try:
+                        start_date = datetime.strptime(parade.get('Start_Date_DDMMYYYY', '01012000'), "%d%m%Y")
+                        end_date = datetime.strptime(parade.get('End_Date_DDMMYYYY', '01012000'), "%d%m%Y")
+                        if start_date <= today <= end_date:
+                            # Currently active status
+                            proximity = 0
+                        elif end_date < today:
+                            # Past status
+                            proximity = (today - end_date).days
+                        else:
+                            # Future status
+                            proximity = (start_date - today).days
+                        parade_proximity.append((proximity, parade))
+                    except ValueError:
+                        logger.warning(f"Invalid date format in Parade_State for {four_d}: {parade.get('Start_Date_DDMMYYYY', '')} - {parade.get('End_Date_DDMMYYYY', '')}")
+                        continue
+                if parade_proximity:
+                    # Select the parade status with the smallest proximity value
+                    closest_parade = min(parade_proximity, key=lambda x: abs(x[0]))[1]
+                    status = closest_parade.get('Status', '')
+                    start_date = closest_parade.get('Start_Date_DDMMYYYY', '')
+                    end_date = closest_parade.get('End_Date_DDMMYYYY', '')
+                    row_num = closest_parade.get('_row_num')  # Get row number
+                else:
+                    status = ''
+                    start_date = ''
+                    end_date = ''
+                    row_num = None
+            else:
+                status = ''
+                start_date = ''
+                end_date = ''
+                row_num = None
             data.append({
-                'Name': row.get('Name', 'Unknown'),
-                '4D_Number': row.get('4D_Number', 'Unknown'),
-                'Status': '',         # to be filled
-                'Start_Date': '',     # to be filled
-                'End_Date': '',       # to be filled
+                'Name': name,
+                '4D_Number': four_d,
+                'Status': status,
+                'Start_Date': start_date,
+                'End_Date': end_date,
                 'Number_of_Leaves_Left': row.get('Number of Leaves Left', 14),
-                'Dates_Taken': row.get('Dates Taken', '')
+                'Dates_Taken': row.get('Dates Taken', ''),
+                '_row_num': row_num  # Include row number for updating
             })
     return data
 
@@ -236,6 +295,46 @@ def build_onstatus_table(company: str, date_obj: datetime):
     logger.info(f"Built on-status table with {len(out)} entries for company {company} on {date_obj.strftime('%d%m%Y')}.")
     return list(out.values())
 
+def build_conduct_table(company: str, date_obj: datetime):
+    """
+    Return a list of dicts for all personnel in the company.
+    'Is_Outlier' is True if the person has an active status on the given date, else False.
+    Includes 'StatusDesc' for personnel on status.
+    """
+    all_personnel = get_nominal_records()
+    parade_data = get_parade_records()
+    parade_map = defaultdict(list)
+    for row in parade_data:
+        four_d = row.get('4D_Number', '').strip().upper()
+        parade_map[four_d].append(row)
+    
+    data = []
+    for person in all_personnel:
+        four_d = person.get('4D_Number', '').strip().upper()
+        name = person.get('Name', '')
+        # Check if person has an active parade status on the given date
+        active_status = False
+        status_desc = ""
+        for parade in parade_map.get(four_d, []):
+            try:
+                start_dt = datetime.strptime(parade.get('Start_Date_DDMMYYYY', ''), "%d%m%Y")
+                end_dt = datetime.strptime(parade.get('End_Date_DDMMYYYY', ''), "%d%m%Y")
+                if start_dt <= date_obj <= end_dt:
+                    active_status = True
+                    status_desc = parade.get('Status', '')
+                    break
+            except ValueError:
+                logger.warning(f"Invalid date format for {four_d}: {parade.get('Start_Date_DDMMYYYY', '')} - {parade.get('End_Date_DDMMYYYY', '')}")
+                continue
+        data.append({
+            'Name': name,
+            '4D_Number': four_d,
+            'Is_Outlier': active_status,
+            'StatusDesc': status_desc if active_status else ""
+        })
+    logger.info(f"Built conduct table with {len(data)} personnel for company {company} on {date_obj.strftime('%d%m%Y')}.")
+    return data
+
 def calculate_leaves_used(dates_str: str) -> int:
     """
     Calculate the number of leaves used based on the dates string.
@@ -285,8 +384,8 @@ def has_overlapping_status(four_d: str, new_start: datetime, new_end: datetime) 
     
     for row in parade_data:
         if is_valid_4d(row.get("4D_Number", "")) == four_d:
-            start_date = ensure_date_str(row.get("Start_Date_DDMMYYYY", ""))
-            end_date = ensure_date_str(row.get("End_Date_DDMMYYYY", ""))
+            start_date = row.get("Start_Date_DDMMYYYY", "")
+            end_date = row.get("End_Date_DDMMYYYY", "")
             
             try:
                 existing_start = datetime.strptime(start_date, "%d%m%Y")
@@ -412,13 +511,13 @@ if feature == "Add Conduct":
             st.error("Invalid date format (use DDMMYYYY).")
             st.stop()
 
-        # Build table from Parade_State for that date + company
-        onstatus_data = build_onstatus_table(comp, date_obj)
+        # Build conduct table with all personnel, marking 'Is_Outlier' based on status
+        conduct_data = build_conduct_table(comp, date_obj)
 
         # Store in session
-        st.session_state.conduct_table = onstatus_data
-        st.success(f"Loaded {len(onstatus_data)} on-status personnel for {comp} ({date_str}).")
-        logger.info(f"Loaded on-status personnel for {comp} on {date_str}.")
+        st.session_state.conduct_table = conduct_data
+        st.success(f"Loaded {len(conduct_data)} personnel for {comp} ({date_str}).")
+        logger.info(f"Loaded conduct personnel for {comp} on {date_str}.")
 
     # (c) Data Editor (allow new rows) - ALWAYS show, so you can finalize even with zero outliers
     st.write("Toggle 'Is_Outlier' if not participating, or add new rows for extra people.")
@@ -457,7 +556,7 @@ if feature == "Add Conduct":
             four_d = is_valid_4d(row.get("4D_Number", ""))
             name_ = ensure_str(row.get("Name", ""))
             is_outlier = row.get("Is_Outlier", False)
-            status_desc = ensure_str(row.get("StatusDesc", ""))
+            status_desc = ensure_str(row.get("StatusDesc", ""))  # Get StatusDesc
 
             # Validate 4D_Number format
             if not four_d:
@@ -476,7 +575,7 @@ if feature == "Add Conduct":
                     new_people.append((name_, four_d, comp))
                     logger.info(f"Adding new person: {name_}, {four_d}, {comp}.")
 
-                # If is_outlier, we'll add to outliers list
+                # If is_outlier, we'll add to outliers list with StatusDesc
                 if is_outlier:
                     if status_desc:
                         all_outliers.append(f"{four_d} ({status_desc})")
@@ -562,17 +661,49 @@ elif feature == "Update Parade":
         data = get_company_personnel(c)
         st.session_state.parade_table = data
         st.info(f"Loaded {len(data)} personnel for {c}.")
-        logger.info(f"Loaded {len(data)} personnel for {c}.")
+        logger.info(f"Loaded personnel for {c}.")
+
+        # ------------------------------------------------------------------------------
+        # Display Current Parade Statuses for the Company
+        # ------------------------------------------------------------------------------
+        current_statuses = [
+            row for row in get_parade_records()
+            if normalize_name(row.get('Company', '')) == normalize_name(c)
+        ]
+
+        if current_statuses:
+            st.subheader("Current Parade Status")
+            # Format the current statuses for better readability
+            formatted_statuses = []
+            for status in current_statuses:
+                formatted_statuses.append({
+                    "4D_Number": status.get("4D_Number", ""),
+                    "Name": find_name_by_4d(status.get("4D_Number", "")),
+                    "Status": status.get("Status", ""),
+                    "Start_Date": status.get("Start_Date_DDMMYYYY", ""),
+                    "End_Date": status.get("End_Date_DDMMYYYY", "")
+                })
+            st.table(formatted_statuses)
+            logger.info(f"Displayed current parade statuses for company {c}.")
 
     # (b) Show data editor if we have data
     if st.session_state.parade_table:
         st.subheader("Edit Parade Data, Then Click 'Update'")
         st.write("Fill in 'Status', 'Start_Date (DDMMYYYY)', 'End_Date (DDMMYYYY)'")
 
+        # To ensure row numbers are tracked, include them in the data but hide them from the user
+        # Create a copy of the parade_table with row numbers
+        parade_table_with_row_num = [
+            {k: v for k, v in person.items() if k != '_row_num'}
+            for person in st.session_state.parade_table
+        ]
+
+        # Use data_editor with row numbers stored in session state
         edited_data = st.data_editor(
             st.session_state.parade_table,
             num_rows="dynamic",
-            use_container_width=True
+            use_container_width=True,
+            hide_index=True  # Hide the default index
         )
 
         if st.button("Update Parade State"):
@@ -580,11 +711,15 @@ elif feature == "Update Parade":
             c = st.session_state.parade_company.strip()
             submitted_by = st.session_state.parade_submitted_by.strip()  # Get Submitted By
 
-            for row in edited_data:
+            for idx, row in enumerate(edited_data):
                 four_d = is_valid_4d(row.get('4D_Number', ''))
                 status_val = ensure_str(row.get('Status', '')).strip()
                 start_val = ensure_str(row.get('Start_Date', '')).strip()
                 end_val = ensure_str(row.get('End_Date', '')).strip()
+
+                # Retrieve the corresponding row number from the original parade_table
+                parade_entry = st.session_state.parade_table[idx]
+                row_num = parade_entry.get('_row_num')  # Get row number for updating
 
                 # Validate 4D_Number format
                 if not four_d:
@@ -593,7 +728,7 @@ elif feature == "Update Parade":
                     continue
 
                 if not status_val or not start_val or not end_val:
-                    st.error(f"Missing fields for {four_d}. Skipping.")
+                    #st.error(f"Missing fields for {four_d}. Skipping.")
                     logger.error(f"Missing fields for {four_d}.")
                     continue
 
@@ -671,10 +806,27 @@ elif feature == "Update Parade":
                         logger.error(f"Exception while updating leaves for {four_d}: {e}.")
                         continue
 
-                # Append to Parade_State with Submitted By
-                SHEET_PARADE.append_row([c, four_d, status_val, formatted_start_val, formatted_end_val, submitted_by])
-                rows_updated += 1
-                logger.info(f"Appended Parade_State for {four_d}: Status={status_val}, Start={formatted_start_val}, End={formatted_end_val}, Submitted_By={submitted_by}")
+                # Update the existing Parade_State row instead of appending
+                if row_num:
+                    # Find the column numbers based on header
+                    header = SHEET_PARADE.row_values(1)
+                    status_col = header.index("Status") + 1
+                    start_date_col = header.index("Start_Date_DDMMYYYY") + 1
+                    end_date_col = header.index("End_Date_DDMMYYYY") + 1
+                    submitted_by_col = header.index("Submitted_By") + 1 if "Submitted_By" in header else None
+
+                    SHEET_PARADE.update_cell(row_num, status_col, status_val)
+                    SHEET_PARADE.update_cell(row_num, start_date_col, formatted_start_val)
+                    SHEET_PARADE.update_cell(row_num, end_date_col, formatted_end_val)
+                    if submitted_by_col:
+                        SHEET_PARADE.update_cell(row_num, submitted_by_col, submitted_by)
+                    logger.info(f"Updated Parade_State for {four_d}: Status={status_val}, Start={formatted_start_val}, End={formatted_end_val}, Submitted_By={submitted_by}")
+                    rows_updated += 1
+                else:
+                    # If no existing row, append as a new entry
+                    SHEET_PARADE.append_row([c, four_d, status_val, formatted_start_val, formatted_end_val, submitted_by])
+                    logger.info(f"Appended Parade_State for {four_d}: Status={status_val}, Start={formatted_start_val}, End={formatted_end_val}, Submitted_By={submitted_by}")
+                    rows_updated += 1
 
             st.success(f"Parade State updated for {rows_updated} row(s).")
             logger.info(f"Parade State updated for {rows_updated} row(s) for company {c}.")
@@ -823,3 +975,4 @@ elif feature == "Queries":
             else:
                 st.info(f"✅ **No outliers recorded for '{conduct_query}' at '{company_query}'.**")
                 logger.info(f"No outliers recorded for '{conduct_query}' at '{company_query}'.")
+
