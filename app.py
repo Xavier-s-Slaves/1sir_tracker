@@ -5,7 +5,7 @@ from datetime import datetime
 from collections import defaultdict
 import difflib
 import re
-import pandas as pd
+import pandas as pd # type: ignore
 import logging
 
 # ------------------------------------------------------------------------------
