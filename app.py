@@ -109,10 +109,10 @@ def normalize_name(name: str) -> str:
     return re.sub(r'\W+', '', name.upper())
 
 @st.cache_data(ttl=300)
-def get_nominal_records(_sheet_nominal):
+def get_nominal_records(selected_company: str, _sheet_nominal):
     """
     Returns all rows from Nominal_Roll as a list of dicts, cached for 5 min.
-    The parameter '_sheet_nominal' is ignored in hashing due to the leading underscore.
+    The parameter '_sheet_nominal' is included to differentiate between companies.
     """
     records = _sheet_nominal.get_all_records()
     # Ensure all relevant fields are strings and properly formatted
@@ -125,10 +125,10 @@ def get_nominal_records(_sheet_nominal):
     return records
 
 @st.cache_data(ttl=300)
-def get_parade_records(_sheet_parade):
+def get_parade_records(selected_company: str, _sheet_parade):
     """
     Returns all rows from Parade_State as a list of dicts, including row numbers, cached.
-    The parameter '_sheet_parade' is ignored in hashing due to the leading underscore.
+    The parameter '_sheet_parade' is included to differentiate between companies.
     """
     all_values = _sheet_parade.get_all_values()  # includes header row at index 0
     records = []
@@ -149,10 +149,10 @@ def get_parade_records(_sheet_parade):
     return records
 
 @st.cache_data(ttl=300)
-def get_conduct_records(_sheet_conducts):
+def get_conduct_records(selected_company: str, _sheet_conducts):
     """
     Returns all rows from Conducts as a list of dicts, cached.
-    The parameter '_sheet_conducts' is ignored in hashing due to the leading underscore.
+    The parameter '_sheet_conducts' is included to differentiate between companies.
     """
     records = _sheet_conducts.get_all_records()
     # Ensure all relevant fields are strings and properly formatted
@@ -392,7 +392,7 @@ def has_overlapping_status(four_d: str, new_start: datetime, new_end: datetime, 
 # ------------------------------------------------------------------------------
 # Remove Expired Statuses from Parade_State on App Launch
 # ------------------------------------------------------------------------------
-def remove_expired_statuses(sheet_parade):
+def remove_expired_statuses(selected_company: str, sheet_parade):
     """
     Removes any row in Parade_State whose End_Date (DDMMYYYY) is strictly before today.
     """
@@ -412,10 +412,10 @@ def remove_expired_statuses(sheet_parade):
             if end_dt < today:
                 # Google Sheets rows are 1-based; idx is 0-based in the list
                 sheet_parade.delete_rows(idx + 1)
-                logger.info(f"Deleted expired status for row {idx + 1}.")
+                logger.info(f"Deleted expired status for row {idx + 1} in company '{selected_company}'.")
         except ValueError:
             # If there's a parsing error, skip it
-            logger.warning(f"Invalid date format in row {idx + 1}: {end_date}")
+            logger.warning(f"Invalid date format in row {idx + 1} for company '{selected_company}': {end_date}")
             continue
 
 # ------------------------------------------------------------------------------
@@ -448,7 +448,7 @@ SHEET_PARADE = worksheets["parade"]  # Correct variable name
 SHEET_CONDUCTS = worksheets["conducts"]
 
 # Remove expired statuses upon loading the selected company's Parade_State
-remove_expired_statuses(SHEET_PARADE)  # Corrected from SHEET_PARDE to SHEET_PARADE
+remove_expired_statuses(selected_company, SHEET_PARADE)  # Pass selected_company
 
 # ------------------------------------------------------------------------------
 # 6) Session State: We store data so it's not lost on each run
@@ -534,8 +534,8 @@ if feature == "Add Conduct":
             st.stop()
 
         # Fetch cached records
-        records_nominal = get_nominal_records(SHEET_NOMINAL)
-        records_parade = get_parade_records(SHEET_PARADE)
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
         # Build conduct table with all personnel, marking 'Is_Outlier' based on status
         conduct_data = build_conduct_table(platoon, date_obj, records_nominal, records_parade)
@@ -543,7 +543,7 @@ if feature == "Add Conduct":
         # Store in session
         st.session_state.conduct_table = conduct_data
         st.success(f"Loaded {len(conduct_data)} personnel for Platoon {platoon} ({date_str}).")
-        logger.info(f"Loaded conduct personnel for Platoon {platoon} on {date_str}.")
+        logger.info(f"Loaded conduct personnel for Platoon {platoon} on {date_str} in company '{selected_company}'.")
 
     # (c) Data Editor (allow new rows) - ALWAYS show, so you can finalize even with zero outliers
     if st.session_state.conduct_table:
@@ -579,8 +579,8 @@ if feature == "Add Conduct":
             st.stop()
 
         # Fetch cached records
-        records_nominal = get_nominal_records(SHEET_NOMINAL)
-        records_parade = get_parade_records(SHEET_PARADE)
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
         # We'll figure out who is outlier + who is new to Nominal_Roll
         existing_4ds = {row.get("4D_Number", "").strip().upper() for row in records_nominal}
@@ -609,7 +609,7 @@ if feature == "Add Conduct":
                         logger.error(f"Name missing for new 4D_Number: {four_d}.")
                         continue
                     new_people.append((name_, four_d, platoon))
-                    logger.info(f"Adding new person: {name_}, {four_d}, Platoon {platoon}.")
+                    logger.info(f"Adding new person: {name_}, {four_d}, Platoon {platoon} in company '{selected_company}'.")
 
                 # If is_outlier, we'll add to outliers list with StatusDesc
                 if is_outlier:
@@ -622,10 +622,10 @@ if feature == "Add Conduct":
         for (nm, fd, p_) in new_people:
             formatted_fd = ensure_date_str(fd)
             SHEET_NOMINAL.append_row([nm, formatted_fd, p_, 14, ""])  # Initialize leaves
-            logger.info(f"Added new person to Nominal_Roll: {nm}, {formatted_fd}, Platoon {p_}.")
+            logger.info(f"Added new person to Nominal_Roll: {nm}, {formatted_fd}, Platoon {p_} in company '{selected_company}'.")
 
         # Now recalc total strength
-        records_nominal = get_nominal_records(SHEET_NOMINAL)  # Refresh after adding new people
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)  # Refresh after adding new people
         total_strength = get_company_strength(platoon, records_nominal)
         outliers_num = len(all_outliers)
         participating = total_strength - outliers_num
@@ -644,7 +644,7 @@ if feature == "Add Conduct":
             pointers,
             submitted_by  # Added Submitted By
         ])
-        logger.info(f"Appended Conduct: {formatted_date_str}, Platoon {platoon}, {cname}, Total: {total_strength}, Participating: {participating}, Outliers: {outliers_str}, Submitted_By: {submitted_by}")
+        logger.info(f"Appended Conduct: {formatted_date_str}, Platoon {platoon}, {cname}, Total: {total_strength}, Participating: {participating}, Outliers: {outliers_str}, Submitted_By: {submitted_by} in company '{selected_company}'.")
 
         st.success(
             f"Conduct Finalized!\n\n"
@@ -697,13 +697,13 @@ elif feature == "Update Parade":
             st.stop()
 
         # Fetch cached records
-        records_nominal = get_nominal_records(SHEET_NOMINAL)
-        records_parade = get_parade_records(SHEET_PARADE)
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
         data = get_company_personnel(platoon, records_nominal, records_parade)
         st.session_state.parade_table = data
-        st.info(f"Loaded {len(data)} personnel for Platoon {platoon}.")
-        logger.info(f"Loaded personnel for Platoon {platoon}.")
+        st.info(f"Loaded {len(data)} personnel for Platoon {platoon} in company '{selected_company}'.")
+        logger.info(f"Loaded personnel for Platoon {platoon} in company '{selected_company}'.")
 
         # ------------------------------------------------------------------------------
         # Display Current Parade Statuses for the Platoon
@@ -725,8 +725,9 @@ elif feature == "Update Parade":
                     "Start_Date": status.get("Start_Date_DDMMYYYY", ""),
                     "End_Date": status.get("End_Date_DDMMYYYY", "")
                 })
+            # Display as a table
             #st.table(formatted_statuses)
-            logger.info(f"Displayed current parade statuses for platoon {platoon}.")
+            logger.info(f"Displayed current parade statuses for platoon {platoon} in company '{selected_company}'.")
 
     # (b) Show data editor if we have data
     if st.session_state.parade_table:
@@ -746,8 +747,8 @@ elif feature == "Update Parade":
             submitted_by = st.session_state.parade_submitted_by.strip()  # Get Submitted By
 
             # Fetch cached records
-            records_nominal = get_nominal_records(SHEET_NOMINAL)
-            records_parade = get_parade_records(SHEET_PARADE)
+            records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+            records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
             for idx, row in enumerate(edited_data):
                 four_d = is_valid_4d(row.get('4D_Number', ''))
@@ -781,7 +782,7 @@ elif feature == "Update Parade":
                     # If status fields are cleared and row_num exists, consider deleting the status
                     try:
                         SHEET_PARADE.delete_rows(row_num)
-                        logger.info(f"Deleted Parade_State row {row_num} for {four_d}.")
+                        logger.info(f"Deleted Parade_State row {row_num} for {four_d} in company '{selected_company}'.")
                         rows_updated += 1
                         continue
                     except Exception as e:
@@ -790,8 +791,8 @@ elif feature == "Update Parade":
                         continue
 
                 if not status_val or not start_val or not end_val:
-                    #st.error(f"Missing fields for {four_d}. Skipping.")
-                    logger.error(f"Missing fields for {four_d}.")
+                    # Skip entries with missing required fields
+                    logger.error(f"Missing fields for {four_d} in company '{selected_company}'.")
                     continue
 
                 # Ensure dates are properly formatted
@@ -804,11 +805,11 @@ elif feature == "Update Parade":
                     end_dt = datetime.strptime(formatted_end_val, "%d%m%Y")
                     if end_dt < start_dt:
                         st.error(f"End date is before start date for {four_d}, skipping.")
-                        logger.error(f"End date before start date for {four_d}.")
+                        logger.error(f"End date before start date for {four_d} in company '{selected_company}'.")
                         continue
                 except ValueError:
                     st.error(f"Invalid date(s) for {four_d}, skipping.")
-                    logger.error(f"Invalid date format for {four_d}: Start={formatted_start_val}, End={formatted_end_val}.")
+                    logger.error(f"Invalid date format for {four_d}: Start={formatted_start_val}, End={formatted_end_val} in company '{selected_company}'.")
                     continue
 
                 if status_val.lower() == "leave":
@@ -820,13 +821,12 @@ elif feature == "Update Parade":
                     leaves_used = calculate_leaves_used(dates_str)
                     if leaves_used <= 0:
                         st.error(f"Invalid leave duration for {four_d}, skipping.")
-                        logger.error(f"Invalid leave duration for {four_d}: {dates_str}.")
+                        logger.error(f"Invalid leave duration for {four_d}: {dates_str} in company '{selected_company}'.")
                         continue
 
                     # Check for overlapping statuses
                     if has_overlapping_status(four_d, start_dt, end_dt, records_parade):
-                        #st.error(f"Leave dates overlap with existing status for {four_d}, skipping.")
-                        logger.error(f"Leave dates overlap for {four_d}: {dates_str}.")
+                        logger.error(f"Leave dates overlap for {four_d}: {dates_str} in company '{selected_company}'.")
                         continue
 
                     # Fetch current leaves and dates taken
@@ -838,17 +838,17 @@ elif feature == "Update Parade":
                                 current_leaves_left = int(current_leaves_left)
                             except ValueError:
                                 current_leaves_left = 14  # Default if invalid
-                                logger.warning(f"Invalid 'Number of Leaves Left' for {four_d}. Resetting to 14.")
-
+                                logger.warning(f"Invalid 'Number of Leaves Left' for {four_d}. Resetting to 14 in company '{selected_company}'.")
+        
                             if leaves_used > current_leaves_left:
                                 st.error(f"{four_d} does not have enough leaves left. Available: {current_leaves_left}, Requested: {leaves_used}. Skipping.")
-                                logger.error(f"{four_d} insufficient leaves. Available: {current_leaves_left}, Requested: {leaves_used}.")
+                                logger.error(f"{four_d} insufficient leaves. Available: {current_leaves_left}, Requested: {leaves_used} in company '{selected_company}'.")
                                 continue
 
                             # Update leaves left
                             new_leaves_left = current_leaves_left - leaves_used
                             SHEET_NOMINAL.update_cell(nominal_record.row, 4, new_leaves_left)
-                            logger.info(f"Updated 'Number of Leaves Left' for {four_d}: {new_leaves_left}.")
+                            logger.info(f"Updated 'Number of Leaves Left' for {four_d}: {new_leaves_left} in company '{selected_company}'.")
 
                             # Update Dates Taken
                             existing_dates = SHEET_NOMINAL.cell(nominal_record.row, 5).value
@@ -858,14 +858,14 @@ elif feature == "Update Parade":
                             else:
                                 updated_dates = new_dates_entry
                             SHEET_NOMINAL.update_cell(nominal_record.row, 5, updated_dates)
-                            logger.info(f"Updated 'Dates Taken' for {four_d}: {updated_dates}.")
+                            logger.info(f"Updated 'Dates Taken' for {four_d}: {updated_dates} in company '{selected_company}'.")
                         else:
                             st.error(f"{four_d} not found in Nominal_Roll. Skipping.")
-                            logger.error(f"{four_d} not found in Nominal_Roll.")
+                            logger.error(f"{four_d} not found in Nominal_Roll in company '{selected_company}'.")
                             continue
                     except Exception as e:
                         st.error(f"Error updating leaves for {four_d}: {e}. Skipping.")
-                        logger.error(f"Exception while updating leaves for {four_d}: {e}.")
+                        logger.error(f"Exception while updating leaves for {four_d}: {e} in company '{selected_company}'.")
                         continue
 
                 # Update the existing Parade_State row instead of appending
@@ -879,7 +879,7 @@ elif feature == "Update Parade":
                         submitted_by_col = header.index("Submitted_By") + 1 if "Submitted_By" in header else None
                     except ValueError as ve:
                         st.error(f"Required column missing in Parade_State: {ve}.")
-                        logger.error(f"Required column missing in Parade_State: {ve}.")
+                        logger.error(f"Required column missing in Parade_State: {ve} in company '{selected_company}'.")
                         continue
 
                     SHEET_PARADE.update_cell(row_num, status_col, status_val)  # Corrected SHEET_PARDE to SHEET_PARADE
@@ -889,20 +889,20 @@ elif feature == "Update Parade":
                     # Update 'Submitted_By' only if the row was changed
                     if is_changed and submitted_by_col:
                         SHEET_PARADE.update_cell(row_num, submitted_by_col, submitted_by)
-                        logger.info(f"Updated Parade_State for {four_d}: Status={status_val}, Start={formatted_start_val}, End={formatted_end_val}, Submitted_By={submitted_by}")
+                        logger.info(f"Updated Parade_State for {four_d}: Status={status_val}, Start={formatted_start_val}, End={formatted_end_val}, Submitted_By={submitted_by} in company '{selected_company}'.")
                     elif is_changed and not submitted_by_col:
                         # If 'Submitted_By' column doesn't exist, log a warning
-                        logger.warning(f"'Submitted_By' column not found in Parade_State. Cannot update for {four_d}.")
-                    
+                        logger.warning(f"'Submitted_By' column not found in Parade_State. Cannot update for {four_d} in company '{selected_company}'.")
+
                     rows_updated += 1
                 else:
                     # If no existing row, append as a new entry
                     SHEET_PARADE.append_row([platoon, four_d, status_val, formatted_start_val, formatted_end_val, submitted_by])  # Corrected SHEET_PARDE to SHEET_PARADE
-                    logger.info(f"Appended Parade_State for {four_d}: Status={status_val}, Start={formatted_start_val}, End={formatted_end_val}, Submitted_By={submitted_by}")
+                    logger.info(f"Appended Parade_State for {four_d}: Status={status_val}, Start={formatted_start_val}, End={formatted_end_val}, Submitted_By={submitted_by} in company '{selected_company}'.")
                     rows_updated += 1
 
             st.success(f"Parade State updated.")
-            logger.info(f"Parade State updated for {rows_updated} row(s) for platoon {platoon}.")
+            logger.info(f"Parade State updated for {rows_updated} row(s) for platoon {platoon} in company '{selected_company}'.")
 
             # **Reset session_state variables**
             st.session_state.parade_platoon = 1
@@ -938,8 +938,8 @@ elif feature == "Queries":
                 st.stop()
 
             # Fetch cached records
-            records_nominal = get_nominal_records(SHEET_NOMINAL)
-            records_parade = get_parade_records(SHEET_PARADE)
+            records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+            records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
             parade_data = records_parade
             # Filter rows for this 4D
@@ -950,7 +950,7 @@ elif feature == "Queries":
 
             if not person_rows:
                 st.warning(f"No Parade_State records found for {four_d_input_clean}")
-                logger.info(f"No Parade_State records found for {four_d_input_clean}.")
+                logger.info(f"No Parade_State records found for {four_d_input_clean} in company '{selected_company}'.")
             else:
                 # Sort by start date
                 def parse_ddmmyyyy(d):
@@ -975,7 +975,7 @@ elif feature == "Queries":
                 st.subheader(f"Statuses for {four_d_input_clean}")
                 # Show as a table
                 st.table(enhanced_rows)
-                logger.info(f"Displayed statuses for {four_d_input_clean}.")
+                logger.info(f"Displayed statuses for {four_d_input_clean} in company '{selected_company}'.")
 
     # ---------------------------
     # Tab 2: Query Outliers
@@ -997,7 +997,7 @@ elif feature == "Queries":
 
             conduct_norm = normalize_name(conduct_query)
 
-            conducts_data = get_conduct_records(SHEET_CONDUCTS)
+            conducts_data = get_conduct_records(selected_company, SHEET_CONDUCTS)
 
             # Filter records matching both platoon and conduct name
             matched_records = [
@@ -1017,7 +1017,7 @@ elif feature == "Queries":
                 closest_matches = difflib.get_close_matches(query_pair, conduct_pairs, n=1, cutoff=0.6)
                 if not closest_matches:
                     st.error("❌ **No similar platoon and conduct combination found.**\n\nPlease check your input and try again.")
-                    logger.error(f"No similar platoon and conduct combination found for: {query_pair}.")
+                    logger.error(f"No similar platoon and conduct combination found for: {query_pair} in company '{selected_company}'.")
                     st.stop()
                 matched_norm = closest_matches[0]
                 # Retrieve the original names
@@ -1028,7 +1028,7 @@ elif feature == "Queries":
                 ]
                 if not matched_records:
                     st.error("❌ **No data found for the matched platoon and conduct.**")
-                    logger.error(f"No data found for the matched platoon and conduct: {matched_norm}.")
+                    logger.error(f"No data found for the matched platoon and conduct: {matched_norm} in company '{selected_company}'.")
                     st.stop()
 
             # Collect outliers from matched records
@@ -1056,9 +1056,10 @@ elif feature == "Queries":
                 # Prepare data for table
                 outlier_table = [{"Outlier": o, "Frequency": c} for o, c in sorted_outliers]
                 # Display as a table
-                st.markdown(f"📈 **Outliers for '{conduct_query}' at Platoon {platoon_query}:**")
+                st.markdown(f"📈 **Outliers for '{conduct_query}' at Platoon {platoon_query} in company '{selected_company}':**")
                 st.table(outlier_table)
-                logger.info(f"Displayed outliers for '{conduct_query}' at Platoon {platoon_query}.")
+                logger.info(f"Displayed outliers for '{conduct_query}' at Platoon {platoon_query} in company '{selected_company}'.")
             else:
-                st.info(f"✅ **No outliers recorded for '{conduct_query}' at Platoon {platoon_query}'.**")
-                logger.info(f"No outliers recorded for '{conduct_query}' at Platoon {platoon_query}.")
+                st.info(f"✅ **No outliers recorded for '{conduct_query}' at Platoon {platoon_query}' in company '{selected_company}'.**")
+                logger.info(f"No outliers recorded for '{conduct_query}' at Platoon {platoon_query}' in company '{selected_company}'.")
+
