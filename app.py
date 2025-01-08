@@ -108,11 +108,9 @@ def normalize_name(name: str) -> str:
     """Normalize by uppercase + removing spaces and special characters."""
     return re.sub(r'\W+', '', name.upper())
 
-@st.cache_data(ttl=300)
 def get_nominal_records(selected_company: str, _sheet_nominal):
     """
-    Returns all rows from Nominal_Roll as a list of dicts, cached for 5 min.
-    The parameter '_sheet_nominal' is included to differentiate between companies.
+    Returns all rows from Nominal_Roll as a list of dicts.
     """
     records = _sheet_nominal.get_all_records()
     # Ensure all relevant fields are strings and properly formatted
@@ -124,35 +122,40 @@ def get_nominal_records(selected_company: str, _sheet_nominal):
     records = [row for row in records if row['4D_Number']]
     return records
 
-@st.cache_data(ttl=300)
 def get_parade_records(selected_company: str, _sheet_parade):
     """
-    Returns all rows from Parade_State as a list of dicts, including row numbers, cached.
-    The parameter '_sheet_parade' is included to differentiate between companies.
+    Returns all rows from Parade_State as a list of dicts, including row numbers.
+    Only includes statuses where End_Date is today or in the future.
     """
+    today = datetime.today().date()
     all_values = _sheet_parade.get_all_values()  # includes header row at index 0
     records = []
     header = all_values[0]
     for idx, row in enumerate(all_values[1:], start=2):  # Start at row 2 in Google Sheets
+        if len(row) < 5:
+            continue  # skip malformed row
         record = dict(zip(header, row))
-        # Include row number for updating
-        record['_row_num'] = idx
         # Ensure all relevant fields are strings and properly formatted
         record['4D_Number'] = is_valid_4d(record.get('4D_Number', ''))
         record['Platoon'] = ensure_str(record.get('Platoon', ''))
         record['Start_Date_DDMMYYYY'] = ensure_date_str(record.get('Start_Date_DDMMYYYY', ''))
         record['End_Date_DDMMYYYY'] = ensure_date_str(record.get('End_Date_DDMMYYYY', ''))
         record['Status'] = ensure_str(record.get('Status', ''))
-        # Remove any records with invalid 4D_Number
-        if record['4D_Number']:
-            records.append(record)
+        # Parse End_Date to filter out expired statuses
+        try:
+            end_dt = datetime.strptime(record['End_Date_DDMMYYYY'], "%d%m%Y").date()
+            if end_dt >= today:
+                # Include only active or future statuses
+                record['_row_num'] = idx  # Track row number for updating
+                records.append(record)
+        except ValueError:
+            logger.warning(f"Invalid date format in Parade_State for {record.get('4D_Number', '')}: {record.get('End_Date_DDMMYYYY', '')}")
+            continue
     return records
 
-@st.cache_data(ttl=300)
 def get_conduct_records(selected_company: str, _sheet_conducts):
     """
-    Returns all rows from Conducts as a list of dicts, cached.
-    The parameter '_sheet_conducts' is included to differentiate between companies.
+    Returns all rows from Conducts as a list of dicts.
     """
     records = _sheet_conducts.get_all_records()
     # Ensure all relevant fields are strings and properly formatted
@@ -166,7 +169,6 @@ def get_conduct_records(selected_company: str, _sheet_conducts):
 def get_company_strength(platoon: str, records_nominal):
     """
     Count how many rows in Nominal_Roll belong to that platoon.
-    Uses cached data to avoid repeated API calls.
     """
     return sum(
         1 for row in records_nominal
@@ -390,35 +392,6 @@ def has_overlapping_status(four_d: str, new_start: datetime, new_end: datetime, 
     return False
 
 # ------------------------------------------------------------------------------
-# Remove Expired Statuses from Parade_State on App Launch
-# ------------------------------------------------------------------------------
-def remove_expired_statuses(selected_company: str, sheet_parade):
-    """
-    Removes any row in Parade_State whose End_Date (DDMMYYYY) is strictly before today.
-    """
-    today = datetime.today().date()
-    all_values = sheet_parade.get_all_values()  # includes header row at index 0
-
-    # Iterate from bottom to top (skip header row 0)
-    for idx in range(len(all_values) - 1, 0, -1):
-        row = all_values[idx]
-        if len(row) < 5:
-            continue  # skip malformed row
-
-        end_date = row[4].strip()
-        end_date = ensure_date_str(end_date)
-        try:
-            end_dt = datetime.strptime(end_date, "%d%m%Y").date()
-            if end_dt < today:
-                # Google Sheets rows are 1-based; idx is 0-based in the list
-                sheet_parade.delete_rows(idx + 1)
-                logger.info(f"Deleted expired status for row {idx + 1} in company '{selected_company}'.")
-        except ValueError:
-            # If there's a parsing error, skip it
-            logger.warning(f"Invalid date format in row {idx + 1} for company '{selected_company}': {end_date}")
-            continue
-
-# ------------------------------------------------------------------------------
 # 4) Streamlit Layout
 # ------------------------------------------------------------------------------
 
@@ -447,8 +420,7 @@ SHEET_NOMINAL = worksheets["nominal"]
 SHEET_PARADE = worksheets["parade"]  # Correct variable name
 SHEET_CONDUCTS = worksheets["conducts"]
 
-# Remove expired statuses upon loading the selected company's Parade_State
-remove_expired_statuses(selected_company, SHEET_PARADE)  # Pass selected_company
+# Note: Removed the remove_expired_statuses function and its invocation
 
 # ------------------------------------------------------------------------------
 # 6) Session State: We store data so it's not lost on each run
@@ -533,7 +505,7 @@ if feature == "Add Conduct":
             st.error("Invalid date format (use DDMMYYYY).")
             st.stop()
 
-        # Fetch cached records
+        # Fetch records without caching
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
@@ -578,7 +550,7 @@ if feature == "Add Conduct":
             st.error("Invalid date format.")
             st.stop()
 
-        # Fetch cached records
+        # Fetch records without caching
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
@@ -667,9 +639,7 @@ if feature == "Add Conduct":
         st.session_state.conduct_submitted_by = ""  # Clear Submitted By
 
         # **Clear Cached Data to Reflect Updates**
-        get_nominal_records.clear()
-        get_conduct_records.clear()
-        get_parade_records.clear()
+        # Removed caching, so no need to clear cache
 
 # ------------------------------------------------------------------------------
 # 9) Feature B: Update Parade
@@ -696,7 +666,7 @@ elif feature == "Update Parade":
             st.error("Please select a valid platoon.")
             st.stop()
 
-        # Fetch cached records
+        # Fetch records without caching
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
@@ -746,7 +716,7 @@ elif feature == "Update Parade":
             platoon = str(st.session_state.parade_platoon).strip()
             submitted_by = st.session_state.parade_submitted_by.strip()  # Get Submitted By
 
-            # Fetch cached records
+            # Fetch records without caching
             records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
             records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
@@ -910,9 +880,7 @@ elif feature == "Update Parade":
             st.session_state.parade_submitted_by = ""  # Clear Submitted By
 
             # **Clear Cached Data to Reflect Updates**
-            get_parade_records.clear()
-            get_nominal_records.clear()
-            get_conduct_records.clear()
+            # Removed caching, so no need to clear cache
 
 # ------------------------------------------------------------------------------
 # 10) Feature C: Queries (Combined Query Person & Query Outliers)
@@ -937,7 +905,7 @@ elif feature == "Queries":
                 logger.error(f"Invalid 4D_Number format: {four_d_input}.")
                 st.stop()
 
-            # Fetch cached records
+            # Fetch records without caching
             records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
             records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
@@ -997,6 +965,7 @@ elif feature == "Queries":
 
             conduct_norm = normalize_name(conduct_query)
 
+            # Fetch records without caching
             conducts_data = get_conduct_records(selected_company, SHEET_CONDUCTS)
 
             # Filter records matching both platoon and conduct name
@@ -1062,4 +1031,3 @@ elif feature == "Queries":
             else:
                 st.info(f"✅ **No outliers recorded for '{conduct_query}' at Platoon {platoon_query}' in company '{selected_company}'.**")
                 logger.info(f"No outliers recorded for '{conduct_query}' at Platoon {platoon_query}' in company '{selected_company}'.")
-
