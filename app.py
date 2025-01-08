@@ -1,10 +1,11 @@
 import streamlit as st  # type: ignore
 import gspread  # type: ignore
 from oauth2client.service_account import ServiceAccountCredentials  # type: ignore
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict
 import difflib
 import re
+import pandas as pd
 import logging
 
 # ------------------------------------------------------------------------------
@@ -111,60 +112,93 @@ def normalize_name(name: str) -> str:
 def get_nominal_records(selected_company: str, _sheet_nominal):
     """
     Returns all rows from Nominal_Roll as a list of dicts.
+    Handles case-insensitive and whitespace-trimmed headers.
     """
     records = _sheet_nominal.get_all_records()
-    # Ensure all relevant fields are strings and properly formatted
+    if not records:
+        logger.warning(f"No records found in Nominal_Roll for company '{selected_company}'.")
+        return []
+
+    # Normalize keys: strip spaces and convert to lower case
+    normalized_records = []
     for row in records:
-        row['4D_Number'] = is_valid_4d(row.get('4D_Number', ''))
-        row['Platoon'] = ensure_str(row.get('Platoon', ''))
-        row['Name'] = ensure_str(row.get('Name', ''))
+        normalized_row = {k.strip().lower(): v for k, v in row.items()}
+        normalized_row['rank'] = ensure_str(normalized_row.get('rank', ''))
+        normalized_row['name'] = ensure_str(normalized_row.get('name', ''))
+        normalized_row['4d_number'] = is_valid_4d(normalized_row.get('4d_number', ''))
+        normalized_row['platoon'] = ensure_str(normalized_row.get('platoon', ''))
+        normalized_row['number of leaves left'] = ensure_str(normalized_row.get('number of leaves left', '14'))
+        normalized_row['dates taken'] = ensure_str(normalized_row.get('dates taken', ''))
+        normalized_records.append(normalized_row)
+    
     # Remove any records with invalid 4D_Number
-    records = [row for row in records if row['4D_Number']]
+    records = [row for row in normalized_records if row['4d_number']]
     return records
 
 def get_parade_records(selected_company: str, _sheet_parade):
     """
     Returns all rows from Parade_State as a list of dicts, including row numbers.
     Only includes statuses where End_Date is today or in the future.
+    Handles case-insensitive and whitespace-trimmed headers.
     """
     today = datetime.today().date()
     all_values = _sheet_parade.get_all_values()  # includes header row at index 0
+    if not all_values or len(all_values) < 2:
+        logger.warning(f"No records found in Parade_State for company '{selected_company}'.")
+        return []
+    
+    header = [h.strip().lower() for h in all_values[0]]
     records = []
-    header = all_values[0]
     for idx, row in enumerate(all_values[1:], start=2):  # Start at row 2 in Google Sheets
-        if len(row) < 5:
+        if len(row) < len(header):
+            logger.warning(f"Skipping malformed row {idx} in Parade_State.")
             continue  # skip malformed row
         record = dict(zip(header, row))
         # Ensure all relevant fields are strings and properly formatted
-        record['4D_Number'] = is_valid_4d(record.get('4D_Number', ''))
-        record['Platoon'] = ensure_str(record.get('Platoon', ''))
-        record['Start_Date_DDMMYYYY'] = ensure_date_str(record.get('Start_Date_DDMMYYYY', ''))
-        record['End_Date_DDMMYYYY'] = ensure_date_str(record.get('End_Date_DDMMYYYY', ''))
-        record['Status'] = ensure_str(record.get('Status', ''))
+        record['4d_number'] = is_valid_4d(record.get('4d_number', ''))
+        record['platoon'] = ensure_str(record.get('platoon', ''))
+        record['start_date_ddmmyyyy'] = ensure_date_str(record.get('start_date_ddmmyyyy', ''))
+        record['end_date_ddmmyyyy'] = ensure_date_str(record.get('end_date_ddmmyyyy', ''))
+        record['status'] = ensure_str(record.get('status', ''))
         # Parse End_Date to filter out expired statuses
         try:
-            end_dt = datetime.strptime(record['End_Date_DDMMYYYY'], "%d%m%Y").date()
+            end_dt = datetime.strptime(record['end_date_ddmmyyyy'], "%d%m%Y").date()
             if end_dt >= today:
                 # Include only active or future statuses
                 record['_row_num'] = idx  # Track row number for updating
                 records.append(record)
         except ValueError:
-            logger.warning(f"Invalid date format in Parade_State for {record.get('4D_Number', '')}: {record.get('End_Date_DDMMYYYY', '')}")
+            logger.warning(f"Invalid date format in Parade_State for {record.get('4d_number', '')}: {record.get('end_date_ddmmyyyy', '')}")
             continue
     return records
 
 def get_conduct_records(selected_company: str, _sheet_conducts):
     """
     Returns all rows from Conducts as a list of dicts.
+    Handles case-insensitive and whitespace-trimmed headers.
     """
     records = _sheet_conducts.get_all_records()
-    # Ensure all relevant fields are strings and properly formatted
+    if not records:
+        logger.warning(f"No records found in Conducts for company '{selected_company}'.")
+        return []
+
+    # Normalize keys: strip spaces and convert to lower case
+    normalized_records = []
     for row in records:
-        row['Date'] = ensure_date_str(row.get('Date', ''))
-        row['Platoon'] = ensure_str(row.get('Platoon', ''))
-        row['Conduct_Name'] = ensure_str(row.get('Conduct_Name', ''))
-        row['Outliers'] = ensure_str(row.get('Outliers', ''))
-    return records
+        normalized_row = {k.strip().lower(): v for k, v in row.items()}
+        normalized_row['date'] = ensure_date_str(normalized_row.get('date', ''))
+        normalized_row['conduct_name'] = ensure_str(normalized_row.get('conduct_name', ''))
+        normalized_row['p/t plt1'] = ensure_str(normalized_row.get('p/t plt1', '0/0'))
+        normalized_row['p/t plt2'] = ensure_str(normalized_row.get('p/t plt2', '0/0'))
+        normalized_row['p/t plt3'] = ensure_str(normalized_row.get('p/t plt3', '0/0'))
+        normalized_row['p/t plt4'] = ensure_str(normalized_row.get('p/t plt4', '0/0'))
+        normalized_row['p/t alpha'] = ensure_str(normalized_row.get('p/t alpha', '0/0'))
+        normalized_row['outliers'] = ensure_str(normalized_row.get('outliers', ''))
+        normalized_row['pointers'] = ensure_str(normalized_row.get('pointers', ''))
+        normalized_row['submitted_by'] = ensure_str(normalized_row.get('submitted_by', ''))
+        normalized_records.append(normalized_row)
+    
+    return normalized_records
 
 def get_company_strength(platoon: str, records_nominal):
     """
@@ -172,7 +206,7 @@ def get_company_strength(platoon: str, records_nominal):
     """
     return sum(
         1 for row in records_nominal
-        if normalize_name(row.get('Platoon', '')) == normalize_name(platoon)
+        if normalize_name(row.get('platoon', '')) == normalize_name(platoon)
     )
 
 def get_company_personnel(platoon: str, records_nominal, records_parade):
@@ -184,40 +218,43 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
     """
     parade_map = defaultdict(list)
     for row in records_parade:
-        four_d = row.get('4D_Number', '').strip().upper()
+        four_d = row.get('4d_number', '').strip().upper()
         parade_map[four_d].append(row)
     
     data_with_status = []
     data_nominal = []
     
     for row in records_nominal:
-        p = row.get('Platoon', '')
+        p = row.get('platoon', '')
         if normalize_name(p) != normalize_name(platoon):
             continue
-        four_d = row.get('4D_Number', '').strip().upper()
-        name = row.get('Name', '')
+        four_d = row.get('4d_number', '').strip().upper()
+        name = row.get('name', '')
+        rank = row.get('rank', '')  # Retrieve Rank
         # Retrieve all parade statuses for the person
         person_parades = parade_map.get(four_d, [])
         for parade in person_parades:
             data_with_status.append({
+                'Rank': rank,  # Include Rank
                 'Name': name,
                 '4D_Number': four_d,
-                'Status': parade.get('Status', ''),
-                'Start_Date': parade.get('Start_Date_DDMMYYYY', ''),
-                'End_Date': parade.get('End_Date_DDMMYYYY', ''),
-                'Number_of_Leaves_Left': row.get('Number of Leaves Left', 14),
-                'Dates_Taken': row.get('Dates Taken', ''),
+                'Status': parade.get('status', ''),
+                'Start_Date': parade.get('start_date_ddmmyyyy', ''),
+                'End_Date': parade.get('end_date_ddmmyyyy', ''),
+                'Number_of_Leaves_Left': row.get('number of leaves left', 14),
+                'Dates_Taken': row.get('dates taken', ''),
                 '_row_num': parade.get('_row_num')  # Track row number for updating
             })
         # Add the nominal entry without status
         data_nominal.append({
+            'Rank': rank,  # Include Rank
             'Name': name,
             '4D_Number': four_d,
             'Status': '',
             'Start_Date': '',
             'End_Date': '',
-            'Number_of_Leaves_Left': row.get('Number of Leaves Left', 14),
-            'Dates_Taken': row.get('Dates Taken', ''),
+            'Number_of_Leaves_Left': row.get('number of leaves left', 14),
+            'Dates_Taken': row.get('dates taken', ''),
             '_row_num': None  # No row number for nominal entries without status
         })
     
@@ -232,8 +269,8 @@ def find_name_by_4d(four_d: str, records_nominal) -> str:
     """
     four_d = ensure_str(four_d).upper()
     for row in records_nominal:
-        if ensure_str(row.get("4D_Number", "")).upper() == four_d:
-            return ensure_str(row.get("Name", ""))
+        if ensure_str(row.get("4d_number", "")).upper() == four_d:
+            return ensure_str(row.get("name", ""))
     return ""
 
 def build_onstatus_table(platoon: str, date_obj: datetime, records_nominal, records_parade):
@@ -246,26 +283,27 @@ def build_onstatus_table(platoon: str, date_obj: datetime, records_nominal, reco
     out = {}
     parade_map = defaultdict(list)
     for row in records_parade:
-        four_d = row.get('4D_Number', '').strip().upper()
+        four_d = row.get('4d_number', '').strip().upper()
         parade_map[four_d].append(row)
     
     for row in records_nominal:
-        p = row.get('Platoon', '')
+        p = row.get('platoon', '')
         if normalize_name(p) == normalize_name(platoon):
-            four_d = row.get('4D_Number', '').strip().upper()
-            name = row.get('Name', '')
+            four_d = row.get('4d_number', '').strip().upper()
+            name = row.get('name', '')
+            rank = row.get('rank', '')  # Retrieve Rank
             # Retrieve all parade statuses for the person
             person_parades = parade_map.get(four_d, [])
             for parade in person_parades:
                 try:
-                    start_dt = datetime.strptime(parade.get('Start_Date_DDMMYYYY', '01012000'), "%d%m%Y")
-                    end_dt = datetime.strptime(parade.get('End_Date_DDMMYYYY', '01012000'), "%d%m%Y")
+                    start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', '01012000'), "%d%m%Y").date()
+                    end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', '01012000'), "%d%m%Y").date()
                 except ValueError:
-                    logger.warning(f"Invalid date format in Parade_State for {four_d}: {parade.get('Start_Date_DDMMYYYY', '')} - {parade.get('End_Date_DDMMYYYY', '')}")
+                    logger.warning(f"Invalid date format in Parade_State for {four_d}: {parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}")
                     continue
 
                 if start_dt <= date_obj <= end_dt:
-                    status = ensure_str(parade.get('Status', '')).lower()
+                    status = ensure_str(parade.get('status', '')).lower()
                     if not four_d:
                         continue  # Skip invalid 4D_Number
                     # If multiple statuses, keep the one with higher priority
@@ -273,16 +311,18 @@ def build_onstatus_table(platoon: str, date_obj: datetime, records_nominal, reco
                         existing_status = out[four_d]['StatusDesc'].lower()
                         if status_priority.get(status, 0) > status_priority.get(existing_status, 0):
                             out[four_d] = {
-                                "Name": find_name_by_4d(four_d, records_nominal),
+                                "Rank": rank,  # Include Rank
+                                "Name": name,
                                 "4D_Number": four_d,
-                                "StatusDesc": ensure_str(parade.get('Status', '')),
+                                "StatusDesc": ensure_str(parade.get('status', '')),
                                 "Is_Outlier": True
                             }
                     else:
                         out[four_d] = {
-                            "Name": find_name_by_4d(four_d, records_nominal),
+                            "Rank": rank,  # Include Rank
+                            "Name": name,
                             "4D_Number": four_d,
-                            "StatusDesc": ensure_str(parade.get('Status', '')),
+                            "StatusDesc": ensure_str(parade.get('status', '')),
                             "Is_Outlier": True
                         }
     logger.info(f"Built on-status table with {len(out)} entries for platoon {platoon} on {date_obj.strftime('%d%m%Y')}.")
@@ -293,34 +333,37 @@ def build_conduct_table(platoon: str, date_obj: datetime, records_nominal, recor
     Return a list of dicts for all personnel in the platoon.
     'Is_Outlier' is True if the person has an active status on the given date, else False.
     Includes 'StatusDesc' for personnel on status.
+    Also includes 'Rank'.
     """
     parade_map = defaultdict(list)
     for row in records_parade:
-        four_d = row.get('4D_Number', '').strip().upper()
+        four_d = row.get('4d_number', '').strip().upper()
         parade_map[four_d].append(row)
     
     data = []
     for person in records_nominal:
-        p = person.get('Platoon', '')
+        p = person.get('platoon', '')
         if normalize_name(p) != normalize_name(platoon):
             continue
-        four_d = person.get('4D_Number', '').strip().upper()
-        name = person.get('Name', '')
+        four_d = person.get('4d_number', '').strip().upper()
+        name = person.get('name', '')
+        rank = person.get('rank', '')  # Retrieve Rank
         # Check if person has an active parade status on the given date
         active_status = False
         status_desc = ""
         for parade in parade_map.get(four_d, []):
             try:
-                start_dt = datetime.strptime(parade.get('Start_Date_DDMMYYYY', ''), "%d%m%Y")
-                end_dt = datetime.strptime(parade.get('End_Date_DDMMYYYY', ''), "%d%m%Y")
+                start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', ''), "%d%m%Y")
+                end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', ''), "%d%m%Y")
                 if start_dt <= date_obj <= end_dt:
                     active_status = True
-                    status_desc = parade.get('Status', '')
+                    status_desc = parade.get('status', '')
                     break
             except ValueError:
-                logger.warning(f"Invalid date format for {four_d}: {parade.get('Start_Date_DDMMYYYY', '')} - {parade.get('End_Date_DDMMYYYY', '')}")
+                logger.warning(f"Invalid date format for {four_d}: {parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}")
                 continue
         data.append({
+            'Rank': rank,  # Include Rank
             'Name': name,
             '4D_Number': four_d,
             'Is_Outlier': active_status,
@@ -376,9 +419,9 @@ def has_overlapping_status(four_d: str, new_start: datetime, new_end: datetime, 
         return False  # Invalid 4D_Number, cannot have overlapping status
     
     for row in records_parade:
-        if is_valid_4d(row.get("4D_Number", "")) == four_d:
-            start_date = row.get("Start_Date_DDMMYYYY", "")
-            end_date = row.get("End_Date_DDMMYYYY", "")
+        if is_valid_4d(row.get("4d_number", "")) == four_d:
+            start_date = row.get("start_date_ddmmyyyy", "")
+            end_date = row.get("end_date_ddmmyyyy", "")
             
             try:
                 existing_start = datetime.strptime(start_date, "%d%m%Y")
@@ -420,8 +463,6 @@ SHEET_NOMINAL = worksheets["nominal"]
 SHEET_PARADE = worksheets["parade"]  # Correct variable name
 SHEET_CONDUCTS = worksheets["conducts"]
 
-# Note: Removed the remove_expired_statuses function and its invocation
-
 # ------------------------------------------------------------------------------
 # 6) Session State: We store data so it's not lost on each run
 # ------------------------------------------------------------------------------
@@ -448,17 +489,31 @@ if "parade_table" not in st.session_state:
 if "parade_submitted_by" not in st.session_state:
     st.session_state.parade_submitted_by = ""  # New Session State for Parade
 
+# Conduct Update Session State
+if "update_conduct_selected" not in st.session_state:
+    st.session_state.update_conduct_selected = None
+if "update_conduct_platoon" not in st.session_state:
+    st.session_state.update_conduct_platoon = 1  # Initialize as integer (Platoon 1-4)
+if "update_conduct_pointers" not in st.session_state:
+    st.session_state.update_conduct_pointers = ""
+if "update_conduct_new_pointers" not in st.session_state:
+    st.session_state.update_conduct_new_pointers = ""  # New session state for adding pointers
+if "update_conduct_table" not in st.session_state:
+    st.session_state.update_conduct_table = []
+
 # ------------------------------------------------------------------------------
 # 7) Feature Selection
 # ------------------------------------------------------------------------------
+
 feature = st.sidebar.selectbox(
     "Select Feature",
-    ["Add Conduct", "Update Parade", "Queries"]
+    ["Add Conduct", "Update Conduct", "Update Parade", "Queries"]
 )
 
 # ------------------------------------------------------------------------------
 # 8) Feature A: Add Conduct (table-based On-Status approach)
 # ------------------------------------------------------------------------------
+
 if feature == "Add Conduct":
     st.header("Add Conduct - Table-Based On-Status")
 
@@ -468,7 +523,7 @@ if feature == "Add Conduct":
         value=st.session_state.conduct_date
     )
     st.session_state.conduct_platoon = st.selectbox(
-        "Platoon",
+        "Your Platoon",
         options=[1, 2, 3, 4],
         format_func=lambda x: str(x)
     )
@@ -514,8 +569,8 @@ if feature == "Add Conduct":
 
         # Store in session
         st.session_state.conduct_table = conduct_data
-        st.success(f"Loaded {len(conduct_data)} personnel for Platoon {platoon} ({date_str}).")
-        logger.info(f"Loaded conduct personnel for Platoon {platoon} on {date_str} in company '{selected_company}'.")
+        st.success(f"Loaded {len(conduct_data)} personnel for Platoon {platoon} ({date_obj.strftime('%d%m%Y')}).")
+        logger.info(f"Loaded conduct personnel for Platoon {platoon} on {date_obj.strftime('%d%m%Y')} in company '{selected_company}'.")
 
     # (c) Data Editor (allow new rows) - ALWAYS show, so you can finalize even with zero outliers
     if st.session_state.conduct_table:
@@ -555,7 +610,7 @@ if feature == "Add Conduct":
         records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
         # We'll figure out who is outlier + who is new to Nominal_Roll
-        existing_4ds = {row.get("4D_Number", "").strip().upper() for row in records_nominal}
+        existing_4ds = {row.get("4d_number", "").strip().upper() for row in records_nominal}
 
         new_people = []
         all_outliers = []
@@ -563,6 +618,7 @@ if feature == "Add Conduct":
         for row in edited_data:
             four_d = is_valid_4d(row.get("4D_Number", ""))
             name_ = ensure_str(row.get("Name", ""))
+            rank_ = ensure_str(row.get("Rank", ""))  # Retrieve Rank
             is_outlier = row.get("Is_Outlier", False)
             status_desc = ensure_str(row.get("StatusDesc", ""))  # Get StatusDesc
 
@@ -580,8 +636,12 @@ if feature == "Add Conduct":
                         st.error(f"Name is required for new 4D_Number: {four_d}. Skipping.")
                         logger.error(f"Name missing for new 4D_Number: {four_d}.")
                         continue
-                    new_people.append((name_, four_d, platoon))
-                    logger.info(f"Adding new person: {name_}, {four_d}, Platoon {platoon} in company '{selected_company}'.")
+                    if not rank_:
+                        st.error(f"Rank is required for new 4D_Number: {four_d}. Skipping.")
+                        logger.error(f"Rank missing for new 4D_Number: {four_d}.")
+                        continue
+                    new_people.append((rank_, name_, four_d, platoon))
+                    logger.info(f"Adding new person: Rank={rank_}, Name={name_}, 4D_Number={four_d}, Platoon={platoon} in company '{selected_company}'.")
 
                 # If is_outlier, we'll add to outliers list with StatusDesc
                 if is_outlier:
@@ -591,41 +651,87 @@ if feature == "Add Conduct":
                         all_outliers.append(f"{four_d}")
 
         # Insert new people into Nominal_Roll
-        for (nm, fd, p_) in new_people:
+        for (rank, nm, fd, p_) in new_people:
             formatted_fd = ensure_date_str(fd)
-            SHEET_NOMINAL.append_row([nm, formatted_fd, p_, 14, ""])  # Initialize leaves
-            logger.info(f"Added new person to Nominal_Roll: {nm}, {formatted_fd}, Platoon {p_} in company '{selected_company}'.")
+            SHEET_NOMINAL.append_row([rank, nm, formatted_fd, p_, 14, ""])  # Initialize leaves
+            logger.info(f"Added new person to Nominal_Roll: Rank={rank}, Name={nm}, 4D_Number={formatted_fd}, Platoon={p_} in company '{selected_company}'.")
 
-        # Now recalc total strength
-        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)  # Refresh after adding new people
-        total_strength = get_company_strength(platoon, records_nominal)
-        outliers_num = len(all_outliers)
-        participating = total_strength - outliers_num
-        outliers_str = ",".join(all_outliers)
+        # Now recalc total strength for all platoons to calculate P/T Alpha
+        total_strength_platoons = {}
+        for plt in [1, 2, 3, 4]:
+            strength = get_company_strength(str(plt), records_nominal)
+            total_strength_platoons[plt] = strength
+
+        # Prepare P/T PLT1 to PLT4
+        pt_plts = ['0/0', '0/0', '0/0', '0/0']
+
+        # Calculate participating for the selected platoon
+        participating = 0
+        for row in edited_data:
+            if not row.get('Is_Outlier', False):
+                participating += 1
+
+        # Set participation for the selected platoon
+        pt_plts[int(platoon)-1] = f"{participating}/{total_strength_platoons[int(platoon)]}"
+
+        # Calculate P/T Alpha as the sum of participations across all platoons / sum of total strengths
+        x_total = 0
+        for pt in pt_plts:
+            x = int(pt.split('/')[0]) if '/' in pt and pt.split('/')[0].isdigit() else 0
+            x_total += x
+        y_total = sum(total_strength_platoons.values())
+        pt_alpha = f"{x_total}/{y_total}"
 
         # Append row to Conducts with Submitted By
         pointers = st.session_state.conduct_pointers.strip()
         formatted_date_str = ensure_date_str(date_str)
         SHEET_CONDUCTS.append_row([
             formatted_date_str,
-            platoon,
             cname,
-            total_strength,
-            participating,
-            outliers_str,
+            pt_plts[0],  # P/T PLT1
+            pt_plts[1],  # P/T PLT2
+            pt_plts[2],  # P/T PLT3
+            pt_plts[3],  # P/T PLT4
+            pt_alpha,     # P/T Alpha as "x/y"
+            ", ".join(all_outliers) if all_outliers else "None",
             pointers,
             submitted_by  # Added Submitted By
         ])
-        logger.info(f"Appended Conduct: {formatted_date_str}, Platoon {platoon}, {cname}, Total: {total_strength}, Participating: {participating}, Outliers: {outliers_str}, Submitted_By: {submitted_by} in company '{selected_company}'.")
+        logger.info(f"Appended Conduct: {formatted_date_str}, {cname}, P/T PLT1: {pt_plts[0]}, P/T PLT2: {pt_plts[1]}, P/T PLT3: {pt_plts[2]}, P/T PLT4: {pt_plts[3]}, P/T Alpha: {pt_alpha}, Outliers: {', '.join(all_outliers) if all_outliers else 'None'}, Pointers: {pointers}, Submitted_By: {submitted_by} in company '{selected_company}'.")
+
+        # Find the row number of the newly appended conduct
+        try:
+            conduct_cell = SHEET_CONDUCTS.find(cname, in_column=2)  # Conduct_Name is column B
+            if conduct_cell:
+                conduct_row = conduct_cell.row
+            else:
+                st.error("Failed to locate the newly added conduct in the sheet.")
+                logger.error(f"Failed to locate the newly added conduct '{cname}' in the sheet.")
+                st.stop()
+        except Exception as e:
+            st.error(f"Error locating the newly added conduct: {e}")
+            logger.error(f"Exception while locating the newly added conduct '{cname}': {e}")
+            st.stop()
+
+        # Update P/T Alpha in the sheet
+        try:
+            SHEET_CONDUCTS.update_cell(conduct_row, 7, pt_alpha)  # P/T Alpha is column 7
+            logger.info(f"Updated P/T Alpha to {pt_alpha} for conduct '{cname}' in company '{selected_company}'.")
+        except Exception as e:
+            st.error(f"Error updating P/T Alpha: {e}")
+            logger.error(f"Exception while updating P/T Alpha for conduct '{cname}': {e}")
+            st.stop()
 
         st.success(
             f"Conduct Finalized!\n\n"
             f"Date: {formatted_date_str}\n"
-            f"Platoon: {platoon}\n"
             f"Conduct Name: {cname}\n"
-            f"Total Strength: {total_strength}\n"
-            f"Participating: {participating}\n"
-            f"Outliers: {outliers_str if outliers_str else 'None'}\n"
+            f"P/T PLT1: {pt_plts[0]}\n"
+            f"P/T PLT2: {pt_plts[1]}\n"
+            f"P/T PLT3: {pt_plts[2]}\n"
+            f"P/T PLT4: {pt_plts[3]}\n"
+            f"P/T Alpha: {pt_alpha}\n"
+            f"Outliers: {', '.join(all_outliers) if all_outliers else 'None'}\n"
             f"Pointers: {pointers if pointers else 'None'}\n"
             f"Submitted By: {submitted_by if submitted_by else 'N/A'}"
         )
@@ -642,8 +748,225 @@ if feature == "Add Conduct":
         # Removed caching, so no need to clear cache
 
 # ------------------------------------------------------------------------------
-# 9) Feature B: Update Parade
+# 9) Feature B: Update Conduct
 # ------------------------------------------------------------------------------
+
+elif feature == "Update Conduct":
+    st.header("Update Conduct")
+
+    # (a) Select Conduct to Update
+    records_conducts = get_conduct_records(selected_company, SHEET_CONDUCTS)
+    conduct_names = [f"{row['date']} - {row['conduct_name']}" for row in records_conducts]
+    
+    if not conduct_names:
+        st.warning("No Conducts available to update.")
+        st.stop()
+    
+    selected_conduct = st.selectbox(
+        "Select Conduct to Update",
+        options=conduct_names,
+        key="update_conduct_selected"
+    )
+
+    if not selected_conduct:
+        st.error("Please select a conduct to update.")
+        st.stop()
+
+    # Find the selected conduct record
+    conduct_index = conduct_names.index(selected_conduct) if selected_conduct in conduct_names else -1
+    if conduct_index == -1:
+        st.error("Selected conduct not found.")
+        st.stop()
+
+    conduct_record = records_conducts[conduct_index]
+
+    # (b) Select Platoon to Update
+    st.subheader("Select Platoon to Update")
+    selected_platoon = st.selectbox(
+        "Select Platoon",
+        options=[1, 2, 3, 4],
+        format_func=lambda x: f"Platoon {x}",
+        key="update_conduct_platoon_select"
+    )
+
+    # (c) Editable Table for Pointers
+    st.subheader("Edit Pointers")
+    st.write("Modify the pointers below. You can add new pointers by adding new rows.")
+
+    # Retrieve existing pointers and split into a list
+    existing_pointers = ensure_str(conduct_record.get('pointers', ''))
+    if existing_pointers.lower() == 'none' or not existing_pointers:
+        pointers_list = []
+    else:
+        pointers_list = [ptr.strip() for ptr in existing_pointers.split(',') if ptr.strip()]
+    
+    # Convert to DataFrame for editable table
+    pointers_df = pd.DataFrame(pointers_list, columns=["Pointer"])
+    
+    # Display editable table without 'label'
+    edited_pointers_df = st.data_editor(
+        pointers_df,
+        num_rows="dynamic",
+        use_container_width=True
+    )
+
+    # (d) Input for Submitted By
+    # Removed 'Submitted By' from Update Conduct as per user request
+
+    # (e) Load On-Status for the selected Conduct and Platoon
+    if st.button("Load On-Status for Update"):
+        platoon = str(selected_platoon).strip()
+        date_str = conduct_record['date']
+        try:
+            date_obj = datetime.strptime(date_str, "%d%m%Y")
+        except ValueError:
+            st.error("Invalid date format in selected Conduct.")
+            st.stop()
+
+        # Fetch records without caching
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        records_parade = get_parade_records(selected_company, SHEET_PARADE)
+
+        # Build conduct table with all personnel, marking 'Is_Outlier' based on status
+        conduct_data = build_conduct_table(platoon, date_obj, records_nominal, records_parade)
+
+        # Store in session
+        st.session_state.update_conduct_table = conduct_data
+        st.success(f"Loaded {len(conduct_data)} personnel for Platoon {platoon} from Conduct '{selected_conduct}'.")
+        logger.info(f"Loaded conduct personnel for Platoon {platoon} from Conduct '{selected_conduct}' in company '{selected_company}'.")
+
+    # (f) Data Editor for Conduct Update
+    if "update_conduct_table" in st.session_state and st.session_state.update_conduct_table:
+        st.subheader(f"Edit Conduct Data for Platoon {selected_platoon}")
+        st.write("Toggle 'Is_Outlier' if not participating, or add new rows for extra people.")
+        edited_data = st.data_editor(
+            st.session_state.update_conduct_table,
+            num_rows="dynamic",
+            use_container_width=True
+        )
+    else:
+        edited_data = None
+
+    # (g) Finalize Conduct Update
+    if st.button("Update Conduct Data") and edited_data is not None:
+        platoon = str(selected_platoon).strip()
+        pt_field = f"P/T PLT{platoon}"
+        # Calculate new Participating and Total based on edited_data
+        new_participating = sum([1 for row in edited_data if not row.get('Is_Outlier', False)])
+        new_total = len(edited_data)
+        new_outliers = []
+        for row in edited_data:
+            four_d = is_valid_4d(row.get("4D_Number", ""))
+            status_desc = ensure_str(row.get("StatusDesc", ""))
+            if row.get("Is_Outlier", False):
+                if status_desc:
+                    new_outliers.append(f"{four_d} ({status_desc})")
+                else:
+                    new_outliers.append(f"{four_d}")
+
+        # Fetch existing outliers and append new ones
+        existing_outliers = ensure_str(conduct_record.get('outliers', ''))
+        if existing_outliers.lower() != 'none' and existing_outliers:
+            # Remove any existing outliers from the selected platoon to prevent duplication
+            # Assuming outliers are in the format "4DXXXX (Reason)"
+            pattern = re.compile(r'4D\d{4}\s*\([^)]*\)')
+            existing_outliers_list = pattern.findall(existing_outliers)
+            # Append new outliers
+            updated_outliers = ", ".join(existing_outliers_list + new_outliers)
+        else:
+            updated_outliers = ", ".join(new_outliers) if new_outliers else "None"
+
+        # Update P/T PLTx
+        new_pt_value = f"{new_participating}/{new_total}"
+
+        # Find the row number in the sheet
+        try:
+            conduct_name = selected_conduct.split(" - ")[1]
+            cell = SHEET_CONDUCTS.find(conduct_name, in_column=2)  # Conduct_Name is column B
+            if not cell:
+                st.error("Conduct not found in the sheet.")
+                logger.error(f"Conduct '{selected_conduct}' not found in the sheet.")
+                st.stop()
+            row_number = cell.row
+        except Exception as e:
+            st.error(f"Error locating Conduct in the sheet: {e}")
+            logger.error(f"Exception while locating Conduct '{selected_conduct}': {e}")
+            st.stop()
+
+        try:
+            SHEET_CONDUCTS.update_cell(row_number, 3 + int(platoon) - 1, new_pt_value)  # P/T PLT1 is column 3
+            logger.info(f"Updated {pt_field} to {new_pt_value} for conduct '{selected_conduct}' in company '{selected_company}'.")
+        except Exception as e:
+            st.error(f"Error updating {pt_field}: {e}")
+            logger.error(f"Exception while updating {pt_field}: {e}")
+            st.stop()
+
+        # Update Outliers
+        try:
+            SHEET_CONDUCTS.update_cell(row_number, 8, updated_outliers if updated_outliers else "None")  # Outliers is column 8
+            logger.info(f"Updated Outliers to '{updated_outliers}' for conduct '{selected_conduct}' in company '{selected_company}'.")
+        except Exception as e:
+            st.error(f"Error updating Outliers: {e}")
+            logger.error(f"Exception while updating Outliers: {e}")
+            st.stop()
+
+        # Calculate P/T Alpha as the sum of P/T PLT1 to P/T PLT4
+        try:
+            pt1 = SHEET_CONDUCTS.cell(row_number, 3).value  # P/T PLT1
+            pt2 = SHEET_CONDUCTS.cell(row_number, 4).value  # P/T PLT2
+            pt3 = SHEET_CONDUCTS.cell(row_number, 5).value  # P/T PLT3
+            pt4 = SHEET_CONDUCTS.cell(row_number, 6).value  # P/T PLT4
+
+            # Extract participating numbers
+            pt1_part = int(pt1.split('/')[0]) if '/' in pt1 and pt1.split('/')[0].isdigit() else 0
+            pt2_part = int(pt2.split('/')[0]) if '/' in pt2 and pt2.split('/')[0].isdigit() else 0
+            pt3_part = int(pt3.split('/')[0]) if '/' in pt3 and pt3.split('/')[0].isdigit() else 0
+            pt4_part = int(pt4.split('/')[0]) if '/' in pt4 and pt4.split('/')[0].isdigit() else 0
+
+            x_total = pt1_part + pt2_part + pt3_part + pt4_part
+            y_total = sum([int(p.split('/')[1]) if '/' in p and p.split('/')[1].isdigit() else 0 for p in [pt1, pt2, pt3, pt4]])
+
+            pt_alpha = f"{x_total}/{y_total}"
+
+            # Update P/T Alpha in the sheet (column 7)
+            SHEET_CONDUCTS.update_cell(row_number, 7, pt_alpha)
+            logger.info(f"Updated P/T Alpha to {pt_alpha} for conduct '{selected_conduct}' in company '{selected_company}'.")
+        except Exception as e:
+            st.error(f"Error calculating/updating P/T Alpha: {e}")
+            logger.error(f"Exception while calculating/updating P/T Alpha for conduct '{selected_conduct}': {e}")
+            st.stop()
+
+        # Update Pointers
+        # Combine edited pointers from the table
+        edited_pointers_list = edited_pointers_df['Pointer'].tolist()
+        # Remove any empty strings
+        edited_pointers_list = [ptr for ptr in edited_pointers_list if ptr]
+        if edited_pointers_list:
+            updated_pointers = ", ".join(edited_pointers_list)
+        else:
+            updated_pointers = "None"
+        
+        try:
+            SHEET_CONDUCTS.update_cell(row_number, 9, updated_pointers)  # Pointers is column 9
+            logger.info(f"Updated Pointers to '{updated_pointers}' for conduct '{selected_conduct}' in company '{selected_company}'.")
+        except Exception as e:
+            st.error(f"Error updating Pointers: {e}")
+            logger.error(f"Exception while updating Pointers: {e}")
+            st.stop()
+
+        st.success(f"Conduct '{selected_conduct}' updated successfully.")
+        logger.info(f"Conduct '{selected_conduct}' updated successfully in company '{selected_company}'.")
+
+        # Clear session state variables related to new pointers
+        st.session_state.update_conduct_new_pointers = ""
+
+        # **Clear Cached Data to Reflect Updates**
+        # Removed caching, so no need to clear cache
+
+# ------------------------------------------------------------------------------
+# 10) Feature C: Update Parade
+# ------------------------------------------------------------------------------
+
 elif feature == "Update Parade":
     st.header("Update Parade State")
 
@@ -680,7 +1003,7 @@ elif feature == "Update Parade":
         # ------------------------------------------------------------------------------
         current_statuses = [
             row for row in records_parade
-            if normalize_name(row.get('Platoon', '')) == normalize_name(platoon)
+            if normalize_name(row.get('platoon', '')) == normalize_name(platoon)
         ]
 
         if current_statuses:
@@ -689,11 +1012,11 @@ elif feature == "Update Parade":
             formatted_statuses = []
             for status in current_statuses:
                 formatted_statuses.append({
-                    "4D_Number": status.get("4D_Number", ""),
-                    "Name": find_name_by_4d(status.get("4D_Number", ""), records_nominal),
-                    "Status": status.get("Status", ""),
-                    "Start_Date": status.get("Start_Date_DDMMYYYY", ""),
-                    "End_Date": status.get("End_Date_DDMMYYYY", "")
+                    "4D_Number": status.get("4d_number", ""),
+                    "Name": find_name_by_4d(status.get("4d_number", ""), records_nominal),
+                    "Status": status.get("status", ""),
+                    "Start_Date": status.get("start_date_ddmmyyyy", ""),
+                    "End_Date": status.get("end_date_ddmmyyyy", "")
                 })
             # Display as a table
             #st.table(formatted_statuses)
@@ -703,188 +1026,188 @@ elif feature == "Update Parade":
     if st.session_state.parade_table:
         st.subheader("Edit Parade Data, Then Click 'Update'")
         st.write("Fill in 'Status', 'Start_Date (DDMMYYYY)', 'End_Date (DDMMYYYY)'")
-
         edited_data = st.data_editor(
             st.session_state.parade_table,
             num_rows="dynamic",
             use_container_width=True,
             hide_index=True  # Hide the default index
         )
+    else:
+        edited_data = None
 
-        if st.button("Update Parade State"):
-            rows_updated = 0
-            platoon = str(st.session_state.parade_platoon).strip()
-            submitted_by = st.session_state.parade_submitted_by.strip()  # Get Submitted By
+    # (c) Finalize Parade Update
+    if st.button("Update Parade State") and edited_data is not None:
+        rows_updated = 0
+        platoon = str(st.session_state.parade_platoon).strip()
+        submitted_by = st.session_state.parade_submitted_by.strip()  # Get Submitted By
 
-            # Fetch records without caching
-            records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-            records_parade = get_parade_records(selected_company, SHEET_PARADE)
+        # Fetch records without caching
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
-            for idx, row in enumerate(edited_data):
-                four_d = is_valid_4d(row.get('4D_Number', ''))
-                status_val = ensure_str(row.get('Status', '')).strip()
-                start_val = ensure_str(row.get('Start_Date', '')).strip()
-                end_val = ensure_str(row.get('End_Date', '')).strip()
+        for idx, row in enumerate(edited_data):
+            four_d = is_valid_4d(row.get("4D_Number", ""))
+            status_val = ensure_str(row.get("Status", "")).strip()
+            start_val = ensure_str(row.get("Start_Date", "")).strip()
+            end_val = ensure_str(row.get("End_Date", "")).strip()
 
-                # Retrieve the corresponding row number from the original parade_table
-                parade_entry = st.session_state.parade_table[idx]
-                row_num = parade_entry.get('_row_num')  # Get row number for updating
+            # Retrieve the corresponding row number from the original parade_table
+            parade_entry = st.session_state.parade_table[idx]
+            row_num = parade_entry.get('_row_num')  # Get row number for updating
 
-                # Validate 4D_Number format
-                if not four_d:
-                    st.error(f"Invalid 4D_Number format: {row.get('4D_Number', '')}. Skipping.")
-                    logger.error(f"Invalid 4D_Number format: {row.get('4D_Number', '')}.")
-                    continue
+            # Validate 4D_Number format
+            if not four_d:
+                st.error(f"Invalid 4D_Number format: {row.get('4D_Number', '')}. Skipping.")
+                logger.error(f"Invalid 4D_Number format: {row.get('4D_Number', '')}.")
+                continue
 
-                # Determine if the row was changed by comparing with the original
-                original_entry = st.session_state.parade_table[idx]
-                is_changed = False
-                if original_entry['_row_num'] is not None:
-                    # Compare relevant fields
-                    if (
-                        row.get('Status', '') != original_entry.get('Status', '') or
-                        row.get('Start_Date', '') != original_entry.get('Start_Date', '') or
-                        row.get('End_Date', '') != original_entry.get('End_Date', '')
-                    ):
-                        is_changed = True
+            # Determine if the row was changed by comparing with the original
+            original_entry = st.session_state.parade_table[idx]
+            is_changed = False
+            if original_entry['_row_num'] is not None:
+                # Compare relevant fields
+                if (
+                    row.get('Status', '') != original_entry.get('Status', '') or
+                    row.get('Start_Date', '') != original_entry.get('Start_Date', '') or
+                    row.get('End_Date', '') != original_entry.get('End_Date', '')
+                ):
+                    is_changed = True
 
-                if not status_val and row_num:
-                    # If status fields are cleared and row_num exists, consider deleting the status
-                    try:
-                        SHEET_PARADE.delete_rows(row_num)
-                        logger.info(f"Deleted Parade_State row {row_num} for {four_d} in company '{selected_company}'.")
-                        rows_updated += 1
-                        continue
-                    except Exception as e:
-                        st.error(f"Error deleting row for {four_d}: {e}. Skipping.")
-                        logger.error(f"Exception while deleting row for {four_d}: {e}.")
-                        continue
-
-                if not status_val or not start_val or not end_val:
-                    # Skip entries with missing required fields
-                    logger.error(f"Missing fields for {four_d} in company '{selected_company}'.")
-                    continue
-
-                # Ensure dates are properly formatted
-                formatted_start_val = ensure_date_str(start_val)
-                formatted_end_val = ensure_date_str(end_val)
-
-                # Validate date formats
+            if not status_val and row_num:
+                # If status fields are cleared and row_num exists, consider deleting the status
                 try:
-                    start_dt = datetime.strptime(formatted_start_val, "%d%m%Y")
-                    end_dt = datetime.strptime(formatted_end_val, "%d%m%Y")
-                    if end_dt < start_dt:
-                        st.error(f"End date is before start date for {four_d}, skipping.")
-                        logger.error(f"End date before start date for {four_d} in company '{selected_company}'.")
-                        continue
-                except ValueError:
-                    st.error(f"Invalid date(s) for {four_d}, skipping.")
-                    logger.error(f"Invalid date format for {four_d}: Start={formatted_start_val}, End={formatted_end_val} in company '{selected_company}'.")
+                    SHEET_PARADE.delete_rows(row_num)
+                    logger.info(f"Deleted Parade_State row {row_num} for {four_d} in company '{selected_company}'.")
+                    rows_updated += 1
+                    continue
+                except Exception as e:
+                    st.error(f"Error deleting row for {four_d}: {e}. Skipping.")
+                    logger.error(f"Exception while deleting row for {four_d}: {e}.")
                     continue
 
-                if status_val.lower() == "leave":
-                    # Calculate number of leaves used
-                    if formatted_start_val != formatted_end_val:
-                        dates_str = f"{formatted_start_val}-{formatted_end_val}"
-                    else:
-                        dates_str = formatted_start_val
-                    leaves_used = calculate_leaves_used(dates_str)
-                    if leaves_used <= 0:
-                        st.error(f"Invalid leave duration for {four_d}, skipping.")
-                        logger.error(f"Invalid leave duration for {four_d}: {dates_str} in company '{selected_company}'.")
-                        continue
+            if not status_val or not start_val or not end_val:
+                # Skip entries with missing required fields
+                logger.error(f"Missing fields for {four_d} in company '{selected_company}'.")
+                continue
 
-                    # Check for overlapping statuses
-                    if has_overlapping_status(four_d, start_dt, end_dt, records_parade):
-                        logger.error(f"Leave dates overlap for {four_d}: {dates_str} in company '{selected_company}'.")
-                        continue
+            # Ensure dates are properly formatted
+            formatted_start_val = ensure_date_str(start_val)
+            formatted_end_val = ensure_date_str(end_val)
 
-                    # Fetch current leaves and dates taken
-                    try:
-                        nominal_record = SHEET_NOMINAL.find(four_d, in_column=2)  # Assuming 4D_Number is column B
-                        if nominal_record:
-                            current_leaves_left = SHEET_NOMINAL.cell(nominal_record.row, 4).value
-                            try:
-                                current_leaves_left = int(current_leaves_left)
-                            except ValueError:
-                                current_leaves_left = 14  # Default if invalid
-                                logger.warning(f"Invalid 'Number of Leaves Left' for {four_d}. Resetting to 14 in company '{selected_company}'.")
-        
-                            if leaves_used > current_leaves_left:
-                                st.error(f"{four_d} does not have enough leaves left. Available: {current_leaves_left}, Requested: {leaves_used}. Skipping.")
-                                logger.error(f"{four_d} insufficient leaves. Available: {current_leaves_left}, Requested: {leaves_used} in company '{selected_company}'.")
-                                continue
+            # Validate date formats
+            try:
+                start_dt = datetime.strptime(formatted_start_val, "%d%m%Y")
+                end_dt = datetime.strptime(formatted_end_val, "%d%m%Y")
+                if end_dt < start_dt:
+                    st.error(f"End date is before start date for {four_d}, skipping.")
+                    logger.error(f"End date before start date for {four_d} in company '{selected_company}'.")
+                    continue
+            except ValueError:
+                st.error(f"Invalid date(s) for {four_d}, skipping.")
+                logger.error(f"Invalid date format for {four_d}: Start={formatted_start_val}, End={formatted_end_val} in company '{selected_company}'.")
+                continue
 
-                            # Update leaves left
-                            new_leaves_left = current_leaves_left - leaves_used
-                            SHEET_NOMINAL.update_cell(nominal_record.row, 4, new_leaves_left)
-                            logger.info(f"Updated 'Number of Leaves Left' for {four_d}: {new_leaves_left} in company '{selected_company}'.")
-
-                            # Update Dates Taken
-                            existing_dates = SHEET_NOMINAL.cell(nominal_record.row, 5).value
-                            new_dates_entry = dates_str
-                            if existing_dates:
-                                updated_dates = existing_dates + f",{new_dates_entry}"
-                            else:
-                                updated_dates = new_dates_entry
-                            SHEET_NOMINAL.update_cell(nominal_record.row, 5, updated_dates)
-                            logger.info(f"Updated 'Dates Taken' for {four_d}: {updated_dates} in company '{selected_company}'.")
-                        else:
-                            st.error(f"{four_d} not found in Nominal_Roll. Skipping.")
-                            logger.error(f"{four_d} not found in Nominal_Roll in company '{selected_company}'.")
-                            continue
-                    except Exception as e:
-                        st.error(f"Error updating leaves for {four_d}: {e}. Skipping.")
-                        logger.error(f"Exception while updating leaves for {four_d}: {e} in company '{selected_company}'.")
-                        continue
-
-                # Update the existing Parade_State row instead of appending
-                if row_num:
-                    # Find the column numbers based on header
-                    header = SHEET_PARADE.row_values(1)
-                    try:
-                        status_col = header.index("Status") + 1
-                        start_date_col = header.index("Start_Date_DDMMYYYY") + 1
-                        end_date_col = header.index("End_Date_DDMMYYYY") + 1
-                        submitted_by_col = header.index("Submitted_By") + 1 if "Submitted_By" in header else None
-                    except ValueError as ve:
-                        st.error(f"Required column missing in Parade_State: {ve}.")
-                        logger.error(f"Required column missing in Parade_State: {ve} in company '{selected_company}'.")
-                        continue
-
-                    SHEET_PARADE.update_cell(row_num, status_col, status_val)  # Corrected SHEET_PARDE to SHEET_PARADE
-                    SHEET_PARADE.update_cell(row_num, start_date_col, formatted_start_val)  # Corrected SHEET_PARDE to SHEET_PARADE
-                    SHEET_PARADE.update_cell(row_num, end_date_col, formatted_end_val)  # Corrected SHEET_PARDE to SHEET_PARADE
-
-                    # Update 'Submitted_By' only if the row was changed
-                    if is_changed and submitted_by_col:
-                        SHEET_PARADE.update_cell(row_num, submitted_by_col, submitted_by)
-                        logger.info(f"Updated Parade_State for {four_d}: Status={status_val}, Start={formatted_start_val}, End={formatted_end_val}, Submitted_By={submitted_by} in company '{selected_company}'.")
-                    elif is_changed and not submitted_by_col:
-                        # If 'Submitted_By' column doesn't exist, log a warning
-                        logger.warning(f"'Submitted_By' column not found in Parade_State. Cannot update for {four_d} in company '{selected_company}'.")
-
-                    rows_updated += 1
+            if status_val.lower() == "leave":
+                # Calculate number of leaves used
+                if formatted_start_val != formatted_end_val:
+                    dates_str = f"{formatted_start_val}-{formatted_end_val}"
                 else:
-                    # If no existing row, append as a new entry
-                    SHEET_PARADE.append_row([platoon, four_d, status_val, formatted_start_val, formatted_end_val, submitted_by])  # Corrected SHEET_PARDE to SHEET_PARADE
-                    logger.info(f"Appended Parade_State for {four_d}: Status={status_val}, Start={formatted_start_val}, End={formatted_end_val}, Submitted_By={submitted_by} in company '{selected_company}'.")
-                    rows_updated += 1
+                    dates_str = formatted_start_val
+                leaves_used = calculate_leaves_used(dates_str)
+                if leaves_used <= 0:
+                    st.error(f"Invalid leave duration for {four_d}, skipping.")
+                    logger.error(f"Invalid leave duration for {four_d}: {dates_str} in company '{selected_company}'.")
+                    continue
 
-            st.success(f"Parade State updated.")
-            logger.info(f"Parade State updated for {rows_updated} row(s) for platoon {platoon} in company '{selected_company}'.")
+                # Check for overlapping statuses
+                if has_overlapping_status(four_d, start_dt, end_dt, records_parade):
+                    logger.error(f"Leave dates overlap for {four_d}: {dates_str} in company '{selected_company}'.")
+                    continue
 
-            # **Reset session_state variables**
-            st.session_state.parade_platoon = 1
-            st.session_state.parade_table = []
-            st.session_state.parade_submitted_by = ""  # Clear Submitted By
+                # Fetch current leaves and dates taken
+                try:
+                    nominal_record = SHEET_NOMINAL.find(four_d, in_column=3)  # Assuming 4D_Number is column C
+                    if nominal_record:
+                        current_leaves_left = SHEET_NOMINAL.cell(nominal_record.row, 5).value  # Number of Leaves Left is column E
+                        try:
+                            current_leaves_left = int(current_leaves_left)
+                        except ValueError:
+                            current_leaves_left = 14  # Default if invalid
+                            logger.warning(f"Invalid 'Number of Leaves Left' for {four_d}. Resetting to 14 in company '{selected_company}'.")
 
-            # **Clear Cached Data to Reflect Updates**
-            # Removed caching, so no need to clear cache
+                        if leaves_used > current_leaves_left:
+                            st.error(f"{four_d} does not have enough leaves left. Available: {current_leaves_left}, Requested: {leaves_used}. Skipping.")
+                            logger.error(f"{four_d} insufficient leaves. Available: {current_leaves_left}, Requested: {leaves_used} in company '{selected_company}'.")
+                            continue
+
+                        # Update leaves left
+                        new_leaves_left = current_leaves_left - leaves_used
+                        SHEET_NOMINAL.update_cell(nominal_record.row, 5, new_leaves_left)
+                        logger.info(f"Updated 'Number of Leaves Left' for {four_d}: {new_leaves_left} in company '{selected_company}'.")
+
+                        # Update Dates Taken
+                        existing_dates = SHEET_NOMINAL.cell(nominal_record.row, 6).value  # Dates Taken is column F
+                        new_dates_entry = dates_str
+                        if existing_dates:
+                            updated_dates = existing_dates + f",{new_dates_entry}"
+                        else:
+                            updated_dates = new_dates_entry
+                        SHEET_NOMINAL.update_cell(nominal_record.row, 6, updated_dates)
+                        logger.info(f"Updated 'Dates Taken' for {four_d}: {updated_dates} in company '{selected_company}'.")
+                    else:
+                        st.error(f"{four_d} not found in Nominal_Roll. Skipping.")
+                        logger.error(f"{four_d} not found in Nominal_Roll in company '{selected_company}'.")
+                        continue
+                except Exception as e:
+                    st.error(f"Error updating leaves for {four_d}: {e}. Skipping.")
+                    logger.error(f"Exception while updating leaves for {four_d}: {e} in company '{selected_company}'.")
+                    continue
+
+            # Update the existing Parade_State row instead of appending
+            if row_num:
+                # Find the column numbers based on header
+                header = SHEET_PARADE.row_values(1)
+                header = [h.strip().lower() for h in header]
+                try:
+                    status_col = header.index("status") + 1
+                    start_date_col = header.index("start_date_ddmmyyyy") + 1
+                    end_date_col = header.index("end_date_ddmmyyyy") + 1
+                    submitted_by_col = header.index("submitted_by") + 1 if "submitted_by" in header else None
+                except ValueError as ve:
+                    st.error(f"Required column missing in Parade_State: {ve}.")
+                    logger.error(f"Required column missing in Parade_State: {ve} in company '{selected_company}'.")
+                    continue
+
+                SHEET_PARADE.update_cell(row_num, status_col, status_val)  # Corrected SHEET_PARDE to SHEET_PARADE
+                SHEET_PARADE.update_cell(row_num, start_date_col, formatted_start_val)  # Corrected SHEET_PARDE to SHEET_PARADE
+                SHEET_PARADE.update_cell(row_num, end_date_col, formatted_end_val)  # Corrected SHEET_PARDE to SHEET_PARADE
+
+                # Update 'Submitted_By' only if the row was changed
+                if submitted_by_col and is_changed:
+                    SHEET_PARADE.update_cell(row_num, submitted_by_col, submitted_by)
+
+                rows_updated += 1
+            else:
+                # If no existing row, append as a new entry
+                SHEET_PARADE.append_row([platoon, four_d, status_val, formatted_start_val, formatted_end_val, submitted_by])  # Corrected SHEET_PARDE to SHEET_PARADE
+                logger.info(f"Appended Parade_State for {four_d}: Status={status_val}, Start={formatted_start_val}, End={formatted_end_val}, Submitted_By={submitted_by} in company '{selected_company}'.")
+                rows_updated += 1
+
+        st.success(f"Parade State updated.")
+        logger.info(f"Parade State updated for {rows_updated} row(s) for platoon {platoon} in company '{selected_company}'.")
+
+        # **Reset session_state variables**
+        st.session_state.parade_platoon = 1
+        st.session_state.parade_table = []
+        st.session_state.parade_submitted_by = ""  # Clear Submitted By
+
+        # **Clear Cached Data to Reflect Updates**
+        # Removed caching, so no need to clear cache
 
 # ------------------------------------------------------------------------------
-# 10) Feature C: Queries (Combined Query Person & Query Outliers)
+# 11) Feature D: Queries (Combined Query Person & Query Outliers)
 # ------------------------------------------------------------------------------
+
 elif feature == "Queries":
     st.header("Queries")
 
@@ -913,7 +1236,7 @@ elif feature == "Queries":
             # Filter rows for this 4D
             person_rows = [
                 row for row in parade_data
-                if row.get("4D_Number", "").strip().upper() == four_d_input_clean
+                if row.get("4d_number", "").strip().upper() == four_d_input_clean
             ]
 
             if not person_rows:
@@ -927,17 +1250,17 @@ elif feature == "Queries":
                     except ValueError:
                         return datetime.min
 
-                person_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("Start_Date_DDMMYYYY", "")))
+                person_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
 
                 # Enhance display by adding Name
                 enhanced_rows = []
                 for row in person_rows:
                     enhanced_rows.append({
-                        "4D_Number": row.get("4D_Number", ""),
-                        "Name": find_name_by_4d(row.get("4D_Number", ""), records_nominal),
-                        "Status": row.get("Status", ""),
-                        "Start_Date": row.get("Start_Date_DDMMYYYY", ""),
-                        "End_Date": row.get("End_Date_DDMMYYYY", "")
+                        "4D_Number": row.get("4d_number", ""),
+                        "Name": find_name_by_4d(row.get("4d_number", ""), records_nominal),
+                        "Status": row.get("status", ""),
+                        "Start_Date": row.get("start_date_ddmmyyyy", ""),
+                        "End_Date": row.get("end_date_ddmmyyyy", "")
                     })
 
                 st.subheader(f"Statuses for {four_d_input_clean}")
@@ -971,49 +1294,53 @@ elif feature == "Queries":
             # Filter records matching both platoon and conduct name
             matched_records = [
                 row for row in conducts_data
-                if normalize_name(row.get('Platoon', '')) == normalize_name(platoon_query) and
-                   normalize_name(row.get('Conduct_Name', '')) == conduct_norm
+                if normalize_name(row.get('conduct_name', '')) == conduct_norm and
+                   row.get(f'p/t plt{platoon_query}', '').split('/')[0].isdigit() and
+                   int(row.get(f'p/t plt{platoon_query}', '').split('/')[0]) > 0
             ]
 
             if not matched_records:
                 # Attempt fuzzy matching if no exact match found
                 conduct_pairs = [
-                    (normalize_name(row.get('Platoon', '')), normalize_name(row.get('Conduct_Name', '')))
+                    (normalize_name(row.get('conduct_name', '')))
                     for row in conducts_data
-                    if row.get('Platoon', '').strip() and row.get('Conduct_Name', '').strip()
+                    if row.get('conduct_name', '').strip()
                 ]
-                query_pair = (normalize_name(platoon_query), conduct_norm)
-                closest_matches = difflib.get_close_matches(query_pair, conduct_pairs, n=1, cutoff=0.6)
+                closest_matches = difflib.get_close_matches(conduct_norm, conduct_pairs, n=1, cutoff=0.6)
                 if not closest_matches:
-                    st.error("❌ **No similar platoon and conduct combination found.**\n\nPlease check your input and try again.")
-                    logger.error(f"No similar platoon and conduct combination found for: {query_pair} in company '{selected_company}'.")
+                    st.error("❌ **No similar conduct name found.**\n\nPlease check your input and try again.")
+                    logger.error(f"No similar conduct name found for: {conduct_norm} in company '{selected_company}'.")
                     st.stop()
                 matched_norm = closest_matches[0]
                 # Retrieve the original names
                 matched_records = [
                     row for row in conducts_data
-                    if normalize_name(row.get('Platoon', '')) == matched_norm[0] and
-                       normalize_name(row.get('Conduct_Name', '')) == matched_norm[1]
+                    if normalize_name(row.get('conduct_name', '')) == matched_norm
                 ]
                 if not matched_records:
-                    st.error("❌ **No data found for the matched platoon and conduct.**")
-                    logger.error(f"No data found for the matched platoon and conduct: {matched_norm} in company '{selected_company}'.")
+                    st.error("❌ **No data found for the matched conduct.**")
+                    logger.error(f"No data found for the matched conduct: {matched_norm} in company '{selected_company}'.")
                     st.stop()
 
-            # Collect outliers from matched records
+            # Collect outliers from matched records for the specific platoon
             all_outliers = []
             for row in matched_records:
-                outliers_value = row.get('Outliers', '')
-                if isinstance(outliers_value, (int, float)):
-                    outliers_str = str(outliers_value)
-                elif isinstance(outliers_value, str):
-                    outliers_str = outliers_value
-                else:
-                    outliers_str = ''
+                p_t_field = f"P/T PLT{platoon_query}"
+                p_t_value = row.get(p_t_field, '0/0')
+                participating = int(p_t_value.split('/')[0]) if '/' in p_t_value and p_t_value.split('/')[0].isdigit() else 0
+                if participating > 0:
+                    outliers_value = row.get('outliers', '')
+                    if isinstance(outliers_value, (int, float)):
+                        outliers_str = str(outliers_value)
+                    elif isinstance(outliers_value, str):
+                        outliers_str = outliers_value
+                    else:
+                        outliers_str = ''
 
-                if outliers_str.lower() != 'none' and outliers_str.strip():
-                    outliers = [o.strip() for o in outliers_str.split(',') if o.strip()]
-                    all_outliers.extend(outliers)
+                    if outliers_str.lower() != 'none' and outliers_str.strip():
+                        # Assuming outliers are specific to platoon, you might need to adjust based on actual data structure
+                        outliers = [o.strip() for o in outliers_str.split(',') if o.strip()]
+                        all_outliers.extend(outliers)
 
             if all_outliers:
                 # Count frequency of each outlier
@@ -1031,3 +1358,7 @@ elif feature == "Queries":
             else:
                 st.info(f"✅ **No outliers recorded for '{conduct_query}' at Platoon {platoon_query}' in company '{selected_company}'.**")
                 logger.info(f"No outliers recorded for '{conduct_query}' at Platoon {platoon_query}' in company '{selected_company}'.")
+
+# ------------------------------------------------------------------------------
+# 12) Conclusion
+# ------------------------------------------------------------------------------
