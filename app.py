@@ -789,30 +789,6 @@ elif feature == "Update Conduct":
         key="update_conduct_platoon_select"
     )
 
-    # (c) Editable Table for Pointers
-    st.subheader("Edit Pointers")
-    st.write("Modify the pointers below. You can add new pointers by adding new rows.")
-
-    # Retrieve existing pointers and split into a list
-    existing_pointers = ensure_str(conduct_record.get('pointers', ''))
-    if existing_pointers.lower() == 'none' or not existing_pointers:
-        pointers_list = []
-    else:
-        pointers_list = [ptr.strip() for ptr in existing_pointers.split(',') if ptr.strip()]
-    
-    # Convert to DataFrame for editable table
-    pointers_df = pd.DataFrame(pointers_list, columns=["Pointer"])
-    
-    # Display editable table without 'label'
-    edited_pointers_df = st.data_editor(
-        pointers_df,
-        num_rows="dynamic",
-        use_container_width=True
-    )
-
-    # (d) Input for Submitted By
-    # Removed 'Submitted By' from Update Conduct as per user request
-
     # (e) Load On-Status for the selected Conduct and Platoon
     if st.button("Load On-Status for Update"):
         platoon = str(selected_platoon).strip()
@@ -849,6 +825,7 @@ elif feature == "Update Conduct":
 
     # (g) Finalize Conduct Update
     if st.button("Update Conduct Data") and edited_data is not None:
+        rows_updated = 0
         platoon = str(selected_platoon).strip()
         pt_field = f"P/T PLT{platoon}"
         # Calculate new Participating and Total based on edited_data
@@ -877,7 +854,7 @@ elif feature == "Update Conduct":
             updated_outliers = ", ".join(new_outliers) if new_outliers else "None"
 
         # Update P/T PLTx
-        new_pt_value = f"{new_participating}/{new_total}"
+        new_pt_value = f"'{new_participating}/{new_total}"  # Added leading single quote
 
         # Find the row number in the sheet
         try:
@@ -936,28 +913,10 @@ elif feature == "Update Conduct":
             logger.error(f"Exception while calculating/updating P/T Alpha for conduct '{selected_conduct}': {e}")
             st.stop()
 
-        # Update Pointers
-        # Combine edited pointers from the table
-        edited_pointers_list = edited_pointers_df['Pointer'].tolist()
-        # Remove any empty strings
-        edited_pointers_list = [ptr for ptr in edited_pointers_list if ptr]
-        if edited_pointers_list:
-            updated_pointers = ", ".join(edited_pointers_list)
-        else:
-            updated_pointers = "None"
-        
-        try:
-            SHEET_CONDUCTS.update_cell(row_number, 9, updated_pointers)  # Pointers is column 9
-            logger.info(f"Updated Pointers to '{updated_pointers}' for conduct '{selected_conduct}' in company '{selected_company}'.")
-        except Exception as e:
-            st.error(f"Error updating Pointers: {e}")
-            logger.error(f"Exception while updating Pointers: {e}")
-            st.stop()
-
         st.success(f"Conduct '{selected_conduct}' updated successfully.")
         logger.info(f"Conduct '{selected_conduct}' updated successfully in company '{selected_company}'.")
 
-        # Clear session state variables related to new pointers
+        # **Reset session_state variables**
         st.session_state.update_conduct_new_pointers = ""
 
         # **Clear Cached Data to Reflect Updates**
@@ -1362,3 +1321,5 @@ elif feature == "Queries":
 # ------------------------------------------------------------------------------
 # 12) Conclusion
 # ------------------------------------------------------------------------------
+
+# The code ends here.
