@@ -7,6 +7,7 @@ import difflib
 import re
 import pandas as pd  # type: ignore
 import logging
+import urllib.parse
 
 # ------------------------------------------------------------------------------
 # Setup Logging
@@ -292,39 +293,37 @@ def build_onstatus_table(platoon: str, date_obj: datetime, records_nominal, reco
             four_d = row.get('4d_number', '').strip().upper()
             name = row.get('name', '')
             rank = row.get('rank', '')  # Retrieve Rank
-            # Retrieve all parade statuses for the person
-            person_parades = parade_map.get(four_d, [])
-            for parade in person_parades:
+            # Check if person has an active parade status on the given date
+            active_status = False
+            status_desc = ""
+            for parade in parade_map.get(four_d, []):
                 try:
                     start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', '01012000'), "%d%m%Y").date()
                     end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', '01012000'), "%d%m%Y").date()
+                    if start_dt <= date_obj.date() <= end_dt:
+                        status = ensure_str(parade.get('status', '')).lower()
+                        if status in status_priority:
+                            if four_d in out:
+                                existing_status = out[four_d]['StatusDesc'].lower()
+                                if status_priority.get(status, 0) > status_priority.get(existing_status, 0):
+                                    out[four_d] = {
+                                        "Rank": rank,  # Include Rank
+                                        "Name": name,
+                                        "4D_Number": four_d,
+                                        "StatusDesc": ensure_str(parade.get('status', '')),
+                                        "Is_Outlier": True
+                                    }
+                            else:
+                                out[four_d] = {
+                                    "Rank": rank,  # Include Rank
+                                    "Name": name,
+                                    "4D_Number": four_d,
+                                    "StatusDesc": ensure_str(parade.get('status', '')),
+                                    "Is_Outlier": True
+                                }
                 except ValueError:
-                    logger.warning(f"Invalid date format in Parade_State for {four_d}: {parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}")
+                    logger.warning(f"Invalid date format for {four_d}: {parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}")
                     continue
-
-                if start_dt <= date_obj <= end_dt:
-                    status = ensure_str(parade.get('status', '')).lower()
-                    if not four_d:
-                        continue  # Skip invalid 4D_Number
-                    # If multiple statuses, keep the one with higher priority
-                    if four_d in out:
-                        existing_status = out[four_d]['StatusDesc'].lower()
-                        if status_priority.get(status, 0) > status_priority.get(existing_status, 0):
-                            out[four_d] = {
-                                "Rank": rank,  # Include Rank
-                                "Name": name,
-                                "4D_Number": four_d,
-                                "StatusDesc": ensure_str(parade.get('status', '')),
-                                "Is_Outlier": True
-                            }
-                    else:
-                        out[four_d] = {
-                            "Rank": rank,  # Include Rank
-                            "Name": name,
-                            "4D_Number": four_d,
-                            "StatusDesc": ensure_str(parade.get('status', '')),
-                            "Is_Outlier": True
-                        }
     logger.info(f"Built on-status table with {len(out)} entries for platoon {platoon} on {date_obj.strftime('%d%m%Y')}.")
     return list(out.values())
 
@@ -353,9 +352,9 @@ def build_conduct_table(platoon: str, date_obj: datetime, records_nominal, recor
         status_desc = ""
         for parade in parade_map.get(four_d, []):
             try:
-                start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', ''), "%d%m%Y")
-                end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', ''), "%d%m%Y")
-                if start_dt <= date_obj <= end_dt:
+                start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', ''), "%d%m%Y").date()
+                end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', ''), "%d%m%Y").date()
+                if start_dt <= date_obj.date() <= end_dt:
                     active_status = True
                     status_desc = parade.get('status', '')
                     break
@@ -507,7 +506,7 @@ if "update_conduct_table" not in st.session_state:
 
 feature = st.sidebar.selectbox(
     "Select Feature",
-    ["Add Conduct", "Update Conduct", "Update Parade", "Queries", "Overall View"]
+    ["Add Conduct", "Update Conduct", "Update Parade", "Queries", "Overall View", "Generate WhatsApp Message"]
 )
 
 # ------------------------------------------------------------------------------
@@ -709,8 +708,8 @@ if feature == "Add Conduct":
                 logger.error(f"Failed to locate the newly added conduct '{cname}' in the sheet.")
                 st.stop()
         except Exception as e:
-            st.error(f"Error locating the newly added conduct: {e}")
-            logger.error(f"Exception while locating the newly added conduct '{cname}': {e}")
+            st.error(f"Error locating Conduct in the sheet: {e}")
+            logger.error(f"Exception while locating Conduct '{cname}': {e}")
             st.stop()
 
         # Update P/T Alpha in the sheet
@@ -978,7 +977,7 @@ elif feature == "Update Parade":
                     "End_Date": status.get("end_date_ddmmyyyy", "")
                 })
             # Display as a table
-            #st.table(formatted_statuses)
+            st.table(formatted_statuses)
             logger.info(f"Displayed current parade statuses for platoon {platoon} in company '{selected_company}'.")
 
     # (b) Show data editor if we have data
@@ -1481,6 +1480,156 @@ elif feature == "Overall View":
         # ------------------------------------------------------------------------------
 
         logger.info(f"Displayed overall view of all conducts in company '{selected_company}'.")
+
+# ------------------------------------------------------------------------------
+# 13) Feature F: Generate WhatsApp Message
+# ------------------------------------------------------------------------------
+
+elif feature == "Generate WhatsApp Message":
+
+    # (a) Fetch parade records and nominal records
+    records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+    records_parade = get_parade_records(selected_company, SHEET_PARADE)
+
+    # **Fix Applied: Filter parade records to include only those applicable to today**
+    today_date = datetime.today().date()
+    filtered_parade = []
+    for parade in records_parade:
+        start_date_str = parade.get('start_date_ddmmyyyy', '')
+        end_date_str = parade.get('end_date_ddmmyyyy', '')
+        try:
+            start_dt = datetime.strptime(start_date_str, "%d%m%Y").date()
+            end_dt = datetime.strptime(end_date_str, "%d%m%Y").date()
+            if start_dt <= today_date <= end_dt:
+                filtered_parade.append(parade)
+        except ValueError:
+            logger.warning(f"Invalid date format for {parade.get('4d_number', '')}: {start_date_str} - {end_date_str}")
+            continue
+    records_parade = filtered_parade
+
+    # (b) Calculate TOTAL STR
+    total_strength = len(records_nominal)
+
+    # (c) Calculate CURRENT STR (Total - number of MCs)
+    # Modification: CURRENT STR = TOTAL STR - number of MCs
+    mc_count = len([person for person in records_parade if person.get('status', '').strip().lower() == 'mc'])
+    current_strength = total_strength - mc_count
+
+    # (d) Categorize personnel
+    mc_list = []
+    statuses_list = []
+    others_list = []
+
+    for parade in records_parade:
+        status = ensure_str(parade.get('status', '')).lower()
+        four_d = parade.get('4d_number', '').strip().upper()
+        rank = ""
+        name = ""
+        # Find the person's name and rank from nominal records
+        for nominal in records_nominal:
+            if nominal['4d_number'] == four_d:
+                rank = nominal['rank']
+                name = nominal['name']
+                break
+        if status == 'mc':
+            # Calculate number of days
+            try:
+                start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', ''), "%d%m%Y").date()
+                end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', ''), "%d%m%Y").date()
+                delta_days = (end_dt - start_dt).days + 1
+                delta_str = f"{delta_days}D"
+                if delta_days == 1:
+                    details = f"{delta_str} MC ({start_dt.strftime('%d%m%y')})"
+                else:
+                    details = f"{delta_str} MC ({start_dt.strftime('%d%m%y')}-{end_dt.strftime('%d%m%y')})"
+            except ValueError:
+                details = f"MC (Invalid Dates)"
+                logger.warning(f"Invalid dates for MC {four_d}: {parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}")
+            mc_list.append({
+                "Rank": rank,
+                "Name": name,
+                "Details": details
+            })
+        elif status in ['rib', 'ld'] or status.startswith('ex'):
+            # Assuming 'rib' and 'ld' fall under STATUSES
+            # Also, any status starting with 'ex' falls under STATUSES
+            # You can adjust the conditions based on actual status values
+            try:
+                start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', ''), "%d%m%Y").date()
+                end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', ''), "%d%m%Y").date()
+                delta_days = (end_dt - start_dt).days + 1
+                delta_str = f"{delta_days}D"
+                if delta_days == 1:
+                    details = f"{delta_str} {parade.get('status', '').upper()} ({start_dt.strftime('%d%m%y')})"
+                else:
+                    details = f"{delta_str} {parade.get('status', '').upper()} ({start_dt.strftime('%d%m%y')}-{end_dt.strftime('%d%m%y')})"
+            except ValueError:
+                details = f"{parade.get('status', '').upper()} (Invalid Dates)"
+                logger.warning(f"Invalid dates for Status {four_d}: {parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}")
+            statuses_list.append({
+                "Rank": rank,
+                "Name": name,
+                "Details": details
+            })
+        else:
+            # For any other status, calculate days similarly
+            try:
+                start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', ''), "%d%m%Y").date()
+                end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', ''), "%d%m%Y").date()
+                delta_days = (end_dt - start_dt).days + 1
+                delta_str = f"{delta_days}D"
+                if delta_days == 1:
+                    details = f"{delta_str} {parade.get('status', '').upper()} ({start_dt.strftime('%d%m%y')})"
+                else:
+                    details = f"{delta_str} {parade.get('status', '').upper()} ({start_dt.strftime('%d%m%y')}-{end_dt.strftime('%d%m%y')})"
+            except ValueError:
+                details = f"{parade.get('status', '').upper()} (Invalid Dates)"
+                logger.warning(f"Invalid dates for Status {four_d}: {parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}")
+            others_list.append({
+                "Rank": rank,
+                "Name": name,
+                "Details": details
+            })
+
+    # (f) Build the message
+    today_str = datetime.today().strftime("%d%m%y")  # DDMMYY
+    platoon = "1"  # Assuming platoon 1; adjust as necessary
+    company_name = selected_company  # You can customize this if needed
+
+    message_lines = []
+    message_lines.append(f"{today_str} {platoon} SIR ({company_name.upper()}) PARADE STRENGTH\n")
+
+    message_lines.append(f"TOTAL STR: {total_strength}")
+    message_lines.append(f"CURRENT STR: {current_strength}\n")
+
+    # MC Section
+    message_lines.append(f"MC: {len(mc_list)}")
+    for idx, person in enumerate(mc_list, start=1):
+        message_lines.append(f"{idx}. {person['Rank']}/{person['Name']}")
+        message_lines.append(f"* {person['Details']}")
+    message_lines.append("")  # Empty line
+
+    # STATUSES Section
+    # Count how many STATUSES have "OOT" and "EX STAY IN"
+    oot_count = sum(1 for s in statuses_list if re.search(r'\bOOT\b', s['Details'], re.IGNORECASE))
+    ex_stay_in_count = sum(1 for s in statuses_list if re.search(r'\bEX STAY IN\b', s['Details'], re.IGNORECASE))
+    total_statuses = len(statuses_list)
+    message_lines.append(f"STATUSES: {total_statuses} [*{oot_count} OOTS ({ex_stay_in_count} EX STAY IN)]")
+    for idx, person in enumerate(statuses_list, start=1):
+        message_lines.append(f"{idx}. {person['Rank']}/{person['Name']}")
+        message_lines.append(f"* {person['Details']}")
+    message_lines.append("")  # Empty line
+
+    # OTHERS Section
+    message_lines.append(f"OTHERS: {len(others_list):02d}")
+    for idx, person in enumerate(others_list, start=1):
+        message_lines.append(f"{idx}. {person['Rank']}/{person['Name']}")
+        message_lines.append(f"* {person['Details']}")
+
+    # Combine all lines into a single message
+    whatsapp_message = "\n".join(message_lines)
+
+    st.code(whatsapp_message, language='text')
 
 # ------------------------------------------------------------------------------
 # 13) Conclusion
