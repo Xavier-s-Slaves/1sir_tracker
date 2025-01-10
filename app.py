@@ -903,7 +903,7 @@ elif feature == "Update Conduct":
             x_total = pt1_part + pt2_part + pt3_part + pt4_part
             y_total = sum([int(p.split('/')[1]) if '/' in p and p.split('/')[1].isdigit() else 0 for p in [pt1, pt2, pt3, pt4]])
 
-            pt_alpha = f"{x_total}/{y_total}"
+            pt_alpha = f"'{x_total}/{y_total}"
 
             # Update P/T Alpha in the sheet (column 7)
             SHEET_CONDUCTS.update_cell(row_number, 7, pt_alpha)
