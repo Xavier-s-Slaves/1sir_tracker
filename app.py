@@ -8,12 +8,95 @@ import re
 import pandas as pd  # type: ignore
 import logging
 import urllib.parse
-
+import json
+import os
 # ------------------------------------------------------------------------------
 # Setup Logging
 # ------------------------------------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ------------------------------------------------------------------------------
+# User Authentication Setup
+# ------------------------------------------------------------------------------
+# Define a simple user database
+# In a production environment, consider using a secure method to handle user credentials
+USER_DB_PATH = "users.json"
+
+def load_user_db(path: str):
+    """
+    Load the user database from a JSON file.
+    """
+    if not os.path.exists(path):
+        logger.error(f"User database file '{path}' not found.")
+        st.error(f"User database file '{path}' not found.")
+        return {}
+    try:
+        with open(path, "r") as f:
+            user_db = json.load(f)
+        logger.info("User database loaded successfully.")
+        return user_db
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON from '{path}': {e}")
+        st.error(f"Error decoding JSON from '{path}': {e}")
+        return {}
+    except Exception as e:
+        logger.error(f"Unexpected error loading user database: {e}")
+        st.error(f"Unexpected error loading user database: {e}")
+        return {}
+
+USER_DB = load_user_db(USER_DB_PATH)
+
+
+# ------------------------------------------------------------------------------
+# Initialize Session State for Authentication
+# ------------------------------------------------------------------------------
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+if 'username' not in st.session_state:
+    st.session_state.username = ""
+if 'user_companies' not in st.session_state:
+    st.session_state.user_companies = []
+
+# ------------------------------------------------------------------------------
+# Authentication Interface
+# ------------------------------------------------------------------------------
+def login():
+    st.title("🔒 Training & Parade Management - Login")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        if username in USER_DB and USER_DB[username]["password"] == password:
+            st.session_state.authenticated = True
+            st.session_state.username = username
+            st.session_state.user_companies = USER_DB[username]["companies"]
+            logger.info(f"User '{username}' authenticated successfully.")
+            st.success(f"Welcome, {username}!")
+            # Rerun to display the main app
+            st.rerun()
+        else:
+            st.error("Invalid username or password.")
+            logger.warning(f"Failed login attempt for username '{username}'.")
+
+def logout():
+    st.sidebar.button("Logout", on_click=lambda: logout_callback())
+
+def logout_callback():
+    st.session_state.authenticated = False
+    st.session_state.username = ""
+    st.session_state.user_companies = []
+    st.success("You have been logged out.")
+    logger.info("User logged out.")
+    st.experimental_rerun()
+
+# Show login if not authenticated
+if not st.session_state.authenticated:
+    login()
+    st.stop()
+
+# ------------------------------------------------------------------------------
+# If authenticated, display the main app
+# ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
 # 1) Must be the very first Streamlit command:
@@ -440,15 +523,16 @@ def has_overlapping_status(four_d: str, new_start: datetime, new_end: datetime, 
 st.title("Training & Parade Management App")
 
 # ------------------------------------------------------------------------------
-# 5) Company Selection
+# 5) Sidebar: Configuration and Logout
 # ------------------------------------------------------------------------------
 
 st.sidebar.header("Configuration")
+logout()
 
-# Company selection: Dropdown to select one of the four companies
+# Company selection: Dropdown to select one of the accessible companies
 selected_company = st.sidebar.selectbox(
     "Select Company",
-    options=list(COMPANY_SPREADSHEETS.keys())
+    options=st.session_state.user_companies
 )
 
 # Load the selected company's sheets
@@ -477,16 +561,14 @@ if "conduct_table" not in st.session_state:
     st.session_state.conduct_table = []
 if "conduct_pointers" not in st.session_state:
     st.session_state.conduct_pointers = ""
-if "conduct_submitted_by" not in st.session_state:
-    st.session_state.conduct_submitted_by = ""  # New Session State for Conduct
+# Removed manual 'conduct_submitted_by' since it will be auto-assigned
 
 # Parade Session State
 if "parade_platoon" not in st.session_state:
     st.session_state.parade_platoon = 1  # Initialize as integer
 if "parade_table" not in st.session_state:
     st.session_state.parade_table = []
-if "parade_submitted_by" not in st.session_state:
-    st.session_state.parade_submitted_by = ""  # New Session State for Parade
+# Removed manual 'parade_submitted_by' since it will be auto-assigned
 
 # Conduct Update Session State
 if "update_conduct_selected" not in st.session_state:
@@ -537,11 +619,8 @@ if feature == "Add Conduct":
         value=st.session_state.conduct_pointers
     )
 
-    # New: Submitted By field
-    st.session_state.conduct_submitted_by = st.text_input(
-        "Submitted By",
-        value=st.session_state.conduct_submitted_by
-    )
+    # Removed manual 'Submitted By' input
+    submitted_by = st.session_state.username  # Automatically assign the username
 
     # (b) "Load On-Status"
     if st.button("Load On-Status"):
@@ -569,7 +648,7 @@ if feature == "Add Conduct":
         # Store in session
         st.session_state.conduct_table = conduct_data
         st.success(f"Loaded {len(conduct_data)} personnel for Platoon {platoon} ({date_obj.strftime('%d%m%Y')}).")
-        logger.info(f"Loaded conduct personnel for Platoon {platoon} on {date_obj.strftime('%d%m%Y')} in company '{selected_company}'.")
+        logger.info(f"Loaded conduct personnel for Platoon {platoon} on {date_obj.strftime('%d%m%Y')} in company '{selected_company}' by user '{submitted_by}'.")
 
     # (c) Data Editor (allow new rows) - ALWAYS show, so you can finalize even with zero outliers
     if st.session_state.conduct_table:
@@ -591,7 +670,8 @@ if feature == "Add Conduct":
         date_str = st.session_state.conduct_date.strip()
         platoon = str(st.session_state.conduct_platoon).strip()
         cname = st.session_state.conduct_name.strip()
-        submitted_by = st.session_state.conduct_submitted_by.strip()  # Get Submitted By
+        pointers = st.session_state.conduct_pointers.strip()
+        # submitted_by is already assigned
 
         if not date_str or not platoon or not cname:
             st.error("Please fill all fields (Date, Platoon, Conduct Name) first.")
@@ -640,7 +720,7 @@ if feature == "Add Conduct":
                         logger.error(f"Rank missing for new 4D_Number: {four_d}.")
                         continue
                     new_people.append((rank_, name_, four_d, platoon))
-                    logger.info(f"Adding new person: Rank={rank_}, Name={name_}, 4D_Number={four_d}, Platoon={platoon} in company '{selected_company}'.")
+                    logger.info(f"Adding new person: Rank={rank_}, Name={name_}, 4D_Number={four_d}, Platoon={platoon} in company '{selected_company}' by user '{submitted_by}'.")
 
                 # If is_outlier, we'll add to outliers list with StatusDesc
                 if is_outlier:
@@ -653,7 +733,7 @@ if feature == "Add Conduct":
         for (rank, nm, fd, p_) in new_people:
             formatted_fd = ensure_date_str(fd)
             SHEET_NOMINAL.append_row([rank, nm, formatted_fd, p_, 14, ""])  # Initialize leaves
-            logger.info(f"Added new person to Nominal_Roll: Rank={rank}, Name={nm}, 4D_Number={formatted_fd}, Platoon={p_} in company '{selected_company}'.")
+            logger.info(f"Added new person to Nominal_Roll: Rank={rank}, Name={nm}, 4D_Number={formatted_fd}, Platoon={p_} in company '{selected_company}' by user '{submitted_by}'.")
 
         # Now recalc total strength for all platoons to calculate P/T Alpha
         total_strength_platoons = {}
@@ -682,7 +762,6 @@ if feature == "Add Conduct":
         pt_alpha = f"{x_total}/{y_total}"
 
         # Append row to Conducts with Submitted By
-        pointers = st.session_state.conduct_pointers.strip()
         formatted_date_str = ensure_date_str(date_str)
         SHEET_CONDUCTS.append_row([
             formatted_date_str,
@@ -694,7 +773,7 @@ if feature == "Add Conduct":
             pt_alpha,     # P/T Alpha as "x/y"
             ", ".join(all_outliers) if all_outliers else "None",
             pointers,
-            submitted_by  # Added Submitted By
+            submitted_by  # Automatically assigned
         ])
         logger.info(f"Appended Conduct: {formatted_date_str}, {cname}, P/T PLT1: {pt_plts[0]}, P/T PLT2: {pt_plts[1]}, P/T PLT3: {pt_plts[2]}, P/T PLT4: {pt_plts[3]}, P/T Alpha: {pt_alpha}, Outliers: {', '.join(all_outliers) if all_outliers else 'None'}, Pointers: {pointers}, Submitted_By: {submitted_by} in company '{selected_company}'.")
 
@@ -732,7 +811,7 @@ if feature == "Add Conduct":
             f"P/T Alpha: {pt_alpha}\n"
             f"Outliers: {', '.join(all_outliers) if all_outliers else 'None'}\n"
             f"Pointers: {pointers if pointers else 'None'}\n"
-            f"Submitted By: {submitted_by if submitted_by else 'N/A'}"
+            f"Submitted By: {submitted_by}"
         )
 
         # Clear session state variables
@@ -741,7 +820,7 @@ if feature == "Add Conduct":
         st.session_state.conduct_name = ""
         st.session_state.conduct_table = []
         st.session_state.conduct_pointers = ""
-        st.session_state.conduct_submitted_by = ""  # Clear Submitted By
+        # 'Submitted By' is auto-assigned, no need to clear
 
         # **Clear Cached Data to Reflect Updates**
         # Removed caching, so no need to clear cache
@@ -808,7 +887,7 @@ elif feature == "Update Conduct":
         # Store in session
         st.session_state.update_conduct_table = conduct_data
         st.success(f"Loaded {len(conduct_data)} personnel for Platoon {platoon} from Conduct '{selected_conduct}'.")
-        logger.info(f"Loaded conduct personnel for Platoon {platoon} from Conduct '{selected_conduct}' in company '{selected_company}'.")
+        logger.info(f"Loaded conduct personnel for Platoon {platoon} from Conduct '{selected_conduct}' in company '{selected_company}' by user '{st.session_state.username}'.")
 
     # (f) Data Editor for Conduct Update
     if "update_conduct_table" in st.session_state and st.session_state.update_conduct_table:
@@ -845,7 +924,7 @@ elif feature == "Update Conduct":
         if existing_outliers.lower() != 'none' and existing_outliers:
             # Remove any existing outliers from the selected platoon to prevent duplication
             # Assuming outliers are in the format "4DXXXX (Reason)"
-            pattern = re.compile(r'4D\d{4}\s*\([^)]*\)')
+            pattern = re.compile(r'4D\d{3,4}\s*\([^)]*\)')
             existing_outliers_list = pattern.findall(existing_outliers)
             # Append new outliers
             updated_outliers = ", ".join(existing_outliers_list + new_outliers)
@@ -871,7 +950,7 @@ elif feature == "Update Conduct":
 
         try:
             SHEET_CONDUCTS.update_cell(row_number, 3 + int(platoon) - 1, new_pt_value)  # P/T PLT1 is column 3
-            logger.info(f"Updated {pt_field} to {new_pt_value} for conduct '{selected_conduct}' in company '{selected_company}'.")
+            logger.info(f"Updated {pt_field} to {new_pt_value} for conduct '{selected_conduct}' in company '{selected_company}' by user '{st.session_state.username}'.")
         except Exception as e:
             st.error(f"Error updating {pt_field}: {e}")
             logger.error(f"Exception while updating {pt_field}: {e}")
@@ -880,7 +959,7 @@ elif feature == "Update Conduct":
         # Update Outliers
         try:
             SHEET_CONDUCTS.update_cell(row_number, 8, updated_outliers if updated_outliers else "None")  # Outliers is column 8
-            logger.info(f"Updated Outliers to '{updated_outliers}' for conduct '{selected_conduct}' in company '{selected_company}'.")
+            logger.info(f"Updated Outliers to '{updated_outliers}' for conduct '{selected_conduct}' in company '{selected_company}' by user '{st.session_state.username}'.")
         except Exception as e:
             st.error(f"Error updating Outliers: {e}")
             logger.error(f"Exception while updating Outliers: {e}")
@@ -906,14 +985,14 @@ elif feature == "Update Conduct":
 
             # Update P/T Alpha in the sheet (column 7)
             SHEET_CONDUCTS.update_cell(row_number, 7, pt_alpha)
-            logger.info(f"Updated P/T Alpha to {pt_alpha} for conduct '{selected_conduct}' in company '{selected_company}'.")
+            logger.info(f"Updated P/T Alpha to {pt_alpha} for conduct '{selected_conduct}' in company '{selected_company}' by user '{st.session_state.username}'.")
         except Exception as e:
             st.error(f"Error calculating/updating P/T Alpha: {e}")
             logger.error(f"Exception while calculating/updating P/T Alpha for conduct '{selected_conduct}': {e}")
             st.stop()
 
         st.success(f"Conduct '{selected_conduct}' updated successfully.")
-        logger.info(f"Conduct '{selected_conduct}' updated successfully in company '{selected_company}'.")
+        logger.info(f"Conduct '{selected_conduct}' updated successfully in company '{selected_company}' by user '{st.session_state.username}'.")
 
         # **Reset session_state variables**
         st.session_state.update_conduct_new_pointers = ""
@@ -935,11 +1014,8 @@ elif feature == "Update Parade":
         format_func=lambda x: str(x)
     )
 
-    # New: Submitted By field
-    st.session_state.parade_submitted_by = st.text_input(
-        "Submitted By",
-        value=st.session_state.parade_submitted_by
-    )
+    # Removed manual 'Submitted By' input
+    submitted_by = st.session_state.username  # Automatically assign the username
 
     if st.button("Load Personnel"):
         platoon = str(st.session_state.parade_platoon).strip()
@@ -954,7 +1030,7 @@ elif feature == "Update Parade":
         data = get_company_personnel(platoon, records_nominal, records_parade)
         st.session_state.parade_table = data
         st.info(f"Loaded {len(data)} personnel for Platoon {platoon} in company '{selected_company}'.")
-        logger.info(f"Loaded personnel for Platoon {platoon} in company '{selected_company}'.")
+        logger.info(f"Loaded personnel for Platoon {platoon} in company '{selected_company}' by user '{submitted_by}'.")
 
         # ------------------------------------------------------------------------------
         # Display Current Parade Statuses for the Platoon
@@ -977,8 +1053,8 @@ elif feature == "Update Parade":
                     "End_Date": status.get("end_date_ddmmyyyy", "")
                 })
             # Display as a table
-            st.table(formatted_statuses)
-            logger.info(f"Displayed current parade statuses for platoon {platoon} in company '{selected_company}'.")
+            #st.table(formatted_statuses)
+            logger.info(f"Displayed current parade statuses for platoon {platoon} in company '{selected_company}' by user '{submitted_by}'.")
 
     # (b) Show data editor if we have data
     if st.session_state.parade_table:
@@ -997,7 +1073,7 @@ elif feature == "Update Parade":
     if st.button("Update Parade State") and edited_data is not None:
         rows_updated = 0
         platoon = str(st.session_state.parade_platoon).strip()
-        submitted_by = st.session_state.parade_submitted_by.strip()  # Get Submitted By
+        # submitted_by is already assigned
 
         # Fetch records without caching
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
@@ -1035,7 +1111,7 @@ elif feature == "Update Parade":
                 # If status fields are cleared and row_num exists, consider deleting the status
                 try:
                     SHEET_PARADE.delete_rows(row_num)
-                    logger.info(f"Deleted Parade_State row {row_num} for {four_d} in company '{selected_company}'.")
+                    logger.info(f"Deleted Parade_State row {row_num} for {four_d} in company '{selected_company}' by user '{submitted_by}'.")
                     rows_updated += 1
                     continue
                 except Exception as e:
@@ -1092,17 +1168,17 @@ elif feature == "Update Parade":
                         except ValueError:
                             current_leaves_left = 14  # Default if invalid
                             logger.warning(f"Invalid 'Number of Leaves Left' for {four_d}. Resetting to 14 in company '{selected_company}'.")
-
+    
                         if leaves_used > current_leaves_left:
                             st.error(f"{four_d} does not have enough leaves left. Available: {current_leaves_left}, Requested: {leaves_used}. Skipping.")
                             logger.error(f"{four_d} insufficient leaves. Available: {current_leaves_left}, Requested: {leaves_used} in company '{selected_company}'.")
                             continue
-
+    
                         # Update leaves left
                         new_leaves_left = current_leaves_left - leaves_used
                         SHEET_NOMINAL.update_cell(nominal_record.row, 5, new_leaves_left)
-                        logger.info(f"Updated 'Number of Leaves Left' for {four_d}: {new_leaves_left} in company '{selected_company}'.")
-
+                        logger.info(f"Updated 'Number of Leaves Left' for {four_d}: {new_leaves_left} in company '{selected_company}' by user '{submitted_by}'.")
+    
                         # Update Dates Taken
                         existing_dates = SHEET_NOMINAL.cell(nominal_record.row, 6).value  # Dates Taken is column F
                         new_dates_entry = dates_str
@@ -1111,7 +1187,7 @@ elif feature == "Update Parade":
                         else:
                             updated_dates = new_dates_entry
                         SHEET_NOMINAL.update_cell(nominal_record.row, 6, updated_dates)
-                        logger.info(f"Updated 'Dates Taken' for {four_d}: {updated_dates} in company '{selected_company}'.")
+                        logger.info(f"Updated 'Dates Taken' for {four_d}: {updated_dates} in company '{selected_company}' by user '{submitted_by}'.")
                     else:
                         st.error(f"{four_d} not found in Nominal_Roll. Skipping.")
                         logger.error(f"{four_d} not found in Nominal_Roll in company '{selected_company}'.")
@@ -1148,16 +1224,16 @@ elif feature == "Update Parade":
             else:
                 # If no existing row, append as a new entry
                 SHEET_PARADE.append_row([platoon, four_d, status_val, formatted_start_val, formatted_end_val, submitted_by])  # Corrected SHEET_PARDE to SHEET_PARADE
-                logger.info(f"Appended Parade_State for {four_d}: Status={status_val}, Start={formatted_start_val}, End={formatted_end_val}, Submitted_By={submitted_by} in company '{selected_company}'.")
+                logger.info(f"Appended Parade_State for {four_d}: Status={status_val}, Start={formatted_start_val}, End={formatted_end_val}, Submitted_By={submitted_by} in company '{selected_company}' by user '{submitted_by}'.")
                 rows_updated += 1
 
         st.success(f"Parade State updated.")
-        logger.info(f"Parade State updated for {rows_updated} row(s) for platoon {platoon} in company '{selected_company}'.")
+        logger.info(f"Parade State updated for {rows_updated} row(s) for platoon {platoon} in company '{selected_company}' by user '{submitted_by}'.")
 
         # **Reset session_state variables**
         st.session_state.parade_platoon = 1
         st.session_state.parade_table = []
-        st.session_state.parade_submitted_by = ""  # Clear Submitted By
+        # 'Submitted By' is auto-assigned, no need to clear
 
         # **Clear Cached Data to Reflect Updates**
         # Removed caching, so no need to clear cache
@@ -1312,10 +1388,10 @@ elif feature == "Queries":
                 # Display as a table
                 st.markdown(f"📈 **Outliers for '{conduct_query}' at Platoon {platoon_query} in company '{selected_company}':**")
                 st.table(outlier_table)
-                logger.info(f"Displayed outliers for '{conduct_query}' at Platoon {platoon_query} in company '{selected_company}'.")
+                logger.info(f"Displayed outliers for '{conduct_query}' at Platoon {platoon_query} in company '{selected_company}' by user '{st.session_state.username}'.")
             else:
                 st.info(f"✅ **No outliers recorded for '{conduct_query}' at Platoon {platoon_query}' in company '{selected_company}'.**")
-                logger.info(f"No outliers recorded for '{conduct_query}' at Platoon {platoon_query}' in company '{selected_company}'.")
+                logger.info(f"No outliers recorded for '{conduct_query}' at Platoon {platoon_query}' in company '{selected_company}' by user '{st.session_state.username}'.")
 
 # ------------------------------------------------------------------------------
 # 12) Feature E: Overall View
@@ -1473,13 +1549,13 @@ elif feature == "Overall View":
             st.dataframe(styled_df, use_container_width=True)
         else:
             st.info("✅ **No individuals have missed any conducts.**")
-            logger.info(f"No missed conducts recorded in company '{selected_company}'.")
+            logger.info(f"No missed conducts recorded in company '{selected_company}' by user '{st.session_state.username}'.")
 
         # ------------------------------------------------------------------------------
         # **End of Added Section**
         # ------------------------------------------------------------------------------
 
-        logger.info(f"Displayed overall view of all conducts in company '{selected_company}'.")
+        logger.info(f"Displayed overall view of all conducts in company '{selected_company}' by user '{st.session_state.username}'.")
 
 # ------------------------------------------------------------------------------
 # 13) Feature F: Generate WhatsApp Message
@@ -1632,7 +1708,7 @@ elif feature == "Generate WhatsApp Message":
     st.code(whatsapp_message, language='text')
 
 # ------------------------------------------------------------------------------
-# 13) Conclusion
+# 14) End of Features
 # ------------------------------------------------------------------------------
 
 # The code ends here.
