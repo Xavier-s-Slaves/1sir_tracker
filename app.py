@@ -372,31 +372,24 @@ def build_onstatus_table(platoon: str, date_obj: datetime, records_nominal, reco
     
     for row in records_nominal:
         p = row.get('platoon', '')
-        if normalize_name(p) == normalize_name(platoon):
-            four_d = row.get('4d_number', '').strip().upper()
-            name = row.get('name', '')
-            rank = row.get('rank', '')  # Retrieve Rank
-            # Check if person has an active parade status on the given date
-            active_status = False
-            status_desc = ""
-            for parade in parade_map.get(four_d, []):
-                try:
-                    start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', '01012000'), "%d%m%Y").date()
-                    end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', '01012000'), "%d%m%Y").date()
-                    if start_dt <= date_obj.date() <= end_dt:
-                        status = ensure_str(parade.get('status', '')).lower()
-                        if status in status_priority:
-                            if four_d in out:
-                                existing_status = out[four_d]['StatusDesc'].lower()
-                                if status_priority.get(status, 0) > status_priority.get(existing_status, 0):
-                                    out[four_d] = {
-                                        "Rank": rank,  # Include Rank
-                                        "Name": name,
-                                        "4D_Number": four_d,
-                                        "StatusDesc": ensure_str(parade.get('status', '')),
-                                        "Is_Outlier": True
-                                    }
-                            else:
+        if normalize_name(p) != normalize_name(platoon):
+            continue
+        four_d = row.get('4d_number', '').strip().upper()
+        name = row.get('name', '')
+        rank = row.get('rank', '')  # Retrieve Rank
+        # Check if person has an active parade status on the given date
+        active_status = False
+        status_desc = ""
+        for parade in parade_map.get(four_d, []):
+            try:
+                start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', '01012000'), "%d%m%Y").date()
+                end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', '01012000'), "%d%m%Y").date()
+                if start_dt <= date_obj.date() <= end_dt:
+                    status = ensure_str(parade.get('status', '')).lower()
+                    if status in status_priority:
+                        if four_d in out:
+                            existing_status = out[four_d]['StatusDesc'].lower()
+                            if status_priority.get(status, 0) > status_priority.get(existing_status, 0):
                                 out[four_d] = {
                                     "Rank": rank,  # Include Rank
                                     "Name": name,
@@ -404,9 +397,17 @@ def build_onstatus_table(platoon: str, date_obj: datetime, records_nominal, reco
                                     "StatusDesc": ensure_str(parade.get('status', '')),
                                     "Is_Outlier": True
                                 }
-                except ValueError:
-                    logger.warning(f"Invalid date format for {four_d}: {parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}")
-                    continue
+                        else:
+                            out[four_d] = {
+                                "Rank": rank,  # Include Rank
+                                "Name": name,
+                                "4D_Number": four_d,
+                                "StatusDesc": ensure_str(parade.get('status', '')),
+                                "Is_Outlier": True
+                            }
+            except ValueError:
+                logger.warning(f"Invalid date format for {four_d}: {parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}")
+                continue
     logger.info(f"Built on-status table with {len(out)} entries for platoon {platoon} on {date_obj.strftime('%d%m%Y')}.")
     return list(out.values())
 
@@ -559,8 +560,12 @@ if "conduct_name" not in st.session_state:
     st.session_state.conduct_name = ""
 if "conduct_table" not in st.session_state:
     st.session_state.conduct_table = []
-if "conduct_pointers" not in st.session_state:
-    st.session_state.conduct_pointers = ""
+if "conduct_pointers_observation" not in st.session_state:
+    st.session_state.conduct_pointers_observation = ""
+if "conduct_pointers_reflection" not in st.session_state:
+    st.session_state.conduct_pointers_reflection = ""
+if "conduct_pointers_recommendation" not in st.session_state:
+    st.session_state.conduct_pointers_recommendation = ""
 # Removed manual 'conduct_submitted_by' since it will be auto-assigned
 
 # Parade Session State
@@ -575,10 +580,12 @@ if "update_conduct_selected" not in st.session_state:
     st.session_state.update_conduct_selected = None
 if "update_conduct_platoon" not in st.session_state:
     st.session_state.update_conduct_platoon = 1  # Initialize as integer (Platoon 1-4)
-if "update_conduct_pointers" not in st.session_state:
-    st.session_state.update_conduct_pointers = ""
-if "update_conduct_new_pointers" not in st.session_state:
-    st.session_state.update_conduct_new_pointers = ""  # New session state for adding pointers
+if "update_conduct_pointers_observation" not in st.session_state:
+    st.session_state.update_conduct_pointers_observation = ""
+if "update_conduct_pointers_reflection" not in st.session_state:
+    st.session_state.update_conduct_pointers_reflection = ""
+if "update_conduct_pointers_recommendation" not in st.session_state:
+    st.session_state.update_conduct_pointers_recommendation = ""
 if "update_conduct_table" not in st.session_state:
     st.session_state.update_conduct_table = []
 
@@ -613,11 +620,24 @@ if feature == "Add Conduct":
         value=st.session_state.conduct_name
     )
 
-    # Extra text area for "Pointers" or remarks
-    st.session_state.conduct_pointers = st.text_area(
-        "Pointers (any additional remarks)",
-        value=st.session_state.conduct_pointers
-    )
+    # Separate inputs for Pointers: Observation, Reflection, Recommendation
+    st.subheader("Pointers (ORR, Observation, Reflection)")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.session_state.conduct_pointers_observation = st.text_input(
+            "Observation",
+            value=st.session_state.conduct_pointers_observation
+        )
+    with col2:
+        st.session_state.conduct_pointers_reflection = st.text_input(
+            "Reflection",
+            value=st.session_state.conduct_pointers_reflection
+        )
+    with col3:
+        st.session_state.conduct_pointers_recommendation = st.text_input(
+            "Recommendation",
+            value=st.session_state.conduct_pointers_recommendation
+        )
 
     # Removed manual 'Submitted By' input
     submitted_by = st.session_state.username  # Automatically assign the username
@@ -670,7 +690,9 @@ if feature == "Add Conduct":
         date_str = st.session_state.conduct_date.strip()
         platoon = str(st.session_state.conduct_platoon).strip()
         cname = st.session_state.conduct_name.strip()
-        pointers = st.session_state.conduct_pointers.strip()
+        observation = st.session_state.conduct_pointers_observation.strip()
+        reflection = st.session_state.conduct_pointers_reflection.strip()
+        recommendation = st.session_state.conduct_pointers_recommendation.strip()
         # submitted_by is already assigned
 
         if not date_str or not platoon or not cname:
@@ -683,6 +705,9 @@ if feature == "Add Conduct":
         except ValueError:
             st.error("Invalid date format.")
             st.stop()
+
+        # Combine Pointers in the specified format
+        pointers = f"Observation :\n{observation}\nReflection :\n{reflection}\nRecommendation :\n{recommendation}"
 
         # Fetch records without caching
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
@@ -761,7 +786,7 @@ if feature == "Add Conduct":
         y_total = sum(total_strength_platoons.values())
         pt_alpha = f"{x_total}/{y_total}"
 
-        # Append row to Conducts with Submitted By
+        # Append row to Conducts with Submitted By and Pointers
         formatted_date_str = ensure_date_str(date_str)
         SHEET_CONDUCTS.append_row([
             formatted_date_str,
@@ -810,7 +835,7 @@ if feature == "Add Conduct":
             f"P/T PLT4: {pt_plts[3]}\n"
             f"P/T Alpha: {pt_alpha}\n"
             f"Outliers: {', '.join(all_outliers) if all_outliers else 'None'}\n"
-            f"Pointers: {pointers if pointers else 'None'}\n"
+            f"Pointers:\n{pointers if pointers else 'None'}\n"
             f"Submitted By: {submitted_by}"
         )
 
@@ -819,7 +844,9 @@ if feature == "Add Conduct":
         st.session_state.conduct_platoon = 1
         st.session_state.conduct_name = ""
         st.session_state.conduct_table = []
-        st.session_state.conduct_pointers = ""
+        st.session_state.conduct_pointers_observation = ""
+        st.session_state.conduct_pointers_reflection = ""
+        st.session_state.conduct_pointers_recommendation = ""
         # 'Submitted By' is auto-assigned, no need to clear
 
         # **Clear Cached Data to Reflect Updates**
@@ -867,7 +894,42 @@ elif feature == "Update Conduct":
         key="update_conduct_platoon_select"
     )
 
-    # (e) Load On-Status for the selected Conduct and Platoon
+    # (c) Input for Pointers with guidance
+    # Fetch existing pointers and split into Observation, Reflection, Recommendation
+    existing_pointers = conduct_record.get('pointers', '')
+    if existing_pointers:
+        # Use regular expressions to extract the text after each label
+        observation_match = re.search(r'Observation\s*:\s*(.*)', existing_pointers, re.IGNORECASE)
+        reflection_match = re.search(r'Reflection\s*:\s*(.*)', existing_pointers, re.IGNORECASE)
+        recommendation_match = re.search(r'Recommendation\s*:\s*(.*)', existing_pointers, re.IGNORECASE)
+
+        observation_existing = observation_match.group(1).strip() if observation_match else ""
+        reflection_existing = reflection_match.group(1).strip() if reflection_match else ""
+        recommendation_existing = recommendation_match.group(1).strip() if recommendation_match else ""
+    else:
+        observation_existing = ""
+        reflection_existing = ""
+        recommendation_existing = ""
+
+    st.subheader("Update Pointers (ORR, Observation, Reflection)")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.session_state.update_conduct_pointers_observation = st.text_input(
+            "Observation",
+            value=observation_existing
+        )
+    with col2:
+        st.session_state.update_conduct_pointers_reflection = st.text_input(
+            "Reflection",
+            value=reflection_existing
+        )
+    with col3:
+        st.session_state.update_conduct_pointers_recommendation = st.text_input(
+            "Recommendation",
+            value=recommendation_existing
+        )
+
+    # (d) "Load On-Status for the selected Conduct and Platoon"
     if st.button("Load On-Status for Update"):
         platoon = str(selected_platoon).strip()
         date_str = conduct_record['date']
@@ -889,7 +951,7 @@ elif feature == "Update Conduct":
         st.success(f"Loaded {len(conduct_data)} personnel for Platoon {platoon} from Conduct '{selected_conduct}'.")
         logger.info(f"Loaded conduct personnel for Platoon {platoon} from Conduct '{selected_conduct}' in company '{selected_company}' by user '{st.session_state.username}'.")
 
-    # (f) Data Editor for Conduct Update
+    # (e) Data Editor for Conduct Update
     if "update_conduct_table" in st.session_state and st.session_state.update_conduct_table:
         st.subheader(f"Edit Conduct Data for Platoon {selected_platoon}")
         st.write("Toggle 'Is_Outlier' if not participating, or add new rows for extra people.")
@@ -901,7 +963,7 @@ elif feature == "Update Conduct":
     else:
         edited_data = None
 
-    # (g) Finalize Conduct Update
+    # (f) Finalize Conduct Update
     if st.button("Update Conduct Data") and edited_data is not None:
         rows_updated = 0
         platoon = str(selected_platoon).strip()
@@ -910,6 +972,13 @@ elif feature == "Update Conduct":
         new_participating = sum([1 for row in edited_data if not row.get('Is_Outlier', False)])
         new_total = len(edited_data)
         new_outliers = []
+        observation = st.session_state.update_conduct_pointers_observation.strip()
+        reflection = st.session_state.update_conduct_pointers_reflection.strip()
+        recommendation = st.session_state.update_conduct_pointers_recommendation.strip()
+
+        # Combine Pointers in the specified format
+        new_pointers = f"Observation :\n{observation}\nReflection :\n{reflection}\nRecommendation :\n{recommendation}"
+
         for row in edited_data:
             four_d = is_valid_4d(row.get("4D_Number", ""))
             status_desc = ensure_str(row.get("StatusDesc", ""))
@@ -965,6 +1034,16 @@ elif feature == "Update Conduct":
             logger.error(f"Exception while updating Outliers: {e}")
             st.stop()
 
+        # Update Pointers
+        if new_pointers:
+            try:
+                SHEET_CONDUCTS.update_cell(row_number, 9, new_pointers)  # Pointers is column 9
+                logger.info(f"Updated Pointers to '{new_pointers}' for conduct '{selected_conduct}' in company '{selected_company}' by user '{st.session_state.username}'.")
+            except Exception as e:
+                st.error(f"Error updating Pointers: {e}")
+                logger.error(f"Exception while updating Pointers for conduct '{selected_conduct}': {e}")
+                st.stop()
+
         # Calculate P/T Alpha as the sum of P/T PLT1 to P/T PLT4
         try:
             pt1 = SHEET_CONDUCTS.cell(row_number, 3).value  # P/T PLT1
@@ -995,7 +1074,9 @@ elif feature == "Update Conduct":
         logger.info(f"Conduct '{selected_conduct}' updated successfully in company '{selected_company}' by user '{st.session_state.username}'.")
 
         # **Reset session_state variables**
-        st.session_state.update_conduct_new_pointers = ""
+        st.session_state.update_conduct_pointers_observation = ""
+        st.session_state.update_conduct_pointers_reflection = ""
+        st.session_state.update_conduct_pointers_recommendation = ""
 
         # **Clear Cached Data to Reflect Updates**
         # Removed caching, so no need to clear cache
@@ -1168,17 +1249,17 @@ elif feature == "Update Parade":
                         except ValueError:
                             current_leaves_left = 14  # Default if invalid
                             logger.warning(f"Invalid 'Number of Leaves Left' for {four_d}. Resetting to 14 in company '{selected_company}'.")
-    
+
                         if leaves_used > current_leaves_left:
                             st.error(f"{four_d} does not have enough leaves left. Available: {current_leaves_left}, Requested: {leaves_used}. Skipping.")
                             logger.error(f"{four_d} insufficient leaves. Available: {current_leaves_left}, Requested: {leaves_used} in company '{selected_company}'.")
                             continue
-    
+
                         # Update leaves left
                         new_leaves_left = current_leaves_left - leaves_used
                         SHEET_NOMINAL.update_cell(nominal_record.row, 5, new_leaves_left)
                         logger.info(f"Updated 'Number of Leaves Left' for {four_d}: {new_leaves_left} in company '{selected_company}' by user '{submitted_by}'.")
-    
+
                         # Update Dates Taken
                         existing_dates = SHEET_NOMINAL.cell(nominal_record.row, 6).value  # Dates Taken is column F
                         new_dates_entry = dates_str
@@ -1361,7 +1442,11 @@ elif feature == "Queries":
             for row in matched_records:
                 p_t_field = f"P/T PLT{platoon_query}"
                 p_t_value = row.get(p_t_field, '0/0')
-                participating = int(p_t_value.split('/')[0]) if '/' in p_t_value and p_t_value.split('/')[0].isdigit() else 0
+                participating = 0
+                try:
+                    participating = int(p_t_value.split('/')[0]) if '/' in p_t_value and p_t_value.split('/')[0].isdigit() else 0
+                except:
+                    participating = 0
                 if participating > 0:
                     outliers_value = row.get('outliers', '')
                     if isinstance(outliers_value, (int, float)):
