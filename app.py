@@ -720,6 +720,9 @@ if feature == "Add Conduct":
         new_people = []
         all_outliers = []
 
+        # Build a mapping from 4D_Number to Name
+        four_d_to_name = {row['4d_number']: row['name'] for row in records_nominal}
+
         for row in edited_data:
             four_d = is_valid_4d(row.get("4D_Number", ""))
             name_ = ensure_str(row.get("Name", ""))
@@ -980,6 +983,13 @@ elif feature == "Update Conduct":
         # Combine Pointers in the specified format
         new_pointers = f"Observation :\n{observation}\nReflection :\n{reflection}\nRecommendation :\n{recommendation}"
 
+        # Fetch records without caching
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        records_parade = get_parade_records(selected_company, SHEET_PARADE)
+
+        # Build a mapping from 4D_Number to Name
+        four_d_to_name = {row['4d_number']: row['name'] for row in records_nominal}
+
         for row in edited_data:
             four_d = is_valid_4d(row.get("4D_Number", ""))
             status_desc = ensure_str(row.get("StatusDesc", ""))
@@ -1018,6 +1028,7 @@ elif feature == "Update Conduct":
             logger.error(f"Exception while locating Conduct '{selected_conduct}': {e}")
             st.stop()
 
+        # Update P/T PLTx
         try:
             SHEET_CONDUCTS.update_cell(row_number, 3 + int(platoon) - 1, new_pt_value)  # P/T PLT1 is column 3
             logger.info(f"Updated {pt_field} to {new_pt_value} for conduct '{selected_conduct}' in company '{selected_company}' by user '{st.session_state.username}'.")
@@ -1162,6 +1173,9 @@ elif feature == "Update Parade":
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
+        # Build a mapping from 4D_Number to Name
+        four_d_to_name = {row['4d_number']: row['name'] for row in records_nominal}
+
         for idx, row in enumerate(edited_data):
             four_d = is_valid_4d(row.get("4D_Number", ""))
             status_val = ensure_str(row.get("Status", "")).strip()
@@ -1290,10 +1304,15 @@ elif feature == "Update Parade":
                     start_date_col = header.index("start_date_ddmmyyyy") + 1
                     end_date_col = header.index("end_date_ddmmyyyy") + 1
                     submitted_by_col = header.index("submitted_by") + 1 if "submitted_by" in header else None
+                    name_col = header.index("name") + 1  # Added to find the 'Name' column
                 except ValueError as ve:
                     st.error(f"Required column missing in Parade_State: {ve}.")
                     logger.error(f"Required column missing in Parade_State: {ve} in company '{selected_company}'.")
                     continue
+
+                # Update the 'Name' cell
+                name = four_d_to_name.get(four_d, "Unknown")
+                SHEET_PARADE.update_cell(row_num, name_col, name)
 
                 SHEET_PARADE.update_cell(row_num, status_col, status_val)  # Corrected SHEET_PARDE to SHEET_PARADE
                 SHEET_PARADE.update_cell(row_num, start_date_col, formatted_start_val)  # Corrected SHEET_PARDE to SHEET_PARADE
@@ -1306,8 +1325,9 @@ elif feature == "Update Parade":
                 rows_updated += 1
             else:
                 # If no existing row, append as a new entry
-                SHEET_PARADE.append_row([platoon, four_d, status_val, formatted_start_val, formatted_end_val, submitted_by])  # Corrected SHEET_PARDE to SHEET_PARADE
-                logger.info(f"Appended Parade_State for {four_d}: Status={status_val}, Start={formatted_start_val}, End={formatted_end_val}, Submitted_By={submitted_by} in company '{selected_company}' by user '{submitted_by}'.")
+                name = four_d_to_name.get(four_d, "Unknown")
+                SHEET_PARADE.append_row([platoon, name, four_d, status_val, formatted_start_val, formatted_end_val, submitted_by])  # Corrected SHEET_PARDE to SHEET_PARADE
+                logger.info(f"Appended Parade_State for {four_d}: Name={name}, Status={status_val}, Start={formatted_start_val}, End={formatted_end_val}, Submitted_By={submitted_by} in company '{selected_company}' by user '{submitted_by}'.")
                 rows_updated += 1
 
         st.success(f"Parade State updated.")
