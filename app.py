@@ -117,7 +117,8 @@ COMPANY_SPREADSHEETS = {
     "Alpha": "Alpha",
     "Bravo": "Bravo",
     "Charlie": "Charlie",
-    "Support": "Support"
+    "Support": "Support",
+    "MSC": "MSC"  # Added MSC
 }
 
 @st.cache_resource
@@ -847,7 +848,7 @@ if feature == "Add Conduct":
         st.session_state.conduct_pointers_observation = ""
         st.session_state.conduct_pointers_reflection = ""
         st.session_state.conduct_pointers_recommendation = ""
-        # 'Submitted By' is auto-assigned, no need to clear
+        # 'Submitted By' is auto-assigned, no need to clear session_state variables
 
         # **Clear Cached Data to Reflect Updates**
         # Removed caching, so no need to clear cache
