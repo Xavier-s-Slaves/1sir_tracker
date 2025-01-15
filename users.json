@@ -1,7 +1,7 @@
 {
     "admin": {
         "password": "pass",
-        "companies": ["Alpha", "Bravo", "Charlie", "Support"]
+        "companies": ["Alpha", "Bravo", "Charlie", "Support", "MSC"]
     },
     "3sg_ishneet": {
         "password": "pass",
