@@ -1090,9 +1090,10 @@ elif feature == "Update Parade":
     st.header("Update Parade State")
 
     # (a) Input for platoon
+    # **Modification: Added "Coy HQ" to the platoon options below**
     st.session_state.parade_platoon = st.selectbox(
         "Platoon for Parade Update:",
-        options=[1, 2, 3, 4],
+        options=[1, 2, 3, 4, "Coy HQ"],  # Added "Coy HQ" here
         format_func=lambda x: str(x)
     )
 
