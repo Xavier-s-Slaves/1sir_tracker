@@ -316,6 +316,320 @@ def safety_sharing_app_form(SHEET_SAFETY):
 # ------------------------------------------------------------------------------
 # 3) Helper Functions + Caching
 # ------------------------------------------------------------------------------
+def generate_company_message(selected_company: str, nominal_records, parade_records) -> str:
+    """
+    Generate a company-specific message in the specified format.
+
+    Parameters:
+    - selected_company: The company name.
+    - nominal_records: List of nominal records from Nominal_Roll.
+    - parade_records: List of parade records from Parade_State.
+
+    Returns:
+    - A formatted string message.
+    """
+    from collections import defaultdict
+
+    # Define the legend-based status prefixes
+    LEGEND_STATUS_PREFIXES = {
+        "ol": "[OL]",   # Overseas Leave
+        "ll": "[LL]",   # Local Leave
+        "ml": "[ML]",   # Medical Leave
+        "mc": "[MC]",   # Medical Course
+        "ao": "[AO]",   # Attached Out
+        "oil": "[OIL]", # Off in Lieu
+        "ma": "[MA]",   # Medical Appointment
+        "so": "[SO]",   # Stay Out
+    }
+
+    # Get current date and day of the week
+    today = datetime.today()
+    date_str = today.strftime("%d%m%y, %A")
+
+    # Filter parade records for the selected company and active parade state
+    active_parade = []
+    for parade in parade_records:
+        company = parade.get('company', '')
+        if company != selected_company:
+            continue
+        start_str = parade.get('start_date_ddmmyyyy', '')
+        end_str = parade.get('end_date_ddmmyyyy', '')
+        try:
+            start_dt = datetime.strptime(start_str, "%d%m%Y").date()
+            end_dt = datetime.strptime(end_str, "%d%m%Y").date()
+            if start_dt <= today.date() <= end_dt:
+                active_parade.append(parade)
+        except ValueError:
+            logger.warning(
+                f"Invalid date format for {parade.get('name', '')}: {start_str} - {end_str} in company '{selected_company}'"
+            )
+            continue
+
+    # Calculate Coy Present and Absent Strength
+    total_nominal = len([record for record in nominal_records if record['company'] == selected_company])
+    total_present = total_nominal - len(active_parade)
+    total_absent = len(active_parade)
+
+    # Organize parade records by platoon
+    platoon_data = defaultdict(list)
+    for parade in active_parade:
+        platoon = parade.get('platoon', 'Coy HQ')  # Assuming 'Coy HQ' for headquarters
+        platoon_data[platoon].append(parade)
+
+    # Start building the message
+    message_lines = []
+    message_lines.append(f"🐆 {selected_company.upper()} COY")
+    message_lines.append("🗒️ FIRST PARADE STATE")
+    message_lines.append(f"🗓️ {date_str}\n")
+
+    message_lines.append(f"Coy Present Strength: {total_present:02d}/{total_nominal:02d}")
+    message_lines.append(f"Coy Absent Strength: {total_absent:02d}/{total_nominal:02d}\n")
+
+    # Iterate through each platoon
+    for platoon in sorted(platoon_data.keys()):
+        records = platoon_data[platoon]  # Absentees
+
+        # Determine if the platoon is 'Coy HQ' or a regular platoon
+        if platoon.lower() == 'coy hq':
+            platoon_label = "Coy HQ"
+        else:
+            platoon_label = f"Platoon {platoon}"
+
+        # Calculate platoon nominal strength
+        platoon_nominal = len([
+            record for record in nominal_records
+            if record['company'] == selected_company and record['platoon'] == platoon
+        ])
+        platoon_absent = len(records)
+        platoon_present = platoon_nominal - platoon_absent
+
+        message_lines.append(f"{platoon_label}")
+        message_lines.append(f"Pl Present Strength: {platoon_present:02d}/{platoon_nominal:02d}")
+        message_lines.append(f"Pl Absent Strength: {platoon_absent:02d}/{platoon_nominal:02d}")
+
+        # Initialize lists for conformant and non-conformant statuses
+        conformant_absentees = []
+        non_conformant_absentees = []
+
+        # List absentees with reasons
+        for parade in records:
+            name = parade.get('name', '')
+            status = parade.get('status', '').upper()
+            start_str = parade.get('start_date_ddmmyyyy', '')
+            end_str = parade.get('end_date_ddmmyyyy', '')
+            try:
+                start_dt = datetime.strptime(start_str, "%d%m%Y").date()
+                end_dt = datetime.strptime(end_str, "%d%m%Y").date()
+                if start_dt == end_dt:
+                    details = f"{status} ({start_dt.strftime('%d%m%y')})"
+                else:
+                    details = f"{status} ({start_dt.strftime('%d%m%y')} - {end_dt.strftime('%d%m%y')})"
+            except ValueError:
+                details = f"{status} (Invalid Dates)"
+                logger.warning(
+                    f"Invalid dates for {name}: {start_str} - {end_str} in company '{selected_company}'"
+                )
+
+            # Check if the status conforms to the legend-based statuses
+            status_prefix = status.lower().split()[0]  # Extract the prefix
+            if status_prefix in LEGEND_STATUS_PREFIXES:
+                conformant_absentees.append(f"> {name} {details}")
+            else:
+                non_conformant_absentees.append(f"> {name} {details}")
+
+        # Add conformant absentees to the message
+        if conformant_absentees:
+            for absentee in conformant_absentees:
+                message_lines.append(absentee)
+
+        # Add Pl Statuses count
+        pl_status_count = len(non_conformant_absentees)
+        message_lines.append(f"\nPl Statuses: {pl_status_count:02d}/{platoon_nominal:02d}")
+
+        # Add non-conformant absentees if any
+        if non_conformant_absentees:
+            for absentee in non_conformant_absentees:
+                message_lines.append(absentee)
+
+        message_lines.append("")  # Add a blank line for separation
+
+    # Combine all lines into a single message
+    final_message = "\n".join(message_lines)
+    return final_message
+
+
+def generate_leopards_message(all_records_nominal, all_records_parade):
+    """
+    Generate the Leopards-style parade message as a single string.
+    Aggregates data for all companies provided in the records.
+    Considers specific status prefixes (AO, LL, etc.) as absences.
+    """
+    # --- 1) Define the Status Prefixes and Legend Mapping ---
+    STATUS_PREFIX_TO_LEGEND = {
+        "ol": "[OL]",   # Overseas Leave
+        "ll": "[LL]",   # Local Leave
+        "ml": "[ML]",   # Medical Leave
+        "mc": "[MC]",   # Medical Course
+        "ao": "[AO]",   # Attached Out
+        "oil": "[OIL]", # Off in Lieu
+        "ma": "[MA]",   # Medical Appointment
+        "so": "[SO]",   # Stay Out
+    }
+
+    # List of prefixes to check
+    ABSENT_STATUS_PREFIXES = list(STATUS_PREFIX_TO_LEGEND.keys())
+
+    # --- 2) Initialize Data Structures ---
+    # Extract unique companies from nominal records
+    company_order = sorted(list(set(row['company'] for row in all_records_nominal)))
+    company_data = {comp: {"absent": [], "present_count": 0, "total_count": 0} for comp in company_order}
+    overall_total = 0
+    overall_absent = 0
+    overall_present = 0
+
+    # --- 3) Map Names to Their Details from Nominal Roll ---
+    name_map = {}
+    for row in all_records_nominal:
+        name_upper = row["name"].strip().upper()
+        company = row["company"]
+        name_map[(name_upper, company)] = {
+            "rank": row["rank"],
+            "4d": row["4d_number"],
+        }
+
+    # --- 4) Determine Active Parade Statuses ---
+    today_date = datetime.today().date()
+    active_parade = []
+    for p in all_records_parade:
+        start_str = p.get("start_date_ddmmyyyy", "")
+        end_str = p.get("end_date_ddmmyyyy", "")
+        status = p.get("status", "").strip().lower()
+        name_val = p.get("name", "").strip().upper()
+        company = p.get("company", "")
+        try:
+            sd = datetime.strptime(start_str, "%d%m%Y").date()
+            ed = datetime.strptime(end_str, "%d%m%Y").date()
+            if sd <= today_date <= ed:
+                # This parade record is active
+                active_parade.append({
+                    "name_upper": name_val,
+                    "status": status,
+                    "start_dt": sd,
+                    "end_dt": ed,
+                    "company": company
+                })
+        except ValueError:
+            # Skip invalid date formats
+            logger.warning(
+                f"Invalid date format for {name_val}: {start_str} - {end_str} in company '{company}'"
+            )
+            continue
+
+    # --- 5) Map Each Person to Their Active Status ---
+    person_status_map = {}
+    for rec in active_parade:
+        name_u = rec["name_upper"]
+        company = rec["company"]
+        key = (name_u, company)
+        if key not in person_status_map:
+            person_status_map[key] = rec  # Store the first encountered active status
+        else:
+            # Optional: Implement priority if multiple statuses exist
+            pass
+
+    # --- 6) Tally Present and Absent Personnel per Company ---
+    for person_row in all_records_nominal:
+        comp_name = person_row.get("company", "").strip()
+        if comp_name not in company_data:
+            logger.warning(f"Company '{comp_name}' not recognized. Skipping record for '{person_row['name']}'.")
+            continue  # Skip if company is not in the list
+
+        company_data[comp_name]["total_count"] += 1
+        overall_total += 1
+
+        name_upper = person_row["name"].strip().upper()
+        rank_val = person_row["rank"]
+        four_d_val = person_row["4d_number"]
+
+        # Check if the person has an active absent status
+        key = (name_upper, comp_name)
+        if key in person_status_map:
+            status_data = person_status_map[key]
+            status = status_data["status"]
+            # Check if status starts with any of the absent prefixes
+            is_absent = False
+            for prefix in ABSENT_STATUS_PREFIXES:
+                if status.startswith(prefix):
+                    legend_code = STATUS_PREFIX_TO_LEGEND[prefix]
+                    is_absent = True
+                    break
+            if is_absent:
+                # Format: "Rank Name [Legend Code] (Date Range)"
+                start_dt = status_data["start_dt"].strftime("%d%m%y")
+                end_dt = status_data["end_dt"].strftime("%d%m%y")
+                date_range = f"{start_dt} - {end_dt}" if start_dt != end_dt else start_dt
+                display_str = f"{rank_val} {person_row['name']} {legend_code} ({date_range})"
+                company_data[comp_name]["absent"].append(display_str)
+                overall_absent += 1
+            else:
+                company_data[comp_name]["present_count"] += 1
+                overall_present += 1
+        else:
+            # No active absent status; person is present
+            company_data[comp_name]["present_count"] += 1
+            overall_present += 1
+
+    # --- 7) Build the Message Lines ---
+    lines = []
+    # Header
+    now_str = datetime.now().strftime("%d%m%y %A, %H%M HRS")  # e.g., "160125 Thursday, 1500 HRS"
+    lines.append("🐆 Leopards Parade Report")
+    lines.append(f"🗓️ {now_str}\n")
+
+    # Legend
+    lines.append("> Legend")
+    lines.append(" 1. [OL] - Overseas Leave")
+    lines.append(" 2. [LL] - Local Leave")
+    lines.append(" 3. [ML] - Medical Leave")
+    lines.append(" 4. [AO] - Attached Out (use for on course too)")
+    lines.append(" 5. [OIL] - Off in Lieu")
+    lines.append(" 6. [MA] - Medical Appointment (Govt)")
+    lines.append(" 7. [SO] - Stay Out")
+
+    lines.append("---------------------------\n")
+
+    # Overall Stats
+    lines.append(f"🔢 Total Strength: {overall_total}")
+    lines.append(f"❌ Absent: {overall_absent} pax")
+    lines.append(f"✅ Present: {overall_present}\n")
+    lines.append("> 🪖 Duty Personnel")
+    # Duty Personnel - Omitted as per user request
+    lines.append("> 🪖 Duty Personnel")
+    # lines.append("- DOO: CPT ARAVIND")
+    # lines.append("- BDS: 1SG RAJA")
+    # lines.append("")  # Add a blank line for separation
+
+    # Company-wise Absent Personnel
+    for idx, comp_name in enumerate(company_order, start=1):
+        cdata = company_data[comp_name]
+        present = cdata["present_count"]
+        total = cdata["total_count"]
+        absent_list = cdata["absent"]
+        absent_count = len(absent_list)
+
+        lines.append(f"> {idx}️⃣ {comp_name} - {present}/{total}")
+
+        if absent_list:
+            for i, absent in enumerate(absent_list, start=1):
+                lines.append(f"{i}. {absent}")
+        else:
+            lines.append("None")
+
+        lines.append("")  # Add a blank line for separation
+
+    # --- 8) Combine Lines into a Single Message ---
+    final_message = "\n".join(lines)
+    return final_message
 
 def ensure_str(value) -> str:
     """
@@ -367,13 +681,13 @@ def get_nominal_records(selected_company: str, _sheet_nominal):
     """
     Returns all rows from Nominal_Roll as a list of dicts.
     Handles case-insensitive and whitespace-trimmed headers.
-    Does NOT remove people missing a valid 4D.
+    Includes the 'company' field in each record.
     """
     records = _sheet_nominal.get_all_records()
     if not records:
         logger.warning(f"No records found in Nominal_Roll for company '{selected_company}'.")
         return []
-
+    
     # Normalize keys: strip spaces and convert to lower case
     normalized_records = []
     for row in records:
@@ -384,8 +698,9 @@ def get_nominal_records(selected_company: str, _sheet_nominal):
         normalized_row['platoon'] = ensure_str(normalized_row.get('platoon', ''))
         normalized_row['number of leaves left'] = ensure_str(normalized_row.get('number of leaves left', '14'))
         normalized_row['dates taken'] = ensure_str(normalized_row.get('dates taken', ''))
+        normalized_row['company'] = selected_company  # Add company information
         normalized_records.append(normalized_row)
-
+    
     return normalized_records
 
 #
@@ -396,6 +711,7 @@ def get_parade_records(selected_company: str, _sheet_parade):
     Returns all rows from Parade_State as a list of dicts, including row numbers.
     Only includes statuses where End_Date is today or in the future.
     Uses 'name' to identify the individual (instead of '4d_number').
+    Includes the 'company' field in each record.
     """
     today = datetime.today().date()
     all_values = _sheet_parade.get_all_values()  # includes header row at index 0
@@ -411,7 +727,7 @@ def get_parade_records(selected_company: str, _sheet_parade):
             continue
 
         record = dict(zip(header, row))
-
+        
         # Use Name
         record['name'] = ensure_str(record.get('name', ''))
         record['platoon'] = ensure_str(record.get('platoon', ''))
@@ -419,10 +735,11 @@ def get_parade_records(selected_company: str, _sheet_parade):
         record['start_date_ddmmyyyy'] = ensure_date_str(record.get('start_date_ddmmyyyy', ''))
         record['end_date_ddmmyyyy'] = ensure_date_str(record.get('end_date_ddmmyyyy', ''))
         record['status'] = ensure_str(record.get('status', ''))
+        record['company'] = selected_company  # Add company information
 
         try:
-            end_dt = datetime.strptime(record['end_date_ddmmyyyy'], "%d%m%Y").date()
-            if end_dt >= today:
+            ed = datetime.strptime(record['end_date_ddmmyyyy'], "%d%m%Y").date()
+            if ed >= today:
                 record['_row_num'] = idx
                 records.append(record)
         except ValueError:
@@ -1346,7 +1663,7 @@ elif feature == "Update Parade":
                 continue
 
             # If status is "leave" and they DO have a valid 4D, update leaves
-            if status_val.lower() == "leave" and four_d:
+            if status_val.lower() == "leave" or status_val.lower() == "ll" or status_val.lower() == "ol":
                 if formatted_start_val != formatted_end_val:
                     dates_str = f"{formatted_start_val}-{formatted_end_val}"
                 else:
@@ -1811,123 +2128,7 @@ elif feature == "Overall View":
 
         logger.info(f"Displayed overall view of all conducts in company '{selected_company}' by user '{st.session_state.username}'.")
 
-# ------------------------------------------------------------------------------
-# 13) Feature F: Generate WhatsApp Message
-# ------------------------------------------------------------------------------
-elif feature == "Generate WhatsApp Message":
-    records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-    records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
-    today_date = datetime.today().date()
-    filtered_parade = []
-    for parade in records_parade:
-        start_date_str = parade.get('start_date_ddmmyyyy', '')
-        end_date_str = parade.get('end_date_ddmmyyyy', '')
-        try:
-            start_dt = datetime.strptime(start_date_str, "%d%m%Y").date()
-            end_dt = datetime.strptime(end_date_str, "%d%m%Y").date()
-            if start_dt <= today_date <= end_dt:
-                filtered_parade.append(parade)
-        except ValueError:
-            logger.warning(
-                f"Invalid date format for {parade.get('name', '')}: {start_date_str} - {end_date_str}"
-            )
-            continue
-    records_parade = filtered_parade
-
-    total_strength = len(records_nominal)
-    mc_count = len([
-        person for person in records_parade
-        if person.get('status', '').strip().lower() == 'mc'
-    ])
-    current_strength = total_strength - mc_count
-
-    mc_list = []
-    statuses_list = []
-    others_list = []
-
-    for parade in records_parade:
-        status = ensure_str(parade.get('status', '')).lower()
-        name_val = parade.get('name', '')
-        rank = ""
-        four_d_val = ""
-
-        # Find rank & 4D from nominal if possible
-        for nominal in records_nominal:
-            if nominal['name'].strip().lower() == name_val.strip().lower():
-                rank = nominal['rank']
-                four_d_val = nominal['4d_number']  # might be empty
-                break
-
-        # Build detail string
-        try:
-            start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', ''), "%d%m%Y").date()
-            end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', ''), "%d%m%Y").date()
-            delta_days = (end_dt - start_dt).days + 1
-            delta_str = f"{delta_days}D"
-            if delta_days == 1:
-                details = f"{delta_str} {status.upper()} ({start_dt.strftime('%d%m%y')})"
-            else:
-                details = f"{delta_str} {status.upper()} ({start_dt.strftime('%d%m%y')}-{end_dt.strftime('%d%m%y')})"
-        except ValueError:
-            details = f"{status.upper()} (Invalid Dates)"
-            logger.warning(
-                f"Invalid dates for {name_val}: {parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}"
-            )
-
-        # Store in category
-        person_dict = {"Rank": rank, "Name": name_val, "4D": four_d_val, "Details": details}
-        if status == 'mc':
-            mc_list.append(person_dict)
-        elif status in ['rib', 'ld'] or status.startswith('ex'):
-            statuses_list.append(person_dict)
-        else:
-            others_list.append(person_dict)
-
-    today_str = datetime.today().strftime("%d%m%y")
-    platoon = "1"
-    company_name = selected_company
-
-    message_lines = []
-    message_lines.append(f"{today_str} {platoon} SIR ({company_name.upper()}) PARADE STRENGTH\n")
-    message_lines.append(f"TOTAL STR: {total_strength}")
-    message_lines.append(f"CURRENT STR: {current_strength}\n")
-
-    # MC
-    message_lines.append(f"MC: {len(mc_list)}")
-    for idx, person in enumerate(mc_list, start=1):
-        # If 4D is not empty, append it
-        line_prefix = f"{idx}. {person['Rank']}/{person['Name']}"
-        if person['4D']:
-            line_prefix += f"/{person['4D']}"
-        message_lines.append(line_prefix)
-        message_lines.append(f"* {person['Details']}")
-    message_lines.append("")
-
-    # Statuses
-    oot_count = sum(1 for s in statuses_list if re.search(r'\bOOT\b', s['Details'], re.IGNORECASE))
-    ex_stay_in_count = sum(1 for s in statuses_list if re.search(r'\bEX STAY IN\b', s['Details'], re.IGNORECASE))
-    total_statuses = len(statuses_list)
-    message_lines.append(f"STATUSES: {total_statuses} [*{oot_count} OOTS ({ex_stay_in_count} EX STAY IN)]")
-    for idx, person in enumerate(statuses_list, start=1):
-        line_prefix = f"{idx}. {person['Rank']}/{person['Name']}"
-        if person['4D']:
-            line_prefix += f"/{person['4D']}"
-        message_lines.append(line_prefix)
-        message_lines.append(f"* {person['Details']}")
-    message_lines.append("")
-
-    # Others
-    message_lines.append(f"OTHERS: {len(others_list):02d}")
-    for idx, person in enumerate(others_list, start=1):
-        line_prefix = f"{idx}. {person['Rank']}/{person['Name']}"
-        if person['4D']:
-            line_prefix += f"/{person['4D']}"
-        message_lines.append(line_prefix)
-        message_lines.append(f"* {person['Details']}")
-
-    whatsapp_message = "\n".join(message_lines)
-    st.code(whatsapp_message, language='text')
 
 # ------------------------------------------------------------------------------
 # 12) Feature E: Overall View (With Fix)
@@ -2069,6 +2270,9 @@ elif feature == "Overall View":
 # 14) Feature F: Generate WhatsApp Message
 # ------------------------------------------------------------------------------
 elif feature == "Generate WhatsApp Message":
+    st.header("Generate WhatsApp Message")
+
+    # --- 1) Existing WhatsApp Message Generation for Selected Company ---
     records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
     records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
@@ -2084,15 +2288,15 @@ elif feature == "Generate WhatsApp Message":
                 filtered_parade.append(parade)
         except ValueError:
             logger.warning(
-                f"Invalid date format for {parade.get('name', '')}: {start_date_str} - {end_date_str}"
+                f"Invalid date format for {parade.get('name', '')}: {start_date_str} - {end_date_str} in company '{selected_company}'"
             )
             continue
-    records_parade = filtered_parade
+    records_parade_filtered = filtered_parade
 
     total_strength = len(records_nominal)
     mc_count = len([
-        person for person in records_parade
-        if person.get('status', '').strip().lower() == 'mc'
+        person for person in records_parade_filtered
+        if person.get('status', '').strip().lower() == 'mc' or person.get('status', '').strip().lower() == 'ml'
     ])
     current_strength = total_strength - mc_count
 
@@ -2100,7 +2304,7 @@ elif feature == "Generate WhatsApp Message":
     statuses_list = []
     others_list = []
 
-    for parade in records_parade:
+    for parade in records_parade_filtered:
         status = ensure_str(parade.get('status', '')).lower()
         name_val = parade.get('name', '')
         rank = ""
@@ -2126,12 +2330,12 @@ elif feature == "Generate WhatsApp Message":
         except ValueError:
             details = f"{status.upper()} (Invalid Dates)"
             logger.warning(
-                f"Invalid dates for {name_val}: {parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}"
+                f"Invalid dates for {name_val}: {parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')} in company '{selected_company}'"
             )
 
         # Store in category
         person_dict = {"Rank": rank, "Name": name_val, "4D": four_d_val, "Details": details}
-        if status == 'mc':
+        if status == 'mc' or status == 'ml':
             mc_list.append(person_dict)
         elif status in ['rib', 'ld'] or status.startswith('ex'):
             statuses_list.append(person_dict)
@@ -2139,7 +2343,7 @@ elif feature == "Generate WhatsApp Message":
             others_list.append(person_dict)
 
     today_str = datetime.today().strftime("%d%m%y")
-    platoon = "1"
+    platoon = "1"  # Assuming platoon is fixed as "1" for the existing message
     company_name = selected_company
 
     message_lines = []
@@ -2181,7 +2385,58 @@ elif feature == "Generate WhatsApp Message":
         message_lines.append(f"* {person['Details']}")
 
     whatsapp_message = "\n".join(message_lines)
-    st.code(whatsapp_message, language='text')
+
+    # --- 2) Leopards Message Generation Across All Companies ---
+    # Assuming 'get_nominal_records' and 'get_parade_records' include the 'company' field
+    # Aggregate records across all companies
+    all_records_nominal = []
+    all_records_parade = []
+
+    for company in st.session_state.user_companies:
+        worksheets = get_sheets(company)
+        if not worksheets:
+            st.error(f"Failed to load spreadsheets for company '{company}'.")
+            continue
+
+        SHEET_NOMINAL = worksheets["nominal"]
+        SHEET_PARADE = worksheets["parade"]
+
+        # Retrieve nominal and parade records, which now include the 'company' field
+        nominal = get_nominal_records(company, SHEET_NOMINAL)
+        parade = get_parade_records(company, SHEET_PARADE)
+
+        # Append to the aggregated lists
+        all_records_nominal.extend(nominal)
+        all_records_parade.extend(parade)
+
+    if not all_records_nominal:
+        st.warning("No nominal records found across your companies.")
+    else:
+        # Generate the Leopards message
+        leopards_message = generate_leopards_message(all_records_nominal, all_records_parade)
+
+
+    
+
+    tab1, tab2, tab3 = st.tabs(["BMT Level", "BN Level", "Company Level"])
+
+    with tab1:
+        st.code(whatsapp_message, language='text')
+    with tab2:
+        st.code(leopards_message, language='text')
+    with tab3:
+        # Fetch nominal and parade records for the selected company
+        company_nominal = [record for record in records_nominal if record['company'] == selected_company]
+        company_parade = [record for record in records_parade if record['company'] == selected_company]
+
+        if not company_nominal:
+            st.warning(f"No nominal records found for company '{selected_company}'.")
+            st.stop()
+
+        # Generate the company-specific message
+        company_message = generate_company_message(selected_company, company_nominal, company_parade)
+        st.code(company_message, language='text')
+
 
 elif feature == "Safety Sharing":
     st.header("Safety Sharing")
