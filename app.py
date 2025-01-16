@@ -350,6 +350,12 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     # Filter nominal records for the selected company
     company_nominal_records = [record for record in nominal_records if record['company'] == selected_company]
 
+    # Create a mapping from Name to Rank for quick lookup (case-insensitive)
+    name_to_rank = {
+        record['name'].strip().lower(): record['rank']
+        for record in company_nominal_records
+        if record['name']
+    }
     # Extract all platoons from nominal records for the selected company
     all_platoons = set(record.get('platoon', 'Coy HQ') for record in company_nominal_records)
 
@@ -407,6 +413,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
         # List absentees with reasons
         for parade in records:
             name = parade.get('name', '')
+            name_key = name.strip().lower()
             status = parade.get('status', '').upper()
             start_str = parade.get('start_date_ddmmyyyy', '')
             end_str = parade.get('end_date_ddmmyyyy', '')
@@ -423,12 +430,13 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                     f"Invalid dates for {name}: {start_str} - {end_str} in company '{selected_company}'"
                 )
 
+            rank = name_to_rank.get(name_key, "N/A")
             # Check if the status conforms to the legend-based statuses
             status_prefix = status.lower().split()[0]  # Extract the prefix
             if status_prefix in LEGEND_STATUS_PREFIXES:
-                conformant_absentees.append(f"> {name} {details}")
+                conformant_absentees.append(f"> {rank} {name} {details}")
             else:
-                non_conformant_absentees.append(f"> {name} {details}")
+                non_conformant_absentees.append(f"> {rank} {name} {details}")
 
         # Update total_absent based on conformant absentees
         platoon_absent = len(conformant_absentees)
@@ -1646,6 +1654,7 @@ elif feature == "Update Parade":
             end_val = ensure_str(row.get("End_Date", "")).strip()
             four_d = is_valid_4d(row.get("4D_Number", ""))
 
+            rank = ensure_str(row.get("Rank", "")).strip()
             parade_entry = st.session_state.parade_table[idx]
             row_num = parade_entry.get('_row_num')
 
@@ -1795,6 +1804,7 @@ elif feature == "Update Parade":
             else:
                 SHEET_PARADE.append_row([
                     platoon,
+                    rank,
                     name_val,
                     four_d,
                     status_val,
