@@ -10,6 +10,7 @@ import logging
 import urllib.parse
 import json
 import os
+from typing import List, Dict
 # ------------------------------------------------------------------------------
 # Setup Logging
 # ------------------------------------------------------------------------------
@@ -316,7 +317,8 @@ def safety_sharing_app_form(SHEET_SAFETY):
 # ------------------------------------------------------------------------------
 # 3) Helper Functions + Caching
 # ------------------------------------------------------------------------------
-def generate_company_message(selected_company: str, nominal_records, parade_records) -> str:
+
+def generate_company_message(selected_company: str, nominal_records: List[Dict], parade_records: List[Dict]) -> str:
     """
     Generate a company-specific message in the specified format.
 
@@ -328,18 +330,16 @@ def generate_company_message(selected_company: str, nominal_records, parade_reco
     Returns:
     - A formatted string message.
     """
-    from collections import defaultdict
-
     # Define the legend-based status prefixes
     LEGEND_STATUS_PREFIXES = {
-        "ol": "[OL]",   # Overseas Leave
-        "ll": "[LL]",   # Local Leave
-        "ml": "[ML]",   # Medical Leave
-        "mc": "[MC]",   # Medical Course
-        "ao": "[AO]",   # Attached Out
-        "oil": "[OIL]", # Off in Lieu
-        "ma": "[MA]",   # Medical Appointment
-        "so": "[SO]",   # Stay Out
+        "ol": "[OL]",    # Overseas Leave
+        "ll": "[LL]",    # Local Leave
+        "ml": "[ML]",    # Medical Leave
+        "mc": "[MC]",    # Medical Course
+        "ao": "[AO]",    # Attached Out
+        "oil": "[OIL]",  # Off in Lieu
+        "ma": "[MA]",    # Medical Appointment
+        "so": "[SO]",    # Stay Out
     }
 
     # Get current date and day of the week
@@ -358,6 +358,7 @@ def generate_company_message(selected_company: str, nominal_records, parade_reco
             start_dt = datetime.strptime(start_str, "%d%m%Y").date()
             end_dt = datetime.strptime(end_str, "%d%m%Y").date()
             if start_dt <= today.date() <= end_dt:
+                # Include all parade records, regardless of status prefix
                 active_parade.append(parade)
         except ValueError:
             logger.warning(
@@ -365,16 +366,23 @@ def generate_company_message(selected_company: str, nominal_records, parade_reco
             )
             continue
 
-    # Calculate Coy Present and Absent Strength
-    total_nominal = len([record for record in nominal_records if record['company'] == selected_company])
-    total_present = total_nominal - len(active_parade)
-    total_absent = len(active_parade)
-
     # Organize parade records by platoon
     platoon_data = defaultdict(list)
     for parade in active_parade:
         platoon = parade.get('platoon', 'Coy HQ')  # Assuming 'Coy HQ' for headquarters
         platoon_data[platoon].append(parade)
+
+    # Initialize counters for total nominal and absent strengths
+    total_nominal = len([record for record in nominal_records if record['company'] == selected_company])
+
+    # To calculate total_absent based only on conformant absentees
+    total_absent = 0
+
+    # Temporary storage for conformant absentees to calculate total_absent
+    conformant_total = 0
+
+    # Initialize storage for non-conformant absentees (optional, if needed globally)
+    # non_conformant_total = 0
 
     # Start building the message
     message_lines = []
@@ -382,10 +390,15 @@ def generate_company_message(selected_company: str, nominal_records, parade_reco
     message_lines.append("🗒️ FIRST PARADE STATE")
     message_lines.append(f"🗓️ {date_str}\n")
 
-    message_lines.append(f"Coy Present Strength: {total_present:02d}/{total_nominal:02d}")
-    message_lines.append(f"Coy Absent Strength: {total_absent:02d}/{total_nominal:02d}\n")
+    # We'll calculate total_present after determining total_absent
+    # So, postpone adding these lines until after calculation
 
-    # Iterate through each platoon
+    # Iterate through each platoon to gather data
+    platoon_absent_counts = {}  # To store absent counts per platoon
+
+    # Store platoon-wise details to process after
+    platoon_details = []
+
     for platoon in sorted(platoon_data.keys()):
         records = platoon_data[platoon]  # Absentees
 
@@ -400,14 +413,8 @@ def generate_company_message(selected_company: str, nominal_records, parade_reco
             record for record in nominal_records
             if record['company'] == selected_company and record['platoon'] == platoon
         ])
-        platoon_absent = len(records)
-        platoon_present = platoon_nominal - platoon_absent
 
-        message_lines.append(f"{platoon_label}")
-        message_lines.append(f"Pl Present Strength: {platoon_present:02d}/{platoon_nominal:02d}")
-        message_lines.append(f"Pl Absent Strength: {platoon_absent:02d}/{platoon_nominal:02d}")
-
-        # Initialize lists for conformant and non-conformant statuses
+        # Initialize lists for categorizing absentees
         conformant_absentees = []
         non_conformant_absentees = []
 
@@ -437,18 +444,46 @@ def generate_company_message(selected_company: str, nominal_records, parade_reco
             else:
                 non_conformant_absentees.append(f"> {name} {details}")
 
+        # Update total_absent based on conformant absentees
+        platoon_absent = len(conformant_absentees)
+        total_absent += platoon_absent
+        total_present = total_nominal - total_absent
+
+        # Calculate platoon present strength based on conformant absentees
+        platoon_present = platoon_nominal - platoon_absent
+
+        # Store the details for this platoon
+        platoon_details.append({
+            'label': platoon_label,
+            'present': platoon_present,
+            'nominal': platoon_nominal,
+            'absent': platoon_absent,
+            'conformant': conformant_absentees,
+            'non_conformant': non_conformant_absentees
+        })
+
+    # Now, after calculating total_absent, we can add the overall strength
+    message_lines.append(f"Coy Present Strength: {total_present:02d}/{total_nominal:02d}")
+    message_lines.append(f"Coy Absent Strength: {total_absent:02d}/{total_nominal:02d}\n")
+
+    # Iterate through stored platoon details to build the message
+    for detail in platoon_details:
+        message_lines.append(f"{detail['label']}")
+        message_lines.append(f"Pl Present Strength: {detail['present']:02d}/{detail['nominal']:02d}")
+        message_lines.append(f"Pl Absent Strength: {detail['absent']:02d}/{detail['nominal']:02d}")
+
         # Add conformant absentees to the message
-        if conformant_absentees:
-            for absentee in conformant_absentees:
+        if detail['conformant']:
+            for absentee in detail['conformant']:
                 message_lines.append(absentee)
 
         # Add Pl Statuses count
-        pl_status_count = len(non_conformant_absentees)
-        message_lines.append(f"\nPl Statuses: {pl_status_count:02d}/{platoon_nominal:02d}")
+        pl_status_count = len(detail['non_conformant'])
+        message_lines.append(f"\nPl Statuses: {pl_status_count:02d}/{detail['nominal']:02d}")
 
         # Add non-conformant absentees if any
-        if non_conformant_absentees:
-            for absentee in non_conformant_absentees:
+        if detail['non_conformant']:
+            for absentee in detail['non_conformant']:
                 message_lines.append(absentee)
 
         message_lines.append("")  # Add a blank line for separation
