@@ -11,6 +11,7 @@ import urllib.parse
 import json
 import os
 from typing import List, Dict
+from zoneinfo import ZoneInfo  # type: ignore
 # ------------------------------------------------------------------------------
 # Setup Logging
 # ------------------------------------------------------------------------------
@@ -346,61 +347,46 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     today = datetime.today()
     date_str = today.strftime("%d%m%y, %A")
 
-    # Filter parade records for the selected company and active parade state
-    active_parade = []
+    # Filter nominal records for the selected company
+    company_nominal_records = [record for record in nominal_records if record['company'] == selected_company]
+
+    # Extract all platoons from nominal records for the selected company
+    all_platoons = set(record.get('platoon', 'Coy HQ') for record in company_nominal_records)
+
+    # Initialize a dictionary to hold parade records active today, organized by platoon
+    active_parade_by_platoon = defaultdict(list)
+
+    # Process parade records to find those active today and organize them by platoon
     for parade in parade_records:
         company = parade.get('company', '')
         if company != selected_company:
             continue
+
+        platoon = parade.get('platoon', 'Coy HQ')  # Default to 'Coy HQ' if platoon not specified
+
         start_str = parade.get('start_date_ddmmyyyy', '')
         end_str = parade.get('end_date_ddmmyyyy', '')
         try:
             start_dt = datetime.strptime(start_str, "%d%m%Y").date()
             end_dt = datetime.strptime(end_str, "%d%m%Y").date()
             if start_dt <= today.date() <= end_dt:
-                # Include all parade records, regardless of status prefix
-                active_parade.append(parade)
+                active_parade_by_platoon[platoon].append(parade)
         except ValueError:
             logger.warning(
                 f"Invalid date format for {parade.get('name', '')}: {start_str} - {end_str} in company '{selected_company}'"
             )
             continue
 
-    # Organize parade records by platoon
-    platoon_data = defaultdict(list)
-    for parade in active_parade:
-        platoon = parade.get('platoon', 'Coy HQ')  # Assuming 'Coy HQ' for headquarters
-        platoon_data[platoon].append(parade)
-
     # Initialize counters for total nominal and absent strengths
-    total_nominal = len([record for record in nominal_records if record['company'] == selected_company])
-
-    # To calculate total_absent based only on conformant absentees
+    total_nominal = len(company_nominal_records)
     total_absent = 0
 
-    # Temporary storage for conformant absentees to calculate total_absent
-    conformant_total = 0
-
-    # Initialize storage for non-conformant absentees (optional, if needed globally)
-    # non_conformant_total = 0
-
-    # Start building the message
-    message_lines = []
-    message_lines.append(f"🐆 {selected_company.upper()} COY")
-    message_lines.append("🗒️ FIRST PARADE STATE")
-    message_lines.append(f"🗓️ {date_str}\n")
-
-    # We'll calculate total_present after determining total_absent
-    # So, postpone adding these lines until after calculation
-
-    # Iterate through each platoon to gather data
-    platoon_absent_counts = {}  # To store absent counts per platoon
-
-    # Store platoon-wise details to process after
+    # Initialize storage for platoon-wise details
     platoon_details = []
 
-    for platoon in sorted(platoon_data.keys()):
-        records = platoon_data[platoon]  # Absentees
+    # Iterate through all platoons to gather data
+    for platoon in sorted(all_platoons):
+        records = active_parade_by_platoon.get(platoon, [])  # Get parade records for this platoon, if any
 
         # Determine if the platoon is 'Coy HQ' or a regular platoon
         if platoon.lower() == 'coy hq':
@@ -410,8 +396,8 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
 
         # Calculate platoon nominal strength
         platoon_nominal = len([
-            record for record in nominal_records
-            if record['company'] == selected_company and record['platoon'] == platoon
+            record for record in company_nominal_records
+            if record.get('platoon', 'Coy HQ') == platoon
         ])
 
         # Initialize lists for categorizing absentees
@@ -447,7 +433,6 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
         # Update total_absent based on conformant absentees
         platoon_absent = len(conformant_absentees)
         total_absent += platoon_absent
-        total_present = total_nominal - total_absent
 
         # Calculate platoon present strength based on conformant absentees
         platoon_present = platoon_nominal - platoon_absent
@@ -462,7 +447,16 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             'non_conformant': non_conformant_absentees
         })
 
-    # Now, after calculating total_absent, we can add the overall strength
+    # Calculate total_present after determining total_absent
+    total_present = total_nominal - total_absent
+
+    # Start building the message
+    message_lines = []
+    message_lines.append(f"🐆 {selected_company.upper()} COY")
+    message_lines.append("🗒️ FIRST PARADE STATE")
+    message_lines.append(f"🗓️ {date_str}\n")
+
+    # Add the overall strength
     message_lines.append(f"Coy Present Strength: {total_present:02d}/{total_nominal:02d}")
     message_lines.append(f"Coy Absent Strength: {total_absent:02d}/{total_nominal:02d}\n")
 
@@ -533,7 +527,8 @@ def generate_leopards_message(all_records_nominal, all_records_parade):
         }
 
     # --- 4) Determine Active Parade Statuses ---
-    today_date = datetime.today().date()
+    tz = ZoneInfo('Asia/Singapore')  # Replace with your timezone, e.g., 'America/New_York'
+    today_date = datetime.now(tz).date()  # Ensure timezone-aware date
     active_parade = []
     for p in all_records_parade:
         start_str = p.get("start_date_ddmmyyyy", "")
@@ -617,7 +612,7 @@ def generate_leopards_message(all_records_nominal, all_records_parade):
     # --- 7) Build the Message Lines ---
     lines = []
     # Header
-    now_str = datetime.now().strftime("%d%m%y %A, %H%M HRS")  # e.g., "160125 Thursday, 1500 HRS"
+    now_str = datetime.now(tz).strftime("%d%m%y %A, %H%M HRS")  # e.g., "160125 Thursday, 1500 HRS"
     lines.append("🐆 Leopards Parade Report")
     lines.append(f"🗓️ {now_str}\n")
 
