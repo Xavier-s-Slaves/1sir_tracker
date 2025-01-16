@@ -87,7 +87,7 @@ def logout_callback():
     st.session_state.user_companies = []
     st.success("You have been logged out.")
     logger.info("User logged out.")
-    st.experimental_rerun()
+    st.rerun()
 
 # Show login if not authenticated
 if not st.session_state.authenticated:
@@ -138,13 +138,181 @@ def get_sheets(selected_company: str):
         return {
             "nominal": sh.worksheet("Nominal_Roll"),
             "parade": sh.worksheet("Parade_State"),
-            "conducts": sh.worksheet("Conducts")
+            "conducts": sh.worksheet("Conducts"),
+            "safety": sh.worksheet("Safety")
         }
     except Exception as e:
         logger.error(f"Error accessing spreadsheet '{spreadsheet_name}': {e}")
         st.error(f"Error accessing spreadsheet '{spreadsheet_name}': {e}")
         return None
+def safety_sharing_app_form(SHEET_SAFETY):
+    """
+    Safety Sharing UI with st.data_editor inside a form,
+    so the app won't re-run on every checkbox tick.
+    The sheet is updated only when the form is submitted.
+    """
 
+
+    # 1) Read Safety sheet header
+    header_row = SHEET_SAFETY.row_values(1)
+    if not header_row:
+        st.error("Safety sheet is empty. Ensure row 1 has at least 'Rank' and 'Name'.")
+        return
+
+    if len(header_row) < 2:
+        st.error("Safety sheet header must have at least 2 columns: 'Rank', 'Name'.")
+        return
+
+    # Collect existing columns (Weeks) after "Rank" & "Name"
+    existing_cols = header_row[2:]
+
+    # Keep track of which column is selected in session_state
+    if "safety_selected_col" not in st.session_state:
+        st.session_state.safety_selected_col = None
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # SECTION A: Select or Create a Week Column
+    # ──────────────────────────────────────────────────────────────────────────
+    st.subheader("1) Choose or Create a Week Column")
+
+    if st.session_state.safety_selected_col:
+        # Already have a selected column
+        st.info(f"Currently selected column: **{st.session_state.safety_selected_col}**")
+        if st.button("Change/Reset Column"):
+            st.session_state.safety_selected_col = None
+            st.rerun()
+    else:
+        # No column chosen yet → radio to select or create
+        week_mode = st.radio("Week Mode:", ["Select Existing", "Create New"], horizontal=True)
+
+        if week_mode == "Select Existing":
+            if not existing_cols:
+                st.warning("No existing columns found. Create one first.")
+            else:
+                chosen_col = st.selectbox("Choose a Column:", options=existing_cols)
+                if st.button("Use This Column"):
+                    st.session_state.safety_selected_col = chosen_col
+                    st.rerun()
+
+        else:
+            # Creating a new column
+            user_week = st.text_input("Week # (e.g. 'Week 1')")
+            user_pointers = st.text_input("Pointers (short description)")
+
+            if st.button("Create New Column"):
+                if not user_week.strip():
+                    st.error("Please enter something like 'Week 1'.")
+                    return
+
+                new_col_name = user_week.strip()
+                if user_pointers.strip():
+                    new_col_name += f" ({user_pointers.strip()})"
+
+                try:
+                    current_header = SHEET_SAFETY.row_values(1)
+                    new_col_index = len(current_header) + 1  # next free column
+                    SHEET_SAFETY.update_cell(1, new_col_index, new_col_name)
+                    st.success(f"Created new column: '{new_col_name}'")
+
+                    # store in session & re-run
+                    st.session_state.safety_selected_col = new_col_name
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"Error creating column '{new_col_name}': {e}")
+                    return
+
+    # If still no column is chosen, stop
+    if not st.session_state.safety_selected_col:
+        return
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # SECTION B: Data Editor & Date Input in a Form
+    # ──────────────────────────────────────────────────────────────────────────
+    selected_col_name = st.session_state.safety_selected_col
+    updated_header = SHEET_SAFETY.row_values(1)
+    if selected_col_name not in updated_header:
+        st.error(f"Column '{selected_col_name}' not found in the updated header.")
+        return
+
+    col_index = updated_header.index(selected_col_name) + 1  # 1-based index
+
+    st.subheader(f"2) Enter Date & Tick Attendees in '{selected_col_name}'")
+
+    # Grab all rows
+    all_values = SHEET_SAFETY.get_all_values()
+    if len(all_values) < 2:
+        st.warning("No data rows below the header. Ensure your sheet has personnel data in row 2+.")
+        return
+
+    # Build data for the editor
+    data_for_editor = []
+    for row_idx, row_vals in enumerate(all_values[1:], start=2):
+        rank_val = row_vals[0] if len(row_vals) > 0 else ""
+        name_val = row_vals[1] if len(row_vals) > 1 else ""
+
+        existing_attendance = ""
+        if len(row_vals) >= col_index:
+            existing_attendance = row_vals[col_index - 1].strip()
+
+        # If it starts with "Yes", interpret as attended
+        attended_bool = existing_attendance.startswith("Yes")
+
+        data_for_editor.append({
+            "RowIndex": row_idx,
+            "Rank": rank_val,
+            "Name": name_val,
+            "Attended": attended_bool
+        })
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # PUT EVERYTHING INSIDE A FORM
+    # ──────────────────────────────────────────────────────────────────────────
+    with st.form("safety_form", clear_on_submit=False):
+        st.info("Tick 'Attended' for each person. No reruns will happen until you click 'Submit'.")
+        date_input = st.text_input("Date (DDMMYYYY)")
+        edited_data = st.data_editor(
+            data_for_editor,
+            use_container_width=True,
+            hide_index=True,
+            num_rows="fixed"
+        )
+
+        # Pressing this button will "submit" the form (one-time run).
+        submitted = st.form_submit_button("Update Attendance")
+
+        if submitted:
+            # The sheet is updated ONLY when this button is clicked
+            if not date_input.strip():
+                st.error("Please enter a date in DDMMYYYY format before submitting.")
+                return
+
+            # Validate date
+            try:
+                datetime.strptime(date_input, "%d%m%Y")
+            except ValueError:
+                st.error("Invalid date format. Must be DDMMYYYY.")
+                return
+
+            rows_updated = 0
+            for entry in edited_data:
+                row_idx = entry["RowIndex"]
+                if entry["Attended"]:
+                    cell_value = f"Yes, {date_input}"
+                else:
+                    cell_value = ""
+
+                try:
+                    SHEET_SAFETY.update_cell(row_idx, col_index, cell_value)
+                    rows_updated += 1
+                except Exception as e:
+                    st.error(f"Failed to update row {row_idx} for {entry['Name']}: {e}")
+
+            st.success(
+                f"Updated {rows_updated} rows in column '{selected_col_name}' "
+                f"with 'Yes, {date_input}' if ticked."
+            )
+            st.info("Check your Safety sheet to confirm changes.")
 # ------------------------------------------------------------------------------
 # 3) Helper Functions + Caching
 # ------------------------------------------------------------------------------
@@ -598,7 +766,7 @@ if "update_conduct_table" not in st.session_state:
 # ------------------------------------------------------------------------------
 feature = st.sidebar.selectbox(
     "Select Feature",
-    ["Add Conduct", "Update Conduct", "Update Parade", "Queries", "Overall View", "Generate WhatsApp Message"]
+    ["Add Conduct", "Update Conduct", "Update Parade", "Queries", "Overall View", "Generate WhatsApp Message", "Safety Sharing"]
 )
 
 # ------------------------------------------------------------------------------
@@ -2014,3 +2182,9 @@ elif feature == "Generate WhatsApp Message":
 
     whatsapp_message = "\n".join(message_lines)
     st.code(whatsapp_message, language='text')
+
+elif feature == "Safety Sharing":
+    st.header("Safety Sharing")
+    SHEET_SAFETY = worksheets["safety"]
+    safety_sharing_app_form(SHEET_SAFETY)
+   
