@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo  # type: ignore
 # ------------------------------------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
+TIMEZONE = ZoneInfo('Asia/Singapore')  # Replace with your desired timezone
 # ------------------------------------------------------------------------------
 # User Authentication Setup
 # ------------------------------------------------------------------------------
@@ -344,7 +344,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     }
 
     # Get current date and day of the week
-    today = datetime.today()
+    today = datetime.now(TIMEZONE)
     date_str = today.strftime("%d%m%y, %A")
 
     # Filter nominal records for the selected company
@@ -2316,8 +2316,8 @@ elif feature == "Generate WhatsApp Message":
     # --- 1) Existing WhatsApp Message Generation for Selected Company ---
     records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
     records_parade = get_parade_records(selected_company, SHEET_PARADE)
-
-    today_date = datetime.today().date()
+    today = datetime.now(TIMEZONE)
+    today_date = today.date()
     filtered_parade = []
     for parade in records_parade:
         start_date_str = parade.get('start_date_ddmmyyyy', '')
@@ -2383,7 +2383,7 @@ elif feature == "Generate WhatsApp Message":
         else:
             others_list.append(person_dict)
 
-    today_str = datetime.today().strftime("%d%m%y")
+    today_str = today.strftime("%d%m%y")
     platoon = "1"  # Assuming platoon is fixed as "1" for the existing message
     company_name = selected_company
 
