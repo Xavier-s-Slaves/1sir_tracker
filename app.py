@@ -147,6 +147,29 @@ def get_sheets(selected_company: str):
         logger.error(f"Error accessing spreadsheet '{spreadsheet_name}': {e}")
         st.error(f"Error accessing spreadsheet '{spreadsheet_name}': {e}")
         return None
+def is_leave_accounted(existing_dates, new_dates_str):
+    """
+    Checks if the new_dates_str is already present in existing_dates.
+    
+    Parameters:
+        existing_dates (str): Existing "Dates Taken" string, e.g., "15012025-20012025,21012025-22012025"
+        new_dates_str (str): New leave dates to check, e.g., "15012025-20012025"
+    
+    Returns:
+        bool: True if the leave already exists, False otherwise.
+    """
+    if not existing_dates:
+        return False
+    
+    # Split existing dates by comma to get individual leave periods
+    existing_leave_periods = [period.strip() for period in existing_dates.split(',')]
+    
+    # Normalize for comparison
+    normalized_existing = set(existing_leave_periods)
+    normalized_new = new_dates_str.strip()
+    
+    return normalized_new in normalized_existing
+
 def safety_sharing_app_form(SHEET_SAFETY):
     """
     Safety Sharing UI with st.data_editor inside a form,
@@ -723,21 +746,18 @@ def is_valid_4d(four_d: str) -> str:
             logger.error(f"Invalid 4D_Number format: {four_d}")
         return ""
 
-def ensure_date_str(date_value) -> str:
+def ensure_date_str(date_input):
     """
-    Ensure that the date is a string in DDMMYYYY format with leading zeros.
-    If the input is an integer or float, convert it to a string with leading zeros.
-    If it's a string, pad with leading zeros if necessary.
+    Ensures that the date string is in DDMMYYYY format without any separators.
     """
-    if isinstance(date_value, int):
-        return f"{date_value:08d}"
-    elif isinstance(date_value, float):
-        return f"{int(date_value):08d}"
-    elif isinstance(date_value, str):
-        cleaned = re.sub(r'\D', '', date_value)
-        return cleaned.zfill(8)
+    if isinstance(date_input, datetime):
+        return date_input.strftime("%d%m%Y")
+    elif isinstance(date_input, str):
+        # Remove any non-digit characters
+        return ''.join(filter(str.isdigit, date_input))
     else:
-        return ""
+        return ''
+
 
 def normalize_name(name: str) -> str:
     """Normalize by uppercase + removing spaces and special characters."""
@@ -1730,11 +1750,24 @@ elif feature == "Update Parade":
                 continue
 
             # If status is "leave" and they DO have a valid 4D, update leaves
-            if status_val.lower() == "leave" or status_val.lower() == "ll" or status_val.lower() == "ol":
-                if formatted_start_val != formatted_end_val:
-                    dates_str = f"{formatted_start_val}-{formatted_end_val}"
+            if status_val.lower() in ["leave", "ll", "ol"]:
+                if formatted_start_val and formatted_end_val:
+                    if formatted_start_val != formatted_end_val:
+                        dates_str = f"{formatted_start_val}-{formatted_end_val}"
+                    else:
+                        dates_str = f"{formatted_start_val}"
                 else:
-                    dates_str = formatted_start_val
+                    dates_str = f"{formatted_start_val}" or f"{formatted_end_val}"
+
+                logger.debug(f"Constructed dates_str for {name_val}: {dates_str}") 
+                nominal_record = SHEET_NOMINAL.find(name_val, in_column=2) # Debug statement
+                existing_dates = SHEET_NOMINAL.cell(nominal_record.row, 6).value
+                if is_leave_accounted(existing_dates, dates_str):
+                    #st.warning(f"Leave for {name_val} on {dates_str} already exists. Skipping update.")
+                    logger.info(
+                        f"Leave on {dates_str} for {name_val}/{four_d} already accounted for in company '{selected_company}'. Skipping."
+                    )
+                    continue  
                 leaves_used = calculate_leaves_used(dates_str)
                 if leaves_used <= 0:
                     st.error(f"Invalid leave duration for {name_val}, skipping.")
@@ -1748,7 +1781,7 @@ elif feature == "Update Parade":
                     continue
 
                 try:
-                    nominal_record = SHEET_NOMINAL.find(four_d, in_column=3)  # 4D_Number is column C
+                    nominal_record = SHEET_NOMINAL.find(name_val, in_column=2)  # 4D_Number is column C
                     if nominal_record:
                         current_leaves_left = SHEET_NOMINAL.cell(nominal_record.row, 5).value
                         try:
@@ -1780,9 +1813,16 @@ elif feature == "Update Parade":
                         existing_dates = SHEET_NOMINAL.cell(nominal_record.row, 6).value
                         new_dates_entry = dates_str
                         if existing_dates:
-                            updated_dates = existing_dates + f",{new_dates_entry}"
+                            # Ensure comma separation without duplication
+                            if existing_dates.strip() and existing_dates.strip()[-1] != ',':
+                                updated_dates = f"{existing_dates},{new_dates_entry}"
+                            else:
+                                updated_dates = f"{existing_dates}{new_dates_entry}"
                         else:
                             updated_dates = new_dates_entry
+
+                        logger.debug(f"Updated 'Dates Taken' for {name_val}/{four_d}: {updated_dates}")  # Debug statement
+
                         SHEET_NOMINAL.update_cell(nominal_record.row, 6, updated_dates)
                         logger.info(
                             f"Updated 'Dates Taken' for {name_val}/{four_d}: {updated_dates} in company '{selected_company}' "
@@ -1847,7 +1887,7 @@ elif feature == "Update Parade":
                 )
                 rows_updated += 1
 
-        st.success(f"Parade State updated ({rows_updated} row(s) affected).")
+        st.success(f"Parade State updated.")
         logger.info(
             f"Parade State updated for {rows_updated} row(s) for platoon {platoon} in company '{selected_company}' "
             f"by user '{submitted_by}'."
