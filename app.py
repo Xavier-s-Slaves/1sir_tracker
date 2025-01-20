@@ -422,11 +422,11 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                 start_dt = datetime.strptime(start_str, "%d%m%Y").date()
                 end_dt = datetime.strptime(end_str, "%d%m%Y").date()
                 if start_dt == end_dt:
-                    details = f"{status} ({start_dt.strftime('%d%m%y')})"
+                    details = f"{start_dt.strftime('%d%m%y')}"
                 else:
-                    details = f"{status} ({start_dt.strftime('%d%m%y')} - {end_dt.strftime('%d%m%y')})"
+                    details = f"{start_dt.strftime('%d%m%y')} - {end_dt.strftime('%d%m%y')}"
             except ValueError:
-                details = f"{status} (Invalid Dates)"
+                details = "Invalid Dates"
                 logger.warning(
                     f"Invalid dates for {name}: {start_str} - {end_str} in company '{selected_company}'"
                 )
@@ -435,9 +435,19 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             # Check if the status conforms to the legend-based statuses
             status_prefix = status.lower().split()[0]  # Extract the prefix
             if status_prefix in LEGEND_STATUS_PREFIXES:
-                conformant_absentees.append(f"> {rank} {name} {details}")
+                conformant_absentees.append({
+                    'rank': rank,
+                    'name': name,
+                    'status': status,
+                    'details': details
+                })
             else:
-                non_conformant_absentees.append(f"> {rank} {name} {details}")
+                non_conformant_absentees.append({
+                    'rank': rank,
+                    'name': name,
+                    'status': status,
+                    'details': details
+                })
 
         # Update total_absent based on conformant absentees
         platoon_absent = len(conformant_absentees)
@@ -478,16 +488,33 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
         # Add conformant absentees to the message
         if detail['conformant']:
             for absentee in detail['conformant']:
-                message_lines.append(absentee)
+                message_lines.append(f"> {absentee['rank']} {absentee['name']} ({absentee['status'].upper().split()[0]} {absentee['details']})")
 
         # Add Pl Statuses count
-        pl_status_count = len(detail['non_conformant'])
-        message_lines.append(f"\nPl Statuses: {pl_status_count:02d}/{detail['nominal']:02d}")
-
+        status_group = defaultdict(list)
         # Add non-conformant absentees if any
         if detail['non_conformant']:
-            for absentee in detail['non_conformant']:
-                message_lines.append(absentee)
+            for person in detail['non_conformant']:
+                rank = person['rank']
+                name = person['name']
+                status_code = person['status']
+                details = person['details']
+                key = (rank, name)
+                # Combine Status Code with Details for clarity
+                status_entry = f"{status_code} {details}"
+                status_group[key].append(status_entry)
+
+        pl_status_count = len(status_group)
+        message_lines.append(f"\nPl Statuses: {pl_status_count:02d}/{detail['nominal']:02d}")
+        if detail['non_conformant']:
+            # Iterate through the grouped statuses and append consolidated lines
+            for (rank, name), details_list in status_group.items():
+                if rank and name:
+                    line_prefix = f"> {rank} {name}"
+                else:
+                    line_prefix = f"> {name}"
+                consolidated_details = ", ".join(details_list)
+                message_lines.append(f"{line_prefix} ({consolidated_details})")
 
         message_lines.append("")  # Add a blank line for separation
 
