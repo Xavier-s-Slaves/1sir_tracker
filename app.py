@@ -390,8 +390,9 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     # Initialize storage for platoon-wise details
     platoon_details = []
 
+    sorted_platoons = sorted(all_platoons, key=lambda x: (0, x) if x.lower() == 'coy hq' else (1, x))
     # Iterate through all platoons to gather data
-    for platoon in sorted(all_platoons):
+    for platoon in sorted_platoons:
         records = active_parade_by_platoon.get(platoon, [])  # Get parade records for this platoon, if any
 
         # Determine if the platoon is 'Coy HQ' or a regular platoon
