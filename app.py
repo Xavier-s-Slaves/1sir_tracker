@@ -461,9 +461,9 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
 
     # Start building the message
     message_lines = []
-    message_lines.append(f"🐆 {selected_company.upper()} COY")
-    message_lines.append("🗒️ FIRST PARADE STATE")
-    message_lines.append(f"🗓️ {date_str}\n")
+    message_lines.append(f"*🐆 {selected_company.upper()} COY*")
+    message_lines.append("*🗒️ FIRST PARADE STATE*")
+    message_lines.append(f"*🗓️ {date_str}*\n")
 
     # Add the overall strength
     message_lines.append(f"Coy Present Strength: {total_present:02d}/{total_nominal:02d}")
@@ -471,7 +471,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
 
     # Iterate through stored platoon details to build the message
     for detail in platoon_details:
-        message_lines.append(f"{detail['label']}")
+        message_lines.append(f"_*{detail['label']}*_")
         message_lines.append(f"Pl Present Strength: {detail['present']:02d}/{detail['nominal']:02d}")
         message_lines.append(f"Pl Absent Strength: {detail['absent']:02d}/{detail['nominal']:02d}")
 
