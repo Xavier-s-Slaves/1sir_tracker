@@ -1842,7 +1842,7 @@ elif feature == "Update Parade":
 
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         records_parade = get_parade_records(selected_company, SHEET_PARADE)
-
+        rows_to_delete = []
         for idx, row in enumerate(edited_data):
             name_val = ensure_str(row.get("Name", "")).strip()
             status_val = ensure_str(row.get("Status", "")).strip()
@@ -1854,6 +1854,21 @@ elif feature == "Update Parade":
             parade_entry = st.session_state.parade_table[idx]
             row_num = parade_entry.get('_row_num')
 
+            if not status_val and not start_val and not end_val and row_num:
+                rows_to_delete.append(row_num)
+            rows_to_delete = sorted(rows_to_delete, reverse=True)
+            batch_requests=[]
+            for row_num in rows_to_delete:
+                batch_requests.append({
+                    'deleteDimension': {
+                        'range': {
+                            'sheetId': SHEET_PARADE.id,  # Worksheet ID
+                            'dimension': 'ROWS',
+                            'startIndex': row_num - 1,  # 0-based index
+                            'endIndex': row_num
+                        }
+                    }
+                })
             if not name_val:
                 st.error(f"Name is required for row {idx}. Skipping.")
                 logger.error(f"Name missing for row {idx} in company '{selected_company}'.")
