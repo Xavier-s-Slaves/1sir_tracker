@@ -746,18 +746,21 @@ def is_valid_4d(four_d: str) -> str:
             logger.error(f"Invalid 4D_Number format: {four_d}")
         return ""
 
-def ensure_date_str(date_input):
+def ensure_date_str(date_value) -> str:
     """
-    Ensures that the date string is in DDMMYYYY format without any separators.
+    Ensure that the date is a string in DDMMYYYY format with leading zeros.
+    If the input is an integer or float, convert it to a string with leading zeros.
+    If it's a string, pad with leading zeros if necessary.
     """
-    if isinstance(date_input, datetime):
-        return date_input.strftime("%d%m%Y")
-    elif isinstance(date_input, str):
-        # Remove any non-digit characters
-        return ''.join(filter(str.isdigit, date_input))
+    if isinstance(date_value, int):
+        return f"{date_value:08d}"
+    elif isinstance(date_value, float):
+        return f"{int(date_value):08d}"
+    elif isinstance(date_value, str):
+        cleaned = re.sub(r'\D', '', date_value)
+        return cleaned.zfill(8)
     else:
-        return ''
-
+        return ""
 
 def normalize_name(name: str) -> str:
     """Normalize by uppercase + removing spaces and special characters."""
@@ -1755,9 +1758,9 @@ elif feature == "Update Parade":
                     if formatted_start_val != formatted_end_val:
                         dates_str = f"{formatted_start_val}-{formatted_end_val}"
                     else:
-                        dates_str = f"{formatted_start_val}"
+                        dates_str = formatted_start_val
                 else:
-                    dates_str = f"{formatted_start_val}" or f"{formatted_end_val}"
+                    dates_str = formatted_start_val or formatted_end_val
 
                 logger.debug(f"Constructed dates_str for {name_val}: {dates_str}") 
                 nominal_record = SHEET_NOMINAL.find(name_val, in_column=2) # Debug statement
