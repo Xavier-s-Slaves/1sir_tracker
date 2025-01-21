@@ -24,6 +24,21 @@ TIMEZONE = ZoneInfo('Asia/Singapore')  # Replace with your desired timezone
 # Define a simple user database
 # In a production environment, consider using a secure method to handle user credentials
 USER_DB_PATH = "users.json"
+LEGEND_STATUS_PREFIXES = {
+        "ol": "[OL]",   # Overseas Leave
+        "ll": "[LL]",   # Local Leave
+        "ml": "[ML]",   # Medical Leave
+        "mc": "[MC]",   # Medical Course
+        "ao": "[AO]",   # Attached Out
+        "oil": "[OIL]", # Off in Lieu
+        "ma": "[MA]",   # Medical Appointment
+        "so": "[SO]",   # Stay Out
+        "cl": "[CL]",   # Compassionate Leave
+        "i/a": "[I/A]",   # Interview/Appt
+        "awol": "[AWOL]",   # AWOL
+        "hl": "[HL]",   # Hospitalisation Leave
+        "others": "[Others]",   # Hospitalisation Leave
+    }
 
 def load_user_db(path: str):
     """
@@ -355,16 +370,6 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     - A formatted string message.
     """
     # Define the legend-based status prefixes
-    LEGEND_STATUS_PREFIXES = {
-        "ol": "[OL]",    # Overseas Leave
-        "ll": "[LL]",    # Local Leave
-        "ml": "[ML]",    # Medical Leave
-        "mc": "[MC]",    # Medical Course
-        "ao": "[AO]",    # Attached Out
-        "oil": "[OIL]",  # Off in Lieu
-        "ma": "[MA]",    # Medical Appointment
-        "so": "[SO]",    # Stay Out
-    }
 
     # Get current date and day of the week
     today = datetime.now(TIMEZONE)
@@ -553,19 +558,10 @@ def generate_leopards_message(all_records_nominal, all_records_parade):
     Considers specific status prefixes (AO, LL, etc.) as absences.
     """
     # --- 1) Define the Status Prefixes and Legend Mapping ---
-    STATUS_PREFIX_TO_LEGEND = {
-        "ol": "[OL]",   # Overseas Leave
-        "ll": "[LL]",   # Local Leave
-        "ml": "[ML]",   # Medical Leave
-        "mc": "[MC]",   # Medical Course
-        "ao": "[AO]",   # Attached Out
-        "oil": "[OIL]", # Off in Lieu
-        "ma": "[MA]",   # Medical Appointment
-        "so": "[SO]",   # Stay Out
-    }
+
 
     # List of prefixes to check
-    ABSENT_STATUS_PREFIXES = list(STATUS_PREFIX_TO_LEGEND.keys())
+    ABSENT_STATUS_PREFIXES = list(LEGEND_STATUS_PREFIXES.keys())
 
     # --- 2) Initialize Data Structures ---
     # Extract unique companies from nominal records
@@ -649,7 +645,7 @@ def generate_leopards_message(all_records_nominal, all_records_parade):
             is_absent = False
             for prefix in ABSENT_STATUS_PREFIXES:
                 if status.startswith(prefix):
-                    legend_code = STATUS_PREFIX_TO_LEGEND[prefix]
+                    legend_code = LEGEND_STATUS_PREFIXES[prefix]
                     is_absent = True
                     break
             if is_absent:
@@ -1997,178 +1993,86 @@ elif feature == "Update Parade":
 # 11) Feature D: Queries
 # ------------------------------------------------------------------------------
 elif feature == "Queries":
-    st.header("Queries")
+    st.subheader("Query All Medical Statuses for a Person")
+    # Modified to allow either 4D or partial Name
+    person_input = st.text_input("Enter the 4D Number or partial Name", key="query_person_input")
+    if st.button("Get Statuses", key="btn_query_person"):
+        if not person_input:
+            st.error("Please enter a 4D Number or Name.")
+            st.stop()
 
-    query_tabs = st.tabs(["Query Person", "Query Outliers"])
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        records_parade = get_parade_records(selected_company, SHEET_PARADE)
+        parade_data = records_parade
 
-    with query_tabs[0]:
-        st.subheader("Query All Statuses for a Person")
-        # Modified to allow either 4D or partial Name
-        person_input = st.text_input("Enter the 4D Number or partial Name", key="query_person_input")
-        if st.button("Get Statuses", key="btn_query_person"):
-            if not person_input:
-                st.error("Please enter a 4D Number or Name.")
-                st.stop()
+        # Check if input is a valid 4D
+        four_d_input_clean = is_valid_4d(person_input)
+        person_rows = []
 
-            records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-            records_parade = get_parade_records(selected_company, SHEET_PARADE)
-            parade_data = records_parade
-
-            # Check if input is a valid 4D
-            four_d_input_clean = is_valid_4d(person_input)
-            person_rows = []
-
-            if four_d_input_clean:
-                # Search by 4D
-                person_rows = [
-                    row for row in parade_data
-                    if is_valid_4d(row.get("4d_number", "")) == four_d_input_clean
-                ]
-            else:
-                # Otherwise, partial match by name (case-insensitive)
-                person_input_lower = person_input.strip().lower()
-                person_rows = [
-                    row for row in parade_data
-                    if person_input_lower in row.get("name", "").strip().lower()
-                ]
-
-            if not person_rows:
-                st.warning(f"No Parade_State records found for '{person_input}'")
-                logger.info(f"No Parade_State records found for '{person_input}' in company '{selected_company}'.")
-            else:
-                def parse_ddmmyyyy(d):
-                    try:
-                        return datetime.strptime(str(d), "%d%m%Y")
-                    except ValueError:
-                        return datetime.min
-
-                person_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
-
-                enhanced_rows = []
-                for row in person_rows:
-                    # Grab 4D or empty
-                    four_d_val = is_valid_4d(row.get("4d_number", "")) or ""
-                    # Grab rank from nominal if possible
-                    rank_val = ""
-                    # We can look up 4D if it exists, or match by name if not
-                    if four_d_val:
-                        # If 4D is valid, match by 4D
-                        for nominal in records_nominal:
-                            if nominal['4d_number'].upper() == four_d_val.upper():
-                                rank_val = nominal['rank']
-                                break
-                        name_val = find_name_by_4d(row.get("4d_number", ""), records_nominal)
-                    else:
-                        # If no 4D, match by name partially
-                        name_from_parade = ensure_str(row.get("name", ""))
-                        for nominal in records_nominal:
-                            # For partial match, ensure the parade name is quite specific
-                            # but here we'll just do a direct equality ignoring case
-                            if nominal['name'].strip().lower() == name_from_parade.strip().lower():
-                                four_d_val = nominal['4d_number']
-                                rank_val = nominal['rank']
-                                break
-                        name_val = name_from_parade
-
-                    enhanced_rows.append({
-                        "Rank": rank_val,
-                        "Name": name_val,
-                        "4D_Number": four_d_val,
-                        "Status": row.get("status", ""),
-                        "Start_Date": row.get("start_date_ddmmyyyy", ""),
-                        "End_Date": row.get("end_date_ddmmyyyy", "")
-                    })
-
-                st.subheader(f"Statuses for '{person_input}'")
-                st.table(enhanced_rows)
-                logger.info(f"Displayed statuses for '{person_input}' in company '{selected_company}'.")
-
-    with query_tabs[1]:
-        st.subheader("Query Outliers for a Specific Platoon & Conduct")
-
-        platoon_q = st.selectbox("Platoon", options=[1, 2, 3, 4], key="query_outliers_platoon")
-        cond_q = st.text_input("Conduct Name", key="query_outliers_conduct")
-
-        if st.button("Get Outliers", key="btn_query_outliers"):
-            platoon_query = str(st.session_state.query_outliers_platoon).strip()
-            conduct_query = ensure_str(cond_q)
-
-            if not platoon_query or not conduct_query:
-                st.error("Please enter both Platoon and Conduct Name.")
-                st.stop()
-
-            conduct_norm = normalize_name(conduct_query)
-            conducts_data = get_conduct_records(selected_company, SHEET_CONDUCTS)
-
-            matched_records = [
-                row for row in conducts_data
-                if normalize_name(row.get('conduct_name', '')) == conduct_norm and
-                   row.get(f'p/t plt{platoon_query}', '').split('/')[0].isdigit() and
-                   int(row.get(f'p/t plt{platoon_query}', '').split('/')[0]) > 0
+        if four_d_input_clean:
+            # Search by 4D
+            person_rows = [
+                row for row in parade_data
+                if is_valid_4d(row.get("4d_number", "")) == four_d_input_clean
+            ]
+        else:
+            # Otherwise, partial match by name (case-insensitive)
+            person_input_lower = person_input.strip().lower()
+            person_rows = [
+                row for row in parade_data
+                if person_input_lower in row.get("name", "").strip().lower()
             ]
 
-            if not matched_records:
-                conduct_pairs = [
-                    (normalize_name(row.get('conduct_name', '')))
-                    for row in conducts_data
-                    if row.get('conduct_name', '').strip()
-                ]
-                closest_matches = difflib.get_close_matches(conduct_norm, conduct_pairs, n=1, cutoff=0.6)
-                if not closest_matches:
-                    st.error("❌ **No similar conduct name found.**\n\nPlease check your input and try again.")
-                    logger.error(f"No similar conduct name found for: {conduct_norm} in company '{selected_company}'.")
-                    st.stop()
-                matched_norm = closest_matches[0]
-                matched_records = [
-                    row for row in conducts_data
-                    if normalize_name(row.get('conduct_name', '')) == matched_norm
-                ]
-                if not matched_records:
-                    st.error("❌ **No data found for the matched conduct.**")
-                    logger.error(f"No data found for the matched conduct: {matched_norm} in company '{selected_company}'.")
-                    st.stop()
-
-            all_outliers = []
-            for row in matched_records:
-                p_t_field = f"p/t plt{platoon_query}"
-                p_t_value = row.get(p_t_field, '0/0')
+        if not person_rows:
+            st.warning(f"No Parade_State records found for '{person_input}'")
+            logger.info(f"No Parade_State records found for '{person_input}' in company '{selected_company}'.")
+        else:
+            def parse_ddmmyyyy(d):
                 try:
-                    participating = int(p_t_value.split('/')[0]) if '/' in p_t_value and p_t_value.split('/')[0].isdigit() else 0
-                except:
-                    participating = 0
-                if participating > 0:
-                    outliers_value = row.get('outliers', '')
-                    if isinstance(outliers_value, (int, float)):
-                        outliers_str = str(outliers_value)
-                    elif isinstance(outliers_value, str):
-                        outliers_str = outliers_value
-                    else:
-                        outliers_str = ''
+                    return datetime.strptime(str(d), "%d%m%Y")
+                except ValueError:
+                    return datetime.min
 
-                    if outliers_str.lower() != 'none' and outliers_str.strip():
-                        outliers = [o.strip() for o in outliers_str.split(',') if o.strip()]
-                        all_outliers.extend(outliers)
+            person_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
 
-            if all_outliers:
-                outlier_freq = {}
-                for o in all_outliers:
-                    outlier_freq[o] = outlier_freq.get(o, 0) + 1
-                sorted_outliers = sorted(outlier_freq.items(), key=lambda x: x[1], reverse=True)
-                outlier_table = [{"Outlier": o, "Frequency": c} for o, c in sorted_outliers]
-                st.markdown(
-                    f"📈 **Outliers for '{conduct_query}' at Platoon {platoon_query} in company '{selected_company}':**"
-                )
-                st.table(outlier_table)
-                logger.info(
-                    f"Displayed outliers for '{conduct_query}' at Platoon {platoon_query} in company '{selected_company}' "
-                    f"by user '{st.session_state.username}'."
-                )
-            else:
-                st.info(f"✅ **No outliers recorded for '{conduct_query}' at Platoon {platoon_query}' in company '{selected_company}'.**")
-                logger.info(
-                    f"No outliers recorded for '{conduct_query}' at Platoon {platoon_query}' "
-                    f"in company '{selected_company}' by user '{st.session_state.username}'."
-                )
+            enhanced_rows = []
+            for row in person_rows:
+                # Grab 4D or empty
+                four_d_val = is_valid_4d(row.get("4d_number", "")) or ""
+                # Grab rank from nominal if possible
+                rank_val = ""
+                # We can look up 4D if it exists, or match by name if not
+                if four_d_val:
+                    # If 4D is valid, match by 4D
+                    for nominal in records_nominal:
+                        if nominal['4d_number'].upper() == four_d_val.upper():
+                            rank_val = nominal['rank']
+                            break
+                    name_val = find_name_by_4d(row.get("4d_number", ""), records_nominal)
+                else:
+                    # If no 4D, match by name partially
+                    name_from_parade = ensure_str(row.get("name", ""))
+                    for nominal in records_nominal:
+                        # For partial match, ensure the parade name is quite specific
+                        # but here we'll just do a direct equality ignoring case
+                        if nominal['name'].strip().lower() == name_from_parade.strip().lower():
+                            four_d_val = nominal['4d_number']
+                            rank_val = nominal['rank']
+                            break
+                    name_val = name_from_parade
+
+                enhanced_rows.append({
+                    "Rank": rank_val,
+                    "Name": name_val,
+                    "4D_Number": four_d_val,
+                    "Status": row.get("status", ""),
+                    "Start_Date": row.get("start_date_ddmmyyyy", ""),
+                    "End_Date": row.get("end_date_ddmmyyyy", "")
+                })
+
+            st.subheader(f"Statuses for '{person_input}'")
+            st.table(enhanced_rows)
+            logger.info(f"Displayed statuses for '{person_input}' in company '{selected_company}'.")
 
 # ------------------------------------------------------------------------------
 # 12) Feature E: Overall View
