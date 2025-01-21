@@ -1175,6 +1175,17 @@ feature = st.sidebar.selectbox(
     ["Add Conduct", "Update Conduct", "Update Parade", "Queries", "Overall View", "Generate WhatsApp Message", "Safety Sharing"]
 )
 
+def add_pointer():
+    st.session_state.conduct_pointers.append(
+        {"observation": "", "reflection": "", "recommendation": ""}
+    )
+    #Sst.rerun()
+def add_update_pointer():
+    st.session_state.update_conduct_pointers.append(
+        {"observation": "", "reflection": "", "recommendation": ""}
+    )
+    #st.rerun()
+
 # ------------------------------------------------------------------------------
 # 8) Feature A: Add Conduct
 # ------------------------------------------------------------------------------
@@ -1195,23 +1206,39 @@ if feature == "Add Conduct":
         value=st.session_state.conduct_name
     )
 
+    if 'conduct_pointers' not in st.session_state:
+        st.session_state.conduct_pointers = [
+        {"observation": "", "reflection": "", "recommendation": ""}
+    ] 
+
     st.subheader("Pointers (ORR, Observation, Reflection)")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.session_state.conduct_pointers_observation = st.text_input(
-            "Observation",
-            value=st.session_state.conduct_pointers_observation
-        )
-    with col2:
-        st.session_state.conduct_pointers_reflection = st.text_input(
-            "Reflection",
-            value=st.session_state.conduct_pointers_reflection
-        )
-    with col3:
-        st.session_state.conduct_pointers_recommendation = st.text_input(
-            "Recommendation",
-            value=st.session_state.conduct_pointers_recommendation
-        )
+
+    # Render input fields for each pointer in the session state
+    for idx, pointer in enumerate(st.session_state.conduct_pointers):
+        st.markdown(f"**Pointer {idx + 1}:**")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            pointer["observation"] = st.text_input(
+                f"Observation {idx + 1}",
+                value=pointer["observation"],
+                key=f"observation_{idx}"
+            )
+        with col2:
+            pointer["reflection"] = st.text_input(
+                f"Reflection {idx + 1}",
+                value=pointer["reflection"],
+                key=f"reflection_{idx}"
+            )
+        with col3:
+            pointer["recommendation"] = st.text_input(
+                f"Recommendation {idx + 1}",
+                value=pointer["recommendation"],
+                key=f"recommendation_{idx}"
+            )
+        st.markdown("---")  # Separator between pointers
+
+    # Button to add a new pointer
+    st.button("➕ Add Another Pointer", on_click=add_pointer)
 
     submitted_by = st.session_state.username
 
@@ -1273,7 +1300,22 @@ if feature == "Add Conduct":
             st.error("Invalid date format.")
             st.stop()
 
-        pointers = f"Observation :\n{observation}\nReflection :\n{reflection}\nRecommendation :\n{recommendation}"
+        pointers_list = []
+        for idx, pointer in enumerate(st.session_state.conduct_pointers, start=1):
+            observation = pointer.get("observation", "").strip()
+            reflection = pointer.get("reflection", "").strip()
+            recommendation = pointer.get("recommendation", "").strip()
+
+            pointer_str = ""
+            if observation:
+                pointer_str += f"Observation {idx}:\n{observation}\n"
+            if reflection:
+                pointer_str += f"Reflection {idx}:\n{reflection}\n"
+            if recommendation:
+                pointer_str += f"Recommendation {idx}:\n{recommendation}\n"
+            pointers_list.append(pointer_str.strip())
+
+        pointers = "\n\n".join(pointers_list)
 
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         records_parade = get_parade_records(selected_company, SHEET_PARADE)
@@ -1400,9 +1442,9 @@ if feature == "Add Conduct":
         st.session_state.conduct_platoon = 1
         st.session_state.conduct_name = ""
         st.session_state.conduct_table = []
-        st.session_state.conduct_pointers_observation = ""
-        st.session_state.conduct_pointers_reflection = ""
-        st.session_state.conduct_pointers_recommendation = ""
+        st.session_state.conduct_pointers = [
+             {"observation": "", "reflection": "", "recommendation": ""}
+        ]
 
 # ------------------------------------------------------------------------------
 # 9) Feature B: Update Conduct
@@ -1432,6 +1474,8 @@ elif feature == "Update Conduct":
         st.error("Selected conduct not found.")
         st.stop()
 
+
+
     conduct_record = records_conducts[conduct_index]
 
     st.subheader("Select Platoon to Update")
@@ -1442,38 +1486,78 @@ elif feature == "Update Conduct":
         key="update_conduct_platoon_select"
     )
 
-    existing_pointers = conduct_record.get('pointers', '')
-    if existing_pointers:
-        observation_match = re.search(r'Observation\s*:\s*(.*)', existing_pointers, re.IGNORECASE)
-        reflection_match = re.search(r'Reflection\s*:\s*(.*)', existing_pointers, re.IGNORECASE)
-        recommendation_match = re.search(r'Recommendation\s*:\s*(.*)', existing_pointers, re.IGNORECASE)
+        # Initialize a session state variable to track the previous selection
+    if 'update_conduct_selected_prev' not in st.session_state:
+        st.session_state.update_conduct_selected_prev = None
 
-        observation_existing = observation_match.group(1).strip() if observation_match else ""
-        reflection_existing = reflection_match.group(1).strip() if reflection_match else ""
-        recommendation_existing = recommendation_match.group(1).strip() if recommendation_match else ""
-    else:
-        observation_existing = ""
-        reflection_existing = ""
-        recommendation_existing = ""
+    current_selected_conduct = selected_conduct
 
+# Check if the selected conduct has changed
+    if current_selected_conduct != st.session_state.update_conduct_selected_prev:
+        # Update the previous selection
+        st.session_state.update_conduct_selected_prev = current_selected_conduct
+        
+        # Re-initialize the pointers based on the newly selected conduct
+        existing_pointers = conduct_record.get('pointers', '')
+        st.session_state.update_conduct_pointers = []
+        
+        if existing_pointers:
+            # Split pointers by double newlines assuming each pointer is separated by two newlines
+            pointer_entries = existing_pointers.split('\n\n')
+            for entry in pointer_entries:
+                observation = ""
+                reflection = ""
+                recommendation = ""
+                
+                # Extract Observation, Reflection, Recommendation using regex
+                obs_match = re.search(r'Observation\s*\d*:\s*([\s\S]*?)(?:\n|$)', entry, re.IGNORECASE)
+                refl_match = re.search(r'Reflection\s*\d*:\s*([\s\S]*?)(?:\n|$)', entry, re.IGNORECASE)
+                rec_match = re.search(r'Recommendation\s*\d*:\s*([\s\S]*?)(?:\n|$)', entry, re.IGNORECASE)
+                
+                if obs_match:
+                    observation = obs_match.group(1).strip()
+                if refl_match:
+                    reflection = refl_match.group(1).strip()
+                if rec_match:
+                    recommendation = rec_match.group(1).strip()
+                
+                st.session_state.update_conduct_pointers.append({
+                    "observation": observation,
+                    "reflection": reflection,
+                    "recommendation": recommendation
+                })
+        else:
+            # Initialize with one empty pointer
+            st.session_state.update_conduct_pointers = [
+                {"observation": "", "reflection": "", "recommendation": ""}
+            ]
     st.subheader("Update Pointers (ORR, Observation, Reflection)")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.session_state.update_conduct_pointers_observation = st.text_input(
-            "Observation",
-            value=observation_existing
-        )
-    with col2:
-        st.session_state.update_conduct_pointers_reflection = st.text_input(
-            "Reflection",
-            value=reflection_existing
-        )
-    with col3:
-        st.session_state.update_conduct_pointers_recommendation = st.text_input(
-            "Recommendation",
-            value=recommendation_existing
-        )
+    for idx, pointer in enumerate(st.session_state.update_conduct_pointers):
+        print(idx, pointer)
+        st.markdown(f"**Pointer {idx + 1}:**")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.session_state.update_conduct_pointers[idx]["observation"] = st.text_input(
+                f"Observation {idx + 1}",
+                value=pointer["observation"],
+                key=f"update_observation_{idx}"
+            )
+        with col2:
+            st.session_state.update_conduct_pointers[idx]["reflection"] = st.text_input(
+                f"Reflection {idx + 1}",
+                value=pointer["reflection"],
+                key=f"update_reflection_{idx}"
+            )
+        with col3:
+            st.session_state.update_conduct_pointers[idx]["recommendation"] = st.text_input(
+                f"Recommendation {idx + 1}",
+                value=pointer["recommendation"],
+                key=f"update_recommendation_{idx}"
+            )
+        st.markdown("---")  # Separator between pointers
 
+    # Button to add a new pointer
+    st.button("➕ Add Another Pointer", on_click=add_update_pointer)
     if st.button("Load On-Status for Update"):
         platoon = str(selected_platoon).strip()
         date_str = conduct_record['date']
@@ -1514,14 +1598,23 @@ elif feature == "Update Conduct":
         new_participating = sum([1 for row in edited_data if not row.get('Is_Outlier', False)])
         new_total = len(edited_data)
         new_outliers = []
-        observation = st.session_state.update_conduct_pointers_observation.strip()
-        reflection = st.session_state.update_conduct_pointers_reflection.strip()
-        recommendation = st.session_state.update_conduct_pointers_recommendation.strip()
-        new_pointers = (
-            f"Observation :\n{observation}\n"
-            f"Reflection :\n{reflection}\n"
-            f"Recommendation :\n{recommendation}"
-        )
+        pointers_list = []
+
+        for idx, pointer in enumerate(st.session_state.update_conduct_pointers, start=1):
+            observation = pointer.get("observation", "").strip()
+            reflection = pointer.get("reflection", "").strip()
+            recommendation = pointer.get("recommendation", "").strip()
+
+            pointer_str = ""
+            if observation:
+                pointer_str += f"Observation {idx}:\n{observation}\n"
+            if reflection:
+                pointer_str += f"Reflection {idx}:\n{reflection}\n"
+            if recommendation:
+                pointer_str += f"Recommendation {idx}:\n{recommendation}\n"
+            pointers_list.append(pointer_str.strip())
+
+        new_pointers = "\n\n".join(pointers_list)
 
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         records_parade = get_parade_records(selected_company, SHEET_PARADE)
@@ -1539,7 +1632,7 @@ elif feature == "Update Conduct":
         if existing_outliers.lower() != 'none' and existing_outliers:
             pattern = re.compile(r'4D\d{3,4}\s*\([^)]*\)')
             existing_outliers_list = pattern.findall(existing_outliers)
-            updated_outliers = ", ".join(existing_outliers_list + new_outliers)
+            updated_outliers = ", ".join(new_outliers)
         else:
             updated_outliers = ", ".join(new_outliers) if new_outliers else "None"
 
@@ -1627,9 +1720,10 @@ elif feature == "Update Conduct":
             f"by user '{st.session_state.username}'."
         )
 
-        st.session_state.update_conduct_pointers_observation = ""
-        st.session_state.update_conduct_pointers_reflection = ""
-        st.session_state.update_conduct_pointers_recommendation = ""
+        st.session_state.update_conduct_pointers = [
+             {"observation": "", "reflection": "", "recommendation": ""}
+        ]
+        # Optionally, clear the conduct table if desired
 
 # ------------------------------------------------------------------------------
 # 10) Feature C: Update Parade
