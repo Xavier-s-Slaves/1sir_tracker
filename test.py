@@ -10,35 +10,18 @@ import logging
 import urllib.parse
 import json
 import os
-from typing import List, Dict
-from zoneinfo import ZoneInfo  # type: ignore
 # ------------------------------------------------------------------------------
 # Setup Logging
 # ------------------------------------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-TIMEZONE = ZoneInfo('Asia/Singapore')  # Replace with your desired timezone
+
 # ------------------------------------------------------------------------------
 # User Authentication Setup
 # ------------------------------------------------------------------------------
 # Define a simple user database
 # In a production environment, consider using a secure method to handle user credentials
 USER_DB_PATH = "users.json"
-LEGEND_STATUS_PREFIXES = {
-        "ol": "[OL]",   # Overseas Leave
-        "ll": "[LL]",   # Local Leave
-        "ml": "[ML]",   # Medical Leave
-        "mc": "[MC]",   # Medical Course
-        "ao": "[AO]",   # Attached Out
-        "oil": "[OIL]", # Off in Lieu
-        "ma": "[MA]",   # Medical Appointment
-        "so": "[SO]",   # Stay Out
-        "cl": "[CL]",   # Compassionate Leave
-        "i/a": "[I/A]",   # Interview/Appt
-        "awol": "[AWOL]",   # AWOL
-        "hl": "[HL]",   # Hospitalisation Leave
-        "others": "[Others]",   # Hospitalisation Leave
-    }
 
 def load_user_db(path: str):
     """
@@ -162,29 +145,6 @@ def get_sheets(selected_company: str):
         logger.error(f"Error accessing spreadsheet '{spreadsheet_name}': {e}")
         st.error(f"Error accessing spreadsheet '{spreadsheet_name}': {e}")
         return None
-def is_leave_accounted(existing_dates, new_dates_str):
-    """
-    Checks if the new_dates_str is already present in existing_dates.
-    
-    Parameters:
-        existing_dates (str): Existing "Dates Taken" string, e.g., "15012025-20012025,21012025-22012025"
-        new_dates_str (str): New leave dates to check, e.g., "15012025-20012025"
-    
-    Returns:
-        bool: True if the leave already exists, False otherwise.
-    """
-    if not existing_dates:
-        return False
-    
-    # Split existing dates by comma to get individual leave periods
-    existing_leave_periods = [period.strip() for period in existing_dates.split(',')]
-    
-    # Normalize for comparison
-    normalized_existing = set(existing_leave_periods)
-    normalized_new = new_dates_str.strip()
-    
-    return normalized_new in normalized_existing
-
 def safety_sharing_app_form(SHEET_SAFETY):
     """
     Safety Sharing UI with st.data_editor inside a form,
@@ -321,54 +281,42 @@ def safety_sharing_app_form(SHEET_SAFETY):
         # Pressing this button will "submit" the form (one-time run).
         submitted = st.form_submit_button("Update Attendance")
 
-    if submitted:
-        # The sheet is updated ONLY when this button is clicked
-        if not date_input.strip():
-            st.error("Please enter a date in DDMMYYYY format before submitting.")
-            return
+        if submitted:
+            # The sheet is updated ONLY when this button is clicked
+            if not date_input.strip():
+                st.error("Please enter a date in DDMMYYYY format before submitting.")
+                return
 
-        # Validate date
-        try:
-            datetime.strptime(date_input, "%d%m%Y")
-        except ValueError:
-            st.error("Invalid date format. Must be DDMMYYYY.")
-            return
+            # Validate date
+            try:
+                datetime.strptime(date_input, "%d%m%Y")
+            except ValueError:
+                st.error("Invalid date format. Must be DDMMYYYY.")
+                return
 
-        rows_updated = 0
-        for entry in edited_data:
-            row_idx = entry["RowIndex"]
-            # Fetch the existing value from the sheet
-            existing_attendance = all_values[row_idx - 1][col_index - 1].strip() if len(all_values[row_idx - 1]) >= col_index else ""
-
-            # Determine if there's a change in the checkbox state
-            checkbox_state_changed = (entry["Attended"] and not existing_attendance.startswith("Yes")) or \
-                                    (not entry["Attended"] and existing_attendance.startswith("Yes"))
-
-            if checkbox_state_changed:
-                # Update the new value based on the checkbox state
+            rows_updated = 0
+            for entry in edited_data:
+                row_idx = entry["RowIndex"]
                 if entry["Attended"]:
-                    new_value = f"Yes, {date_input}"
+                    cell_value = f"Yes, {date_input}"
                 else:
-                    new_value = ""
+                    cell_value = ""
 
-                # Update the sheet only if there's a meaningful change
                 try:
-                    SHEET_SAFETY.update_cell(row_idx, col_index, new_value)
+                    SHEET_SAFETY.update_cell(row_idx, col_index, cell_value)
                     rows_updated += 1
                 except Exception as e:
                     st.error(f"Failed to update row {row_idx} for {entry['Name']}: {e}")
 
-        if rows_updated > 0:
             st.success(
-                f"Updated."
+                f"Updated {rows_updated} rows in column '{selected_col_name}' "
+                f"with 'Yes, {date_input}' if ticked."
             )
-        else:
-            st.info("No rows were updated as there were no changes to the data.")
+            st.info("Check your Safety sheet to confirm changes.")
 # ------------------------------------------------------------------------------
 # 3) Helper Functions + Caching
 # ------------------------------------------------------------------------------
-
-def generate_company_message(selected_company: str, nominal_records: List[Dict], parade_records: List[Dict]) -> str:
+def generate_company_message(selected_company: str, nominal_records, parade_records) -> str:
     """
     Generate a company-specific message in the specified format.
 
@@ -380,59 +328,66 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     Returns:
     - A formatted string message.
     """
+    from collections import defaultdict
+
     # Define the legend-based status prefixes
+    LEGEND_STATUS_PREFIXES = {
+        "ol": "[OL]",   # Overseas Leave
+        "ll": "[LL]",   # Local Leave
+        "ml": "[ML]",   # Medical Leave
+        "mc": "[MC]",   # Medical Course
+        "ao": "[AO]",   # Attached Out
+        "oil": "[OIL]", # Off in Lieu
+        "ma": "[MA]",   # Medical Appointment
+        "so": "[SO]",   # Stay Out
+    }
 
     # Get current date and day of the week
-    today = datetime.now(TIMEZONE)
+    today = datetime.today()
     date_str = today.strftime("%d%m%y, %A")
 
-    # Filter nominal records for the selected company
-    company_nominal_records = [record for record in nominal_records if record['company'] == selected_company]
-
-    # Create a mapping from Name to Rank for quick lookup (case-insensitive)
-    name_to_rank = {
-        record['name'].strip().lower(): record['rank']
-        for record in company_nominal_records
-        if record['name']
-    }
-    # Extract all platoons from nominal records for the selected company
-    all_platoons = set(record.get('platoon', 'Coy HQ') for record in company_nominal_records)
-
-    # Initialize a dictionary to hold parade records active today, organized by platoon
-    active_parade_by_platoon = defaultdict(list)
-
-    # Process parade records to find those active today and organize them by platoon
+    # Filter parade records for the selected company and active parade state
+    active_parade = []
     for parade in parade_records:
         company = parade.get('company', '')
         if company != selected_company:
             continue
-
-        platoon = parade.get('platoon', 'Coy HQ')  # Default to 'Coy HQ' if platoon not specified
-
         start_str = parade.get('start_date_ddmmyyyy', '')
         end_str = parade.get('end_date_ddmmyyyy', '')
         try:
             start_dt = datetime.strptime(start_str, "%d%m%Y").date()
             end_dt = datetime.strptime(end_str, "%d%m%Y").date()
             if start_dt <= today.date() <= end_dt:
-                active_parade_by_platoon[platoon].append(parade)
+                active_parade.append(parade)
         except ValueError:
             logger.warning(
                 f"Invalid date format for {parade.get('name', '')}: {start_str} - {end_str} in company '{selected_company}'"
             )
             continue
 
-    # Initialize counters for total nominal and absent strengths
-    total_nominal = len(company_nominal_records)
-    total_absent = 0
+    # Calculate Coy Present and Absent Strength
+    total_nominal = len([record for record in nominal_records if record['company'] == selected_company])
+    total_present = total_nominal - len(active_parade)
+    total_absent = len(active_parade)
 
-    # Initialize storage for platoon-wise details
-    platoon_details = []
+    # Organize parade records by platoon
+    platoon_data = defaultdict(list)
+    for parade in active_parade:
+        platoon = parade.get('platoon', 'Coy HQ')  # Assuming 'Coy HQ' for headquarters
+        platoon_data[platoon].append(parade)
 
-    sorted_platoons = sorted(all_platoons, key=lambda x: (0, x) if x.lower() == 'coy hq' else (1, x))
-    # Iterate through all platoons to gather data
-    for platoon in sorted_platoons:
-        records = active_parade_by_platoon.get(platoon, [])  # Get parade records for this platoon, if any
+    # Start building the message
+    message_lines = []
+    message_lines.append(f"🐆 {selected_company.upper()} COY")
+    message_lines.append("🗒️ FIRST PARADE STATE")
+    message_lines.append(f"🗓️ {date_str}\n")
+
+    message_lines.append(f"Coy Present Strength: {total_present:02d}/{total_nominal:02d}")
+    message_lines.append(f"Coy Absent Strength: {total_absent:02d}/{total_nominal:02d}\n")
+
+    # Iterate through each platoon
+    for platoon in sorted(platoon_data.keys()):
+        records = platoon_data[platoon]  # Absentees
 
         # Determine if the platoon is 'Coy HQ' or a regular platoon
         if platoon.lower() == 'coy hq':
@@ -442,18 +397,23 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
 
         # Calculate platoon nominal strength
         platoon_nominal = len([
-            record for record in company_nominal_records
-            if record.get('platoon', 'Coy HQ') == platoon
+            record for record in nominal_records
+            if record['company'] == selected_company and record['platoon'] == platoon
         ])
+        platoon_absent = len(records)
+        platoon_present = platoon_nominal - platoon_absent
 
-        # Initialize lists for categorizing absentees
+        message_lines.append(f"{platoon_label}")
+        message_lines.append(f"Pl Present Strength: {platoon_present:02d}/{platoon_nominal:02d}")
+        message_lines.append(f"Pl Absent Strength: {platoon_absent:02d}/{platoon_nominal:02d}")
+
+        # Initialize lists for conformant and non-conformant statuses
         conformant_absentees = []
         non_conformant_absentees = []
 
         # List absentees with reasons
         for parade in records:
             name = parade.get('name', '')
-            name_key = name.strip().lower()
             status = parade.get('status', '').upper()
             start_str = parade.get('start_date_ddmmyyyy', '')
             end_str = parade.get('end_date_ddmmyyyy', '')
@@ -461,99 +421,35 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                 start_dt = datetime.strptime(start_str, "%d%m%Y").date()
                 end_dt = datetime.strptime(end_str, "%d%m%Y").date()
                 if start_dt == end_dt:
-                    details = f"{start_dt.strftime('%d%m%y')}"
+                    details = f"{status} ({start_dt.strftime('%d%m%y')})"
                 else:
-                    details = f"{start_dt.strftime('%d%m%y')} - {end_dt.strftime('%d%m%y')}"
+                    details = f"{status} ({start_dt.strftime('%d%m%y')} - {end_dt.strftime('%d%m%y')})"
             except ValueError:
-                details = "Invalid Dates"
+                details = f"{status} (Invalid Dates)"
                 logger.warning(
                     f"Invalid dates for {name}: {start_str} - {end_str} in company '{selected_company}'"
                 )
 
-            rank = name_to_rank.get(name_key, "N/A")
             # Check if the status conforms to the legend-based statuses
             status_prefix = status.lower().split()[0]  # Extract the prefix
             if status_prefix in LEGEND_STATUS_PREFIXES:
-                conformant_absentees.append({
-                    'rank': rank,
-                    'name': name,
-                    'status': status,
-                    'details': details
-                })
+                conformant_absentees.append(f"> {name} {details}")
             else:
-                non_conformant_absentees.append({
-                    'rank': rank,
-                    'name': name,
-                    'status': status,
-                    'details': details
-                })
-
-        # Update total_absent based on conformant absentees
-        platoon_absent = len(conformant_absentees)
-        total_absent += platoon_absent
-
-        # Calculate platoon present strength based on conformant absentees
-        platoon_present = platoon_nominal - platoon_absent
-
-        # Store the details for this platoon
-        platoon_details.append({
-            'label': platoon_label,
-            'present': platoon_present,
-            'nominal': platoon_nominal,
-            'absent': platoon_absent,
-            'conformant': conformant_absentees,
-            'non_conformant': non_conformant_absentees
-        })
-
-    # Calculate total_present after determining total_absent
-    total_present = total_nominal - total_absent
-
-    # Start building the message
-    message_lines = []
-    message_lines.append(f"*🐆 {selected_company.upper()} COY*")
-    message_lines.append("*🗒️ FIRST PARADE STATE*")
-    message_lines.append(f"*🗓️ {date_str}*\n")
-
-    # Add the overall strength
-    message_lines.append(f"Coy Present Strength: {total_present:02d}/{total_nominal:02d}")
-    message_lines.append(f"Coy Absent Strength: {total_absent:02d}/{total_nominal:02d}\n")
-
-    # Iterate through stored platoon details to build the message
-    for detail in platoon_details:
-        message_lines.append(f"_*{detail['label']}*_")
-        message_lines.append(f"Pl Present Strength: {detail['present']:02d}/{detail['nominal']:02d}")
-        message_lines.append(f"Pl Absent Strength: {detail['absent']:02d}/{detail['nominal']:02d}")
+                non_conformant_absentees.append(f"> {name} {details}")
 
         # Add conformant absentees to the message
-        if detail['conformant']:
-            for absentee in detail['conformant']:
-                message_lines.append(f"> {absentee['rank']} {absentee['name']} ({absentee['status'].upper().split()[0]} {absentee['details']})")
+        if conformant_absentees:
+            for absentee in conformant_absentees:
+                message_lines.append(absentee)
 
         # Add Pl Statuses count
-        status_group = defaultdict(list)
-        # Add non-conformant absentees if any
-        if detail['non_conformant']:
-            for person in detail['non_conformant']:
-                rank = person['rank']
-                name = person['name']
-                status_code = person['status']
-                details = person['details']
-                key = (rank, name)
-                # Combine Status Code with Details for clarity
-                status_entry = f"{status_code} {details}"
-                status_group[key].append(status_entry)
+        pl_status_count = len(non_conformant_absentees)
+        message_lines.append(f"\nPl Statuses: {pl_status_count:02d}/{platoon_nominal:02d}")
 
-        pl_status_count = len(status_group)
-        message_lines.append(f"\nPl Statuses: {pl_status_count:02d}/{detail['nominal']:02d}")
-        if detail['non_conformant']:
-            # Iterate through the grouped statuses and append consolidated lines
-            for (rank, name), details_list in status_group.items():
-                if rank and name:
-                    line_prefix = f"> {rank} {name}"
-                else:
-                    line_prefix = f"> {name}"
-                consolidated_details = ", ".join(details_list)
-                message_lines.append(f"{line_prefix} ({consolidated_details})")
+        # Add non-conformant absentees if any
+        if non_conformant_absentees:
+            for absentee in non_conformant_absentees:
+                message_lines.append(absentee)
 
         message_lines.append("")  # Add a blank line for separation
 
@@ -569,10 +465,19 @@ def generate_leopards_message(all_records_nominal, all_records_parade):
     Considers specific status prefixes (AO, LL, etc.) as absences.
     """
     # --- 1) Define the Status Prefixes and Legend Mapping ---
-
+    STATUS_PREFIX_TO_LEGEND = {
+        "ol": "[OL]",   # Overseas Leave
+        "ll": "[LL]",   # Local Leave
+        "ml": "[ML]",   # Medical Leave
+        "mc": "[MC]",   # Medical Course
+        "ao": "[AO]",   # Attached Out
+        "oil": "[OIL]", # Off in Lieu
+        "ma": "[MA]",   # Medical Appointment
+        "so": "[SO]",   # Stay Out
+    }
 
     # List of prefixes to check
-    ABSENT_STATUS_PREFIXES = list(LEGEND_STATUS_PREFIXES.keys())
+    ABSENT_STATUS_PREFIXES = list(STATUS_PREFIX_TO_LEGEND.keys())
 
     # --- 2) Initialize Data Structures ---
     # Extract unique companies from nominal records
@@ -593,8 +498,7 @@ def generate_leopards_message(all_records_nominal, all_records_parade):
         }
 
     # --- 4) Determine Active Parade Statuses ---
-    tz = ZoneInfo('Asia/Singapore')  # Replace with your timezone, e.g., 'America/New_York'
-    today_date = datetime.now(tz).date()  # Ensure timezone-aware date
+    today_date = datetime.today().date()
     active_parade = []
     for p in all_records_parade:
         start_str = p.get("start_date_ddmmyyyy", "")
@@ -656,7 +560,7 @@ def generate_leopards_message(all_records_nominal, all_records_parade):
             is_absent = False
             for prefix in ABSENT_STATUS_PREFIXES:
                 if status.startswith(prefix):
-                    legend_code = LEGEND_STATUS_PREFIXES[prefix]
+                    legend_code = STATUS_PREFIX_TO_LEGEND[prefix]
                     is_absent = True
                     break
             if is_absent:
@@ -678,7 +582,7 @@ def generate_leopards_message(all_records_nominal, all_records_parade):
     # --- 7) Build the Message Lines ---
     lines = []
     # Header
-    now_str = datetime.now(tz).strftime("%d%m%y %A, %H%M HRS")  # e.g., "160125 Thursday, 1500 HRS"
+    now_str = datetime.now().strftime("%d%m%y %A, %H%M HRS")  # e.g., "160125 Thursday, 1500 HRS"
     lines.append("🐆 Leopards Parade Report")
     lines.append(f"🗓️ {now_str}\n")
 
@@ -836,50 +740,6 @@ def get_parade_records(selected_company: str, _sheet_parade):
         try:
             ed = datetime.strptime(record['end_date_ddmmyyyy'], "%d%m%Y").date()
             if ed >= today:
-                record['_row_num'] = idx
-                records.append(record)
-        except ValueError:
-            logger.warning(
-                f"Invalid date format in Parade_State for {record.get('name', '')}: "
-                f"{record.get('end_date_ddmmyyyy', '')}"
-            )
-            continue
-
-    return records
-def get_allparade_records(selected_company: str, _sheet_parade):
-    """
-    Returns all rows from Parade_State as a list of dicts, including row numbers.
-    Only includes statuses where End_Date is today or in the future.
-    Uses 'name' to identify the individual (instead of '4d_number').
-    Includes the 'company' field in each record.
-    """
-    today = datetime.today().date()
-    all_values = _sheet_parade.get_all_values()  # includes header row at index 0
-    if not all_values or len(all_values) < 2:
-        logger.warning(f"No records found in Parade_State for company '{selected_company}'.")
-        return []
-    
-    header = [h.strip().lower() for h in all_values[0]]
-    records = []
-    for idx, row in enumerate(all_values[1:], start=2):  # Start at row 2 in Google Sheets
-        if len(row) < len(header):
-            logger.warning(f"Skipping malformed row {idx} in Parade_State.")
-            continue
-
-        record = dict(zip(header, row))
-        
-        # Use Name
-        record['name'] = ensure_str(record.get('name', ''))
-        record['platoon'] = ensure_str(record.get('platoon', ''))
-        record['4d_number'] = ensure_str(record.get('4d_number', ''))  # We'll keep it for any leaves logic
-        record['start_date_ddmmyyyy'] = ensure_date_str(record.get('start_date_ddmmyyyy', ''))
-        record['end_date_ddmmyyyy'] = ensure_date_str(record.get('end_date_ddmmyyyy', ''))
-        record['status'] = ensure_str(record.get('status', ''))
-        record['company'] = selected_company  # Add company information
-
-        try:
-            ed = datetime.strptime(record['end_date_ddmmyyyy'], "%d%m%Y").date()
-            if ed:
                 record['_row_num'] = idx
                 records.append(record)
         except ValueError:
@@ -1226,17 +1086,6 @@ feature = st.sidebar.selectbox(
     ["Add Conduct", "Update Conduct", "Update Parade", "Queries", "Overall View", "Generate WhatsApp Message", "Safety Sharing"]
 )
 
-def add_pointer():
-    st.session_state.conduct_pointers.append(
-        {"observation": "", "reflection": "", "recommendation": ""}
-    )
-    #Sst.rerun()
-def add_update_pointer():
-    st.session_state.update_conduct_pointers.append(
-        {"observation": "", "reflection": "", "recommendation": ""}
-    )
-    #st.rerun()
-
 # ------------------------------------------------------------------------------
 # 8) Feature A: Add Conduct
 # ------------------------------------------------------------------------------
@@ -1257,39 +1106,23 @@ if feature == "Add Conduct":
         value=st.session_state.conduct_name
     )
 
-    if 'conduct_pointers' not in st.session_state:
-        st.session_state.conduct_pointers = [
-        {"observation": "", "reflection": "", "recommendation": ""}
-    ] 
-
     st.subheader("Pointers (ORR, Observation, Reflection)")
-
-    # Render input fields for each pointer in the session state
-    for idx, pointer in enumerate(st.session_state.conduct_pointers):
-        st.markdown(f"**Pointer {idx + 1}:**")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            pointer["observation"] = st.text_input(
-                f"Observation {idx + 1}",
-                value=pointer["observation"],
-                key=f"observation_{idx}"
-            )
-        with col2:
-            pointer["reflection"] = st.text_input(
-                f"Reflection {idx + 1}",
-                value=pointer["reflection"],
-                key=f"reflection_{idx}"
-            )
-        with col3:
-            pointer["recommendation"] = st.text_input(
-                f"Recommendation {idx + 1}",
-                value=pointer["recommendation"],
-                key=f"recommendation_{idx}"
-            )
-        st.markdown("---")  # Separator between pointers
-
-    # Button to add a new pointer
-    st.button("➕ Add Another Pointer", on_click=add_pointer)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.session_state.conduct_pointers_observation = st.text_input(
+            "Observation",
+            value=st.session_state.conduct_pointers_observation
+        )
+    with col2:
+        st.session_state.conduct_pointers_reflection = st.text_input(
+            "Reflection",
+            value=st.session_state.conduct_pointers_reflection
+        )
+    with col3:
+        st.session_state.conduct_pointers_recommendation = st.text_input(
+            "Recommendation",
+            value=st.session_state.conduct_pointers_recommendation
+        )
 
     submitted_by = st.session_state.username
 
@@ -1308,7 +1141,7 @@ if feature == "Add Conduct":
             st.stop()
 
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-        records_parade = get_allparade_records(selected_company, SHEET_PARADE)
+        records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
         conduct_data = build_conduct_table(platoon, date_obj, records_nominal, records_parade)
 
@@ -1351,25 +1184,10 @@ if feature == "Add Conduct":
             st.error("Invalid date format.")
             st.stop()
 
-        pointers_list = []
-        for idx, pointer in enumerate(st.session_state.conduct_pointers, start=1):
-            observation = pointer.get("observation", "").strip()
-            reflection = pointer.get("reflection", "").strip()
-            recommendation = pointer.get("recommendation", "").strip()
-
-            pointer_str = ""
-            if observation:
-                pointer_str += f"Observation {idx}:\n{observation}\n"
-            if reflection:
-                pointer_str += f"Reflection {idx}:\n{reflection}\n"
-            if recommendation:
-                pointer_str += f"Recommendation {idx}:\n{recommendation}\n"
-            pointers_list.append(pointer_str.strip())
-
-        pointers = "\n\n".join(pointers_list)
+        pointers = f"Observation :\n{observation}\nReflection :\n{reflection}\nRecommendation :\n{recommendation}"
 
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-        records_parade = get_allparade_records(selected_company, SHEET_PARADE)
+        records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
         existing_4ds = {row.get("4d_number", "").strip().upper() for row in records_nominal}
         new_people = []
@@ -1493,9 +1311,9 @@ if feature == "Add Conduct":
         st.session_state.conduct_platoon = 1
         st.session_state.conduct_name = ""
         st.session_state.conduct_table = []
-        st.session_state.conduct_pointers = [
-             {"observation": "", "reflection": "", "recommendation": ""}
-        ]
+        st.session_state.conduct_pointers_observation = ""
+        st.session_state.conduct_pointers_reflection = ""
+        st.session_state.conduct_pointers_recommendation = ""
 
 # ------------------------------------------------------------------------------
 # 9) Feature B: Update Conduct
@@ -1525,8 +1343,6 @@ elif feature == "Update Conduct":
         st.error("Selected conduct not found.")
         st.stop()
 
-
-
     conduct_record = records_conducts[conduct_index]
 
     st.subheader("Select Platoon to Update")
@@ -1537,78 +1353,38 @@ elif feature == "Update Conduct":
         key="update_conduct_platoon_select"
     )
 
-        # Initialize a session state variable to track the previous selection
-    if 'update_conduct_selected_prev' not in st.session_state:
-        st.session_state.update_conduct_selected_prev = None
+    existing_pointers = conduct_record.get('pointers', '')
+    if existing_pointers:
+        observation_match = re.search(r'Observation\s*:\s*(.*)', existing_pointers, re.IGNORECASE)
+        reflection_match = re.search(r'Reflection\s*:\s*(.*)', existing_pointers, re.IGNORECASE)
+        recommendation_match = re.search(r'Recommendation\s*:\s*(.*)', existing_pointers, re.IGNORECASE)
 
-    current_selected_conduct = selected_conduct
+        observation_existing = observation_match.group(1).strip() if observation_match else ""
+        reflection_existing = reflection_match.group(1).strip() if reflection_match else ""
+        recommendation_existing = recommendation_match.group(1).strip() if recommendation_match else ""
+    else:
+        observation_existing = ""
+        reflection_existing = ""
+        recommendation_existing = ""
 
-# Check if the selected conduct has changed
-    if current_selected_conduct != st.session_state.update_conduct_selected_prev:
-        # Update the previous selection
-        st.session_state.update_conduct_selected_prev = current_selected_conduct
-        
-        # Re-initialize the pointers based on the newly selected conduct
-        existing_pointers = conduct_record.get('pointers', '')
-        st.session_state.update_conduct_pointers = []
-        
-        if existing_pointers:
-            # Split pointers by double newlines assuming each pointer is separated by two newlines
-            pointer_entries = existing_pointers.split('\n\n')
-            for entry in pointer_entries:
-                observation = ""
-                reflection = ""
-                recommendation = ""
-                
-                # Extract Observation, Reflection, Recommendation using regex
-                obs_match = re.search(r'Observation\s*\d*:\s*([\s\S]*?)(?:\n|$)', entry, re.IGNORECASE)
-                refl_match = re.search(r'Reflection\s*\d*:\s*([\s\S]*?)(?:\n|$)', entry, re.IGNORECASE)
-                rec_match = re.search(r'Recommendation\s*\d*:\s*([\s\S]*?)(?:\n|$)', entry, re.IGNORECASE)
-                
-                if obs_match:
-                    observation = obs_match.group(1).strip()
-                if refl_match:
-                    reflection = refl_match.group(1).strip()
-                if rec_match:
-                    recommendation = rec_match.group(1).strip()
-                
-                st.session_state.update_conduct_pointers.append({
-                    "observation": observation,
-                    "reflection": reflection,
-                    "recommendation": recommendation
-                })
-        else:
-            # Initialize with one empty pointer
-            st.session_state.update_conduct_pointers = [
-                {"observation": "", "reflection": "", "recommendation": ""}
-            ]
     st.subheader("Update Pointers (ORR, Observation, Reflection)")
-    for idx, pointer in enumerate(st.session_state.update_conduct_pointers):
-        print(idx, pointer)
-        st.markdown(f"**Pointer {idx + 1}:**")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.session_state.update_conduct_pointers[idx]["observation"] = st.text_input(
-                f"Observation {idx + 1}",
-                value=pointer["observation"],
-                key=f"update_observation_{idx}"
-            )
-        with col2:
-            st.session_state.update_conduct_pointers[idx]["reflection"] = st.text_input(
-                f"Reflection {idx + 1}",
-                value=pointer["reflection"],
-                key=f"update_reflection_{idx}"
-            )
-        with col3:
-            st.session_state.update_conduct_pointers[idx]["recommendation"] = st.text_input(
-                f"Recommendation {idx + 1}",
-                value=pointer["recommendation"],
-                key=f"update_recommendation_{idx}"
-            )
-        st.markdown("---")  # Separator between pointers
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.session_state.update_conduct_pointers_observation = st.text_input(
+            "Observation",
+            value=observation_existing
+        )
+    with col2:
+        st.session_state.update_conduct_pointers_reflection = st.text_input(
+            "Reflection",
+            value=reflection_existing
+        )
+    with col3:
+        st.session_state.update_conduct_pointers_recommendation = st.text_input(
+            "Recommendation",
+            value=recommendation_existing
+        )
 
-    # Button to add a new pointer
-    st.button("➕ Add Another Pointer", on_click=add_update_pointer)
     if st.button("Load On-Status for Update"):
         platoon = str(selected_platoon).strip()
         date_str = conduct_record['date']
@@ -1619,7 +1395,7 @@ elif feature == "Update Conduct":
             st.stop()
 
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-        records_parade = get_allparade_records(selected_company, SHEET_PARADE)
+        records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
         conduct_data = build_conduct_table(platoon, date_obj, records_nominal, records_parade)
         st.session_state.update_conduct_table = conduct_data
@@ -1649,26 +1425,17 @@ elif feature == "Update Conduct":
         new_participating = sum([1 for row in edited_data if not row.get('Is_Outlier', False)])
         new_total = len(edited_data)
         new_outliers = []
-        pointers_list = []
-
-        for idx, pointer in enumerate(st.session_state.update_conduct_pointers, start=1):
-            observation = pointer.get("observation", "").strip()
-            reflection = pointer.get("reflection", "").strip()
-            recommendation = pointer.get("recommendation", "").strip()
-
-            pointer_str = ""
-            if observation:
-                pointer_str += f"Observation {idx}:\n{observation}\n"
-            if reflection:
-                pointer_str += f"Reflection {idx}:\n{reflection}\n"
-            if recommendation:
-                pointer_str += f"Recommendation {idx}:\n{recommendation}\n"
-            pointers_list.append(pointer_str.strip())
-
-        new_pointers = "\n\n".join(pointers_list)
+        observation = st.session_state.update_conduct_pointers_observation.strip()
+        reflection = st.session_state.update_conduct_pointers_reflection.strip()
+        recommendation = st.session_state.update_conduct_pointers_recommendation.strip()
+        new_pointers = (
+            f"Observation :\n{observation}\n"
+            f"Reflection :\n{reflection}\n"
+            f"Recommendation :\n{recommendation}"
+        )
 
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-        records_parade = get_allparade_records(selected_company, SHEET_PARADE)
+        records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
         for row in edited_data:
             four_d = is_valid_4d(row.get("4D_Number", ""))
@@ -1771,10 +1538,9 @@ elif feature == "Update Conduct":
             f"by user '{st.session_state.username}'."
         )
 
-        st.session_state.update_conduct_pointers = [
-             {"observation": "", "reflection": "", "recommendation": ""}
-        ]
-        # Optionally, clear the conduct table if desired
+        st.session_state.update_conduct_pointers_observation = ""
+        st.session_state.update_conduct_pointers_reflection = ""
+        st.session_state.update_conduct_pointers_recommendation = ""
 
 # ------------------------------------------------------------------------------
 # 10) Feature C: Update Parade
@@ -1850,7 +1616,6 @@ elif feature == "Update Parade":
             end_val = ensure_str(row.get("End_Date", "")).strip()
             four_d = is_valid_4d(row.get("4D_Number", ""))
 
-            rank = ensure_str(row.get("Rank", "")).strip()
             parade_entry = st.session_state.parade_table[idx]
             row_num = parade_entry.get('_row_num')
 
@@ -1898,24 +1663,11 @@ elif feature == "Update Parade":
                 continue
 
             # If status is "leave" and they DO have a valid 4D, update leaves
-            if status_val.lower() in ["leave", "ll", "ol"]:
-                if formatted_start_val and formatted_end_val:
-                    if formatted_start_val != formatted_end_val:
-                        dates_str = f"{formatted_start_val}-{formatted_end_val}"
-                    else:
-                        dates_str = formatted_start_val
+            if status_val.lower() == "leave" or status_val.lower() == "ll" or status_val.lower() == "ol":
+                if formatted_start_val != formatted_end_val:
+                    dates_str = f"{formatted_start_val}-{formatted_end_val}"
                 else:
-                    dates_str = formatted_start_val or formatted_end_val
-
-                logger.debug(f"Constructed dates_str for {name_val}: {dates_str}") 
-                nominal_record = SHEET_NOMINAL.find(name_val, in_column=2) # Debug statement
-                existing_dates = SHEET_NOMINAL.cell(nominal_record.row, 6).value
-                if is_leave_accounted(existing_dates, dates_str):
-                    #st.warning(f"Leave for {name_val} on {dates_str} already exists. Skipping update.")
-                    logger.info(
-                        f"Leave on {dates_str} for {name_val}/{four_d} already accounted for in company '{selected_company}'. Skipping."
-                    )
-                    continue  
+                    dates_str = formatted_start_val
                 leaves_used = calculate_leaves_used(dates_str)
                 if leaves_used <= 0:
                     st.error(f"Invalid leave duration for {name_val}, skipping.")
@@ -1929,7 +1681,7 @@ elif feature == "Update Parade":
                     continue
 
                 try:
-                    nominal_record = SHEET_NOMINAL.find(name_val, in_column=2)  # 4D_Number is column C
+                    nominal_record = SHEET_NOMINAL.find(four_d, in_column=3)  # 4D_Number is column C
                     if nominal_record:
                         current_leaves_left = SHEET_NOMINAL.cell(nominal_record.row, 5).value
                         try:
@@ -1961,16 +1713,9 @@ elif feature == "Update Parade":
                         existing_dates = SHEET_NOMINAL.cell(nominal_record.row, 6).value
                         new_dates_entry = dates_str
                         if existing_dates:
-                            # Ensure comma separation without duplication
-                            if existing_dates.strip() and existing_dates.strip()[-1] != ',':
-                                updated_dates = f"{existing_dates},{new_dates_entry}"
-                            else:
-                                updated_dates = f"{existing_dates}{new_dates_entry}"
+                            updated_dates = existing_dates + f",{new_dates_entry}"
                         else:
                             updated_dates = new_dates_entry
-
-                        logger.debug(f"Updated 'Dates Taken' for {name_val}/{four_d}: {updated_dates}")  # Debug statement
-
                         SHEET_NOMINAL.update_cell(nominal_record.row, 6, updated_dates)
                         logger.info(
                             f"Updated 'Dates Taken' for {name_val}/{four_d}: {updated_dates} in company '{selected_company}' "
@@ -2020,7 +1765,6 @@ elif feature == "Update Parade":
             else:
                 SHEET_PARADE.append_row([
                     platoon,
-                    rank,
                     name_val,
                     four_d,
                     status_val,
@@ -2035,7 +1779,7 @@ elif feature == "Update Parade":
                 )
                 rows_updated += 1
 
-        st.success(f"Parade State updated.")
+        st.success(f"Parade State updated ({rows_updated} row(s) affected).")
         logger.info(
             f"Parade State updated for {rows_updated} row(s) for platoon {platoon} in company '{selected_company}' "
             f"by user '{submitted_by}'."
@@ -2048,89 +1792,178 @@ elif feature == "Update Parade":
 # 11) Feature D: Queries
 # ------------------------------------------------------------------------------
 elif feature == "Queries":
-    st.subheader("Query All Medical Statuses for a Person")
-    # Modified to allow either 4D or partial Name
-    person_input = st.text_input("Enter the 4D Number or partial Name", key="query_person_input")
-    if st.button("Get Statuses", key="btn_query_person"):
-        if not person_input:
-            st.error("Please enter a 4D Number or Name.")
-            st.stop()
+    st.header("Queries")
 
-        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-        records_parade = get_allparade_records(selected_company, SHEET_PARADE)
-        parade_data = records_parade
+    query_tabs = st.tabs(["Query Person", "Query Outliers"])
 
-        # Check if input is a valid 4D
-        four_d_input_clean = is_valid_4d(person_input)
-        person_rows = []
+    with query_tabs[0]:
+        st.subheader("Query All Statuses for a Person")
+        # Modified to allow either 4D or partial Name
+        person_input = st.text_input("Enter the 4D Number or partial Name", key="query_person_input")
+        if st.button("Get Statuses", key="btn_query_person"):
+            if not person_input:
+                st.error("Please enter a 4D Number or Name.")
+                st.stop()
 
-        if four_d_input_clean:
-            # Search by 4D
-            person_rows = [
-                row for row in parade_data
-                if is_valid_4d(row.get("4d_number", "")) == four_d_input_clean
+            records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+            records_parade = get_parade_records(selected_company, SHEET_PARADE)
+            parade_data = records_parade
+
+            # Check if input is a valid 4D
+            four_d_input_clean = is_valid_4d(person_input)
+            person_rows = []
+
+            if four_d_input_clean:
+                # Search by 4D
+                person_rows = [
+                    row for row in parade_data
+                    if is_valid_4d(row.get("4d_number", "")) == four_d_input_clean
+                ]
+            else:
+                # Otherwise, partial match by name (case-insensitive)
+                person_input_lower = person_input.strip().lower()
+                person_rows = [
+                    row for row in parade_data
+                    if person_input_lower in row.get("name", "").strip().lower()
+                ]
+
+            if not person_rows:
+                st.warning(f"No Parade_State records found for '{person_input}'")
+                logger.info(f"No Parade_State records found for '{person_input}' in company '{selected_company}'.")
+            else:
+                def parse_ddmmyyyy(d):
+                    try:
+                        return datetime.strptime(str(d), "%d%m%Y")
+                    except ValueError:
+                        return datetime.min
+
+                person_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
+
+                enhanced_rows = []
+                for row in person_rows:
+                    # Grab 4D or empty
+                    four_d_val = is_valid_4d(row.get("4d_number", "")) or ""
+                    # Grab rank from nominal if possible
+                    rank_val = ""
+                    # We can look up 4D if it exists, or match by name if not
+                    if four_d_val:
+                        # If 4D is valid, match by 4D
+                        for nominal in records_nominal:
+                            if nominal['4d_number'].upper() == four_d_val.upper():
+                                rank_val = nominal['rank']
+                                break
+                        name_val = find_name_by_4d(row.get("4d_number", ""), records_nominal)
+                    else:
+                        # If no 4D, match by name partially
+                        name_from_parade = ensure_str(row.get("name", ""))
+                        for nominal in records_nominal:
+                            # For partial match, ensure the parade name is quite specific
+                            # but here we'll just do a direct equality ignoring case
+                            if nominal['name'].strip().lower() == name_from_parade.strip().lower():
+                                four_d_val = nominal['4d_number']
+                                rank_val = nominal['rank']
+                                break
+                        name_val = name_from_parade
+
+                    enhanced_rows.append({
+                        "Rank": rank_val,
+                        "Name": name_val,
+                        "4D_Number": four_d_val,
+                        "Status": row.get("status", ""),
+                        "Start_Date": row.get("start_date_ddmmyyyy", ""),
+                        "End_Date": row.get("end_date_ddmmyyyy", "")
+                    })
+
+                st.subheader(f"Statuses for '{person_input}'")
+                st.table(enhanced_rows)
+                logger.info(f"Displayed statuses for '{person_input}' in company '{selected_company}'.")
+
+    with query_tabs[1]:
+        st.subheader("Query Outliers for a Specific Platoon & Conduct")
+
+        platoon_q = st.selectbox("Platoon", options=[1, 2, 3, 4], key="query_outliers_platoon")
+        cond_q = st.text_input("Conduct Name", key="query_outliers_conduct")
+
+        if st.button("Get Outliers", key="btn_query_outliers"):
+            platoon_query = str(st.session_state.query_outliers_platoon).strip()
+            conduct_query = ensure_str(cond_q)
+
+            if not platoon_query or not conduct_query:
+                st.error("Please enter both Platoon and Conduct Name.")
+                st.stop()
+
+            conduct_norm = normalize_name(conduct_query)
+            conducts_data = get_conduct_records(selected_company, SHEET_CONDUCTS)
+
+            matched_records = [
+                row for row in conducts_data
+                if normalize_name(row.get('conduct_name', '')) == conduct_norm and
+                   row.get(f'p/t plt{platoon_query}', '').split('/')[0].isdigit() and
+                   int(row.get(f'p/t plt{platoon_query}', '').split('/')[0]) > 0
             ]
-        else:
-            # Otherwise, partial match by name (case-insensitive)
-            person_input_lower = person_input.strip().lower()
-            person_rows = [
-                row for row in parade_data
-                if person_input_lower in row.get("name", "").strip().lower()
-            ]
 
-        if not person_rows:
-            st.warning(f"No Parade_State records found for '{person_input}'")
-            logger.info(f"No Parade_State records found for '{person_input}' in company '{selected_company}'.")
-        else:
-            def parse_ddmmyyyy(d):
+            if not matched_records:
+                conduct_pairs = [
+                    (normalize_name(row.get('conduct_name', '')))
+                    for row in conducts_data
+                    if row.get('conduct_name', '').strip()
+                ]
+                closest_matches = difflib.get_close_matches(conduct_norm, conduct_pairs, n=1, cutoff=0.6)
+                if not closest_matches:
+                    st.error("❌ **No similar conduct name found.**\n\nPlease check your input and try again.")
+                    logger.error(f"No similar conduct name found for: {conduct_norm} in company '{selected_company}'.")
+                    st.stop()
+                matched_norm = closest_matches[0]
+                matched_records = [
+                    row for row in conducts_data
+                    if normalize_name(row.get('conduct_name', '')) == matched_norm
+                ]
+                if not matched_records:
+                    st.error("❌ **No data found for the matched conduct.**")
+                    logger.error(f"No data found for the matched conduct: {matched_norm} in company '{selected_company}'.")
+                    st.stop()
+
+            all_outliers = []
+            for row in matched_records:
+                p_t_field = f"p/t plt{platoon_query}"
+                p_t_value = row.get(p_t_field, '0/0')
                 try:
-                    return datetime.strptime(str(d), "%d%m%Y")
-                except ValueError:
-                    return datetime.min
-            valid_status_prefixes = ("ex", "rib", "ld", "mc", "ma")
-            filtered_person_rows = [
-                row for row in person_rows if row.get("status", "").lower().startswith(valid_status_prefixes)
-            ]
-            person_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
+                    participating = int(p_t_value.split('/')[0]) if '/' in p_t_value and p_t_value.split('/')[0].isdigit() else 0
+                except:
+                    participating = 0
+                if participating > 0:
+                    outliers_value = row.get('outliers', '')
+                    if isinstance(outliers_value, (int, float)):
+                        outliers_str = str(outliers_value)
+                    elif isinstance(outliers_value, str):
+                        outliers_str = outliers_value
+                    else:
+                        outliers_str = ''
 
-            enhanced_rows = []
-            for row in person_rows:
-                # Grab 4D or empty
-                four_d_val = is_valid_4d(row.get("4d_number", "")) or ""
-                # Grab rank from nominal if possible
-                rank_val = ""
-                # We can look up 4D if it exists, or match by name if not
-                if four_d_val:
-                    # If 4D is valid, match by 4D
-                    for nominal in records_nominal:
-                        if nominal['4d_number'].upper() == four_d_val.upper():
-                            rank_val = nominal['rank']
-                            break
-                    name_val = find_name_by_4d(row.get("4d_number", ""), records_nominal)
-                else:
-                    # If no 4D, match by name partially
-                    name_from_parade = ensure_str(row.get("name", ""))
-                    for nominal in records_nominal:
-                        # For partial match, ensure the parade name is quite specific
-                        # but here we'll just do a direct equality ignoring case
-                        if nominal['name'].strip().lower() == name_from_parade.strip().lower():
-                            four_d_val = nominal['4d_number']
-                            rank_val = nominal['rank']
-                            break
-                    name_val = name_from_parade
+                    if outliers_str.lower() != 'none' and outliers_str.strip():
+                        outliers = [o.strip() for o in outliers_str.split(',') if o.strip()]
+                        all_outliers.extend(outliers)
 
-                enhanced_rows.append({
-                    "Rank": rank_val,
-                    "Name": name_val,
-                    "4D_Number": four_d_val,
-                    "Status": row.get("status", ""),
-                    "Start_Date": row.get("start_date_ddmmyyyy", ""),
-                    "End_Date": row.get("end_date_ddmmyyyy", "")
-                })
-
-            st.subheader(f"Statuses for '{person_input}'")
-            st.table(enhanced_rows)
-            logger.info(f"Displayed statuses for '{person_input}' in company '{selected_company}'.")
+            if all_outliers:
+                outlier_freq = {}
+                for o in all_outliers:
+                    outlier_freq[o] = outlier_freq.get(o, 0) + 1
+                sorted_outliers = sorted(outlier_freq.items(), key=lambda x: x[1], reverse=True)
+                outlier_table = [{"Outlier": o, "Frequency": c} for o, c in sorted_outliers]
+                st.markdown(
+                    f"📈 **Outliers for '{conduct_query}' at Platoon {platoon_query} in company '{selected_company}':**"
+                )
+                st.table(outlier_table)
+                logger.info(
+                    f"Displayed outliers for '{conduct_query}' at Platoon {platoon_query} in company '{selected_company}' "
+                    f"by user '{st.session_state.username}'."
+                )
+            else:
+                st.info(f"✅ **No outliers recorded for '{conduct_query}' at Platoon {platoon_query}' in company '{selected_company}'.**")
+                logger.info(
+                    f"No outliers recorded for '{conduct_query}' at Platoon {platoon_query}' "
+                    f"in company '{selected_company}' by user '{st.session_state.username}'."
+                )
 
 # ------------------------------------------------------------------------------
 # 12) Feature E: Overall View
@@ -2442,8 +2275,8 @@ elif feature == "Generate WhatsApp Message":
     # --- 1) Existing WhatsApp Message Generation for Selected Company ---
     records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
     records_parade = get_parade_records(selected_company, SHEET_PARADE)
-    today = datetime.now(TIMEZONE)
-    today_date = today.date()
+
+    today_date = datetime.today().date()
     filtered_parade = []
     for parade in records_parade:
         start_date_str = parade.get('start_date_ddmmyyyy', '')
@@ -2509,7 +2342,7 @@ elif feature == "Generate WhatsApp Message":
         else:
             others_list.append(person_dict)
 
-    today_str = today.strftime("%d%m%y")
+    today_str = datetime.today().strftime("%d%m%y")
     platoon = "1"  # Assuming platoon is fixed as "1" for the existing message
     company_name = selected_company
 
