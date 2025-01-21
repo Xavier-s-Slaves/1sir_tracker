@@ -321,38 +321,49 @@ def safety_sharing_app_form(SHEET_SAFETY):
         # Pressing this button will "submit" the form (one-time run).
         submitted = st.form_submit_button("Update Attendance")
 
-        if submitted:
-            # The sheet is updated ONLY when this button is clicked
-            if not date_input.strip():
-                st.error("Please enter a date in DDMMYYYY format before submitting.")
-                return
+    if submitted:
+        # The sheet is updated ONLY when this button is clicked
+        if not date_input.strip():
+            st.error("Please enter a date in DDMMYYYY format before submitting.")
+            return
 
-            # Validate date
-            try:
-                datetime.strptime(date_input, "%d%m%Y")
-            except ValueError:
-                st.error("Invalid date format. Must be DDMMYYYY.")
-                return
+        # Validate date
+        try:
+            datetime.strptime(date_input, "%d%m%Y")
+        except ValueError:
+            st.error("Invalid date format. Must be DDMMYYYY.")
+            return
 
-            rows_updated = 0
-            for entry in edited_data:
-                row_idx = entry["RowIndex"]
+        rows_updated = 0
+        for entry in edited_data:
+            row_idx = entry["RowIndex"]
+            # Fetch the existing value from the sheet
+            existing_attendance = all_values[row_idx - 1][col_index - 1].strip() if len(all_values[row_idx - 1]) >= col_index else ""
+
+            # Determine if there's a change in the checkbox state
+            checkbox_state_changed = (entry["Attended"] and not existing_attendance.startswith("Yes")) or \
+                                    (not entry["Attended"] and existing_attendance.startswith("Yes"))
+
+            if checkbox_state_changed:
+                # Update the new value based on the checkbox state
                 if entry["Attended"]:
-                    cell_value = f"Yes, {date_input}"
+                    new_value = f"Yes, {date_input}"
                 else:
-                    cell_value = ""
+                    new_value = ""
 
+                # Update the sheet only if there's a meaningful change
                 try:
-                    SHEET_SAFETY.update_cell(row_idx, col_index, cell_value)
+                    SHEET_SAFETY.update_cell(row_idx, col_index, new_value)
                     rows_updated += 1
                 except Exception as e:
                     st.error(f"Failed to update row {row_idx} for {entry['Name']}: {e}")
 
+        if rows_updated > 0:
             st.success(
-                f"Updated {rows_updated} rows in column '{selected_col_name}' "
-                f"with 'Yes, {date_input}' if ticked."
+                f"Updated."
             )
-            st.info("Check your Safety sheet to confirm changes.")
+        else:
+            st.info("No rows were updated as there were no changes to the data.")
 # ------------------------------------------------------------------------------
 # 3) Helper Functions + Caching
 # ------------------------------------------------------------------------------
@@ -825,6 +836,50 @@ def get_parade_records(selected_company: str, _sheet_parade):
         try:
             ed = datetime.strptime(record['end_date_ddmmyyyy'], "%d%m%Y").date()
             if ed >= today:
+                record['_row_num'] = idx
+                records.append(record)
+        except ValueError:
+            logger.warning(
+                f"Invalid date format in Parade_State for {record.get('name', '')}: "
+                f"{record.get('end_date_ddmmyyyy', '')}"
+            )
+            continue
+
+    return records
+def get_allparade_records(selected_company: str, _sheet_parade):
+    """
+    Returns all rows from Parade_State as a list of dicts, including row numbers.
+    Only includes statuses where End_Date is today or in the future.
+    Uses 'name' to identify the individual (instead of '4d_number').
+    Includes the 'company' field in each record.
+    """
+    today = datetime.today().date()
+    all_values = _sheet_parade.get_all_values()  # includes header row at index 0
+    if not all_values or len(all_values) < 2:
+        logger.warning(f"No records found in Parade_State for company '{selected_company}'.")
+        return []
+    
+    header = [h.strip().lower() for h in all_values[0]]
+    records = []
+    for idx, row in enumerate(all_values[1:], start=2):  # Start at row 2 in Google Sheets
+        if len(row) < len(header):
+            logger.warning(f"Skipping malformed row {idx} in Parade_State.")
+            continue
+
+        record = dict(zip(header, row))
+        
+        # Use Name
+        record['name'] = ensure_str(record.get('name', ''))
+        record['platoon'] = ensure_str(record.get('platoon', ''))
+        record['4d_number'] = ensure_str(record.get('4d_number', ''))  # We'll keep it for any leaves logic
+        record['start_date_ddmmyyyy'] = ensure_date_str(record.get('start_date_ddmmyyyy', ''))
+        record['end_date_ddmmyyyy'] = ensure_date_str(record.get('end_date_ddmmyyyy', ''))
+        record['status'] = ensure_str(record.get('status', ''))
+        record['company'] = selected_company  # Add company information
+
+        try:
+            ed = datetime.strptime(record['end_date_ddmmyyyy'], "%d%m%Y").date()
+            if ed:
                 record['_row_num'] = idx
                 records.append(record)
         except ValueError:
@@ -2002,7 +2057,7 @@ elif feature == "Queries":
             st.stop()
 
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-        records_parade = get_parade_records(selected_company, SHEET_PARADE)
+        records_parade = get_allparade_records(selected_company, SHEET_PARADE)
         parade_data = records_parade
 
         # Check if input is a valid 4D
@@ -2032,7 +2087,10 @@ elif feature == "Queries":
                     return datetime.strptime(str(d), "%d%m%Y")
                 except ValueError:
                     return datetime.min
-
+            valid_status_prefixes = ("ex", "rib", "ld", "mc", "ma")
+            filtered_person_rows = [
+                row for row in person_rows if row.get("status", "").lower().startswith(valid_status_prefixes)
+            ]
             person_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
 
             enhanced_rows = []
