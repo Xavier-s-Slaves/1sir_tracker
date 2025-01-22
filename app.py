@@ -138,6 +138,120 @@ COMPANY_SPREADSHEETS = {
     "MSC": "MSC"  # Added MSC
 }
 
+def extract_attendance_data(edited_data):
+    """
+    Extracts attendance data from the edited conduct data.
+    Returns a list of tuples containing (name, rank, is_present).
+    """
+    attendance_data = []
+    for row in edited_data:
+        name = row.get("Name", "").strip()
+        rank = row.get("Rank", "").strip()
+        is_present = not row.get("Is_Outlier", False)
+        attendance_data.append((name, rank, is_present))
+    return attendance_data
+
+def add_conduct_column_everything(sheet_everything, conduct_date: str, conduct_name: str, attendance_data: List[tuple]):
+    """
+    Adds a new column to the 'Everything' sheet with the conduct details and updates attendance.
+    
+    Parameters:
+    - sheet_everything: gspread Worksheet object for 'Everything' sheet
+    - conduct_date (str): Date of the conduct in DDMMYYYY format
+    - conduct_name (str): Name of the conduct
+    - attendance_data: List of tuples containing (name, rank, is_present)
+    """
+    # Define the new column header
+    new_col_header = f"{conduct_date}, {conduct_name}"
+    
+    try:
+        # Get all data from Everything sheet
+        all_data = sheet_everything.get_all_values()
+        if not all_data:
+            raise ValueError("No data found in Everything sheet")
+        
+        # Get current number of columns and add new header
+        new_col_index = len(all_data[0]) + 1
+        sheet_everything.update_cell(1, new_col_index, new_col_header)
+        
+        # Create a mapping of names to their attendance
+        attendance_map = {name: is_present for name, rank, is_present in attendance_data}
+        
+        # Prepare batch updates
+        updates = []
+        for row_idx, row in enumerate(all_data[1:], start=2):  # Start from row 2
+            name = row[1].strip()  # Assuming Name is in second column
+            # Check if this person was in the conduct
+            if name in attendance_map:
+                value = "Yes" if attendance_map[name] else "No"
+            else:
+                value = "No"  # Default to No if person wasn't in the conduct
+            
+            cell = gspread.utils.rowcol_to_a1(row_idx, new_col_index)
+            updates.append({
+                'range': cell,
+                'values': [[value]]
+            })
+        
+        # Batch update the sheet
+        if updates:
+            sheet_everything.batch_update(updates)
+            
+    except Exception as e:
+        logger.error(f"Error updating Everything sheet: {str(e)}")
+        st.error(f"Error updating Everything sheet: {str(e)}")
+        return
+
+def update_conduct_column_everything(sheet_everything, conduct_date: str, conduct_name: str, attendance_data: List[tuple]):
+    """
+    Updates an existing conduct column in the 'Everything' sheet with updated attendance.
+    
+    Parameters:
+    - sheet_everything: gspread Worksheet object for 'Everything' sheet
+    - conduct_date (str): Date of the conduct in DDMMYYYY format
+    - conduct_name (str): Name of the conduct
+    - attendance_data: List of tuples containing (name, rank, is_present)
+    """
+    target_col_header = f"{conduct_date}, {conduct_name}"
+    
+    try:
+        # Get all data from Everything sheet
+        all_data = sheet_everything.get_all_values()
+        if not all_data:
+            raise ValueError("No data found in Everything sheet")
+            
+        # Find the column index for the conduct
+        headers = all_data[0]
+        try:
+            conduct_col_index = headers.index(target_col_header) + 1  # 1-based index for gspread
+        except ValueError:
+            logger.error(f"Conduct column '{target_col_header}' not found in Everything sheet")
+            st.error(f"Conduct column '{target_col_header}' not found in Everything sheet")
+            return
+
+        # Create a mapping of names to their attendance
+        attendance_map = {name: is_present for name, rank, is_present in attendance_data}
+        
+        # Prepare updates
+        updates = []
+        for row_idx, row in enumerate(all_data[1:], start=2):  # Start from 2 to skip header
+            name = row[1].strip()  # Assuming Name is in second column
+            if name in attendance_map:
+                value = "Yes" if attendance_map[name] else "No"
+                cell = gspread.utils.rowcol_to_a1(row_idx, conduct_col_index)
+                updates.append({
+                    'range': cell,
+                    'values': [[value]]
+                })
+        
+        # Batch update the sheet
+        if updates:
+            sheet_everything.batch_update(updates)
+            
+    except Exception as e:
+        logger.error(f"Error updating Everything sheet: {str(e)}")
+        st.error(f"Error updating Everything sheet: {str(e)}")
+        return
 @st.cache_resource
 def get_sheets(selected_company: str):
     """
@@ -156,7 +270,8 @@ def get_sheets(selected_company: str):
             "nominal": sh.worksheet("Nominal_Roll"),
             "parade": sh.worksheet("Parade_State"),
             "conducts": sh.worksheet("Conducts"),
-            "safety": sh.worksheet("Safety")
+            "safety": sh.worksheet("Safety"),
+            "everything": sh.worksheet("Everything")
         }
     except Exception as e:
         logger.error(f"Error accessing spreadsheet '{spreadsheet_name}': {e}")
@@ -1454,6 +1569,15 @@ if feature == "Add Conduct":
             f"Pointers: {pointers}, Submitted_By: {submitted_by} in company '{selected_company}'."
         )
 
+        SHEET_EVERYTHING = worksheets["everything"]
+        attendance_data = extract_attendance_data(edited_data)
+        add_conduct_column_everything(
+            SHEET_EVERYTHING,
+            formatted_date_str,
+            cname,
+            attendance_data
+        )
+
         try:
             conduct_cell = SHEET_CONDUCTS.find(cname, in_column=2)
             if conduct_cell:
@@ -1650,6 +1774,22 @@ elif feature == "Update Conduct":
         new_total = len(edited_data)
         new_outliers = []
         pointers_list = []
+
+        SHEET_EVERYTHING = worksheets["everything"]
+
+        # Extract the updated attendance data
+
+        # Ensure the date is in DDMMYYYY format
+        formatted_date_str = ensure_date_str(conduct_record['date'])
+
+        attendance_data = extract_attendance_data(edited_data)
+        update_conduct_column_everything(
+            SHEET_EVERYTHING,
+            formatted_date_str,
+            conduct_record['conduct_name'],
+            attendance_data
+        )
+
 
         for idx, pointer in enumerate(st.session_state.update_conduct_pointers, start=1):
             observation = pointer.get("observation", "").strip()
