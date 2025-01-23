@@ -1667,8 +1667,49 @@ elif feature == "Update Conduct":
     if 'update_conduct_selected_prev' not in st.session_state:
         st.session_state.update_conduct_selected_prev = None
 
-    current_selected_conduct = selected_conduct
+    if 'update_platoon_selected_prev' not in st.session_state:
+        st.session_state.update_platoon_selected_prev = None
 
+    current_selected_conduct = selected_conduct
+    current_selected_platoon = selected_platoon
+    if current_selected_platoon != st.session_state.update_platoon_selected_prev:
+        # Update the previous selection
+        st.session_state.update_platoon_selected_prev = current_selected_platoon
+        
+        # Re-initialize the pointers based on the newly selected conduct
+        existing_pointers = conduct_record.get('pointers', '')
+        st.session_state.update_conduct_pointers = []
+        
+        if existing_pointers:
+            # Split pointers by double newlines assuming each pointer is separated by two newlines
+            pointer_entries = existing_pointers.split('\n\n')
+            for entry in pointer_entries:
+                observation = ""
+                reflection = ""
+                recommendation = ""
+                
+                # Extract Observation, Reflection, Recommendation using regex
+                obs_match = re.search(r'Observation\s*\d*:\s*([\s\S]*?)(?:\n|$)', entry, re.IGNORECASE)
+                refl_match = re.search(r'Reflection\s*\d*:\s*([\s\S]*?)(?:\n|$)', entry, re.IGNORECASE)
+                rec_match = re.search(r'Recommendation\s*\d*:\s*([\s\S]*?)(?:\n|$)', entry, re.IGNORECASE)
+                
+                if obs_match:
+                    observation = obs_match.group(1).strip()
+                if refl_match:
+                    reflection = refl_match.group(1).strip()
+                if rec_match:
+                    recommendation = rec_match.group(1).strip()
+                
+                st.session_state.update_conduct_pointers.append({
+                    "observation": observation,
+                    "reflection": reflection,
+                    "recommendation": recommendation
+                })
+        else:
+            # Initialize with one empty pointer
+            st.session_state.update_conduct_pointers = [
+                {"observation": "", "reflection": "", "recommendation": ""}
+            ]
 # Check if the selected conduct has changed
     if current_selected_conduct != st.session_state.update_conduct_selected_prev:
         # Update the previous selection
