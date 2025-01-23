@@ -1186,29 +1186,31 @@ def build_conduct_table(platoon: str, date_obj: datetime, records_nominal, recor
         four_d = person.get('4d_number', '')
         name_key = name.strip().upper()
 
-        active_status = False
-        status_desc = ""
+        active_statuses = []  # List to hold all active statuses for the person
+        
 
         for parade in parade_map.get(name_key, []):
             try:
                 start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', ''), "%d%m%Y").date()
                 end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', ''), "%d%m%Y").date()
                 if start_dt <= date_obj.date() <= end_dt:
-                    active_status = True
-                    status_desc = parade.get('status', '')
-                    break
+                    status = parade.get('status', '').strip().upper()
+                    if status:  # Ensure status is not empty
+                        active_statuses.append(status)
             except ValueError:
                 logger.warning(
                     f"Invalid date format for {name_key}: "
                     f"{parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}"
                 )
                 continue
+        is_outlier = len(active_statuses) > 0
+        status_desc = ", ".join(active_statuses) if is_outlier else ""
         data.append({
             'Rank': rank,
             'Name': name,
             '4D_Number': four_d,
-            'Is_Outlier': active_status,
-            'StatusDesc': status_desc if active_status else ""
+            'Is_Outlier': is_outlier,
+            'StatusDesc': status_desc
         })
     logger.info(f"Built conduct table with {len(data)} personnel for platoon {platoon} on {date_obj.strftime('%d%m%Y')}.")
     return data
