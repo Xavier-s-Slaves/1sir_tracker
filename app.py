@@ -642,7 +642,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
         # Add conformant absentees to the message
         if detail['conformant']:
             for absentee in detail['conformant']:
-                message_lines.append(f"> {absentee['rank']} {absentee['name']} ({absentee['status'].upper().split()[0]} {absentee['details']})")
+                message_lines.append(f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
 
         # Add Pl Statuses count
         status_group = defaultdict(list)
@@ -2289,10 +2289,11 @@ elif feature == "Queries":
             filtered_person_rows = [
                 row for row in person_rows if row.get("status", "").lower().startswith(valid_status_prefixes)
             ]
-            person_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
+            print(filtered_person_rows)
+            filtered_person_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
 
             enhanced_rows = []
-            for row in person_rows:
+            for row in filtered_person_rows:
                 # Grab 4D or empty
                 four_d_val = is_valid_4d(row.get("4d_number", "")) or ""
                 # Grab rank from nominal if possible
