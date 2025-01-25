@@ -1853,22 +1853,120 @@ elif feature == "Update Conduct":
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         records_parade = get_allparade_records(selected_company, SHEET_PARADE)
 
-        for row in edited_data:
-            four_d = is_valid_4d(row.get("4D_Number", ""))
-            status_desc = ensure_str(row.get("StatusDesc", ""))
-            if row.get("Is_Outlier", False):
-                if status_desc:
-                    new_outliers.append(f"{four_d} ({status_desc})" if four_d else row.get("Name", ""))
-                else:
-                    new_outliers.append(f"{four_d}" if four_d else row.get("Name", ""))
+        def is_valid_4d(four_d_number):
+            """
+            Validates the 4D number format.
+            Adjust the regex pattern as per your specific requirements.
+            """
+            pattern = re.compile(r'^4D\d{3,4}$', re.IGNORECASE)
+            return four_d_number if pattern.match(four_d_number) else ''
 
-        existing_outliers = ensure_str(conduct_record.get('outliers', ''))
-        if existing_outliers.lower() != 'none' and existing_outliers:
-            pattern = re.compile(r'4D\d{3,4}\s*\([^)]*\)')
-            existing_outliers_list = pattern.findall(existing_outliers)
-            updated_outliers = ", ".join(existing_outliers_list + new_outliers)
-        else:
-            updated_outliers = ", ".join(new_outliers) if new_outliers else "None"
+        def ensure_str(value):
+            """Ensures the value is a string."""
+            return str(value) if value is not None else ''
+
+        def parse_existing_outliers(existing_outliers):
+            """
+            Parses the existing_outliers string into a dictionary.
+            
+            Returns:
+                dict: Mapping from identifier (4D_Number or Name) to status_desc.
+            """
+            pattern = re.compile(
+                r'(4D\d{3,4}|[A-Za-z]+(?:\s[A-Za-z]+)*)\s*(?:\(([^)]+)\))?',
+                re.IGNORECASE
+            )
+            outliers_dict = {}
+            for match in pattern.finditer(existing_outliers):
+                identifier = match.group(1).strip()
+                status_desc = match.group(2).strip() if match.group(2) else ''
+                outliers_dict[identifier.lower()] = {
+                    'original': identifier,
+                    'status_desc': status_desc
+                }
+            return outliers_dict
+
+        def reconstruct_outliers(outliers_dict):
+            """
+            Reconstructs the outliers string from the dictionary.
+            
+            Returns:
+                str: Comma-separated outliers.
+            """
+            outliers_list = []
+            for entry in outliers_dict.values():
+                if entry['status_desc']:
+                    outliers_list.append(f"{entry['original']} ({entry['status_desc']})")
+                else:
+                    outliers_list.append(f"{entry['original']}")
+            return ", ".join(outliers_list) if outliers_list else "None"
+
+        def update_outliers(edited_data, conduct_record):
+            """
+            Updates the outliers based on edited_data and existing conduct_record.
+            
+            Args:
+                edited_data (list of dict): The edited data rows.
+                conduct_record (dict): The record containing existing outliers.
+            
+            Returns:
+                str: The updated outliers string.
+            """
+            # Step 1: Parse existing outliers
+            existing_outliers_str = ensure_str(conduct_record.get('outliers', ''))
+            existing_outliers = parse_existing_outliers(existing_outliers_str)
+            
+            # To track identifiers processed in edited_data
+            processed_identifiers = set()
+            
+            # Step 2: Process edited_data to build new outliers
+            for row in edited_data:
+                four_d = is_valid_4d(row.get("4D_Number", ""))
+                name = ensure_str(row.get("Name", ""))
+                status_desc = ensure_str(row.get("StatusDesc", ""))
+                is_outlier = row.get("Is_Outlier", False)
+                
+                # Determine the identifier
+                identifier = four_d if four_d else name
+                identifier_key = identifier.lower()
+                
+                if is_outlier:
+                    # Mark as processed
+                    processed_identifiers.add(identifier_key)
+                    
+                    # Check if identifier exists in existing_outliers
+                    if identifier_key in existing_outliers:
+                        # Check if status_desc has changed
+                        existing_status = existing_outliers[identifier_key]['status_desc']
+                        if existing_status != status_desc:
+                            # Update status_desc
+                            existing_outliers[identifier_key]['status_desc'] = status_desc
+                        # Else, no change needed
+                    else:
+                        # Add new outlier
+                        existing_outliers[identifier_key] = {
+                            'original': identifier,
+                            'status_desc': status_desc
+                        }
+                else:
+                    # If not an outlier, ensure it's removed from existing_outliers if present
+                    if identifier_key in existing_outliers:
+                        del existing_outliers[identifier_key]
+            
+            # Step 3: Handle any existing outliers not present in edited_data
+            # (Assuming that if an outlier is not in edited_data, it remains unchanged)
+            # If instead, you want to remove outliers not present in edited_data, uncomment the following lines:
+            #
+            # identifiers_in_existing = set(existing_outliers.keys())
+            # outliers_to_remove = identifiers_in_existing - processed_identifiers
+            # for identifier_key in outliers_to_remove:
+            #     del existing_outliers[identifier_key]
+            
+            # Step 4: Reconstruct the outliers string
+            updated_outliers = reconstruct_outliers(existing_outliers)
+            
+            return updated_outliers
+        updated_outliers = update_outliers(edited_data, conduct_record)
 
         new_pt_value = f"{new_participating}/{new_total}"
 
@@ -1954,9 +2052,7 @@ elif feature == "Update Conduct":
             f"by user '{st.session_state.username}'."
         )
 
-        st.session_state.update_conduct_pointers = [
-             {"observation": "", "reflection": "", "recommendation": ""}
-        ]
+
         # Optionally, clear the conduct table if desired
 
 # ------------------------------------------------------------------------------
