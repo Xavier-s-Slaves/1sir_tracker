@@ -1364,10 +1364,11 @@ if feature == "Add Conduct":
         "Date (DDMMYYYY)",
         value=st.session_state.conduct_date
     )
+    platoon_options = ["1", "2", "3", "4", "Coy HQ"]
     st.session_state.conduct_platoon = st.selectbox(
         "Your Platoon",
-        options=[1, 2, 3, 4],
-        format_func=lambda x: str(x)
+        options=platoon_options,
+        index=platoon_options.index(st.session_state.conduct_platoon) if st.session_state.conduct_platoon in platoon_options else 0
     )
     conduct_options = [
         "",
@@ -1571,17 +1572,25 @@ if feature == "Add Conduct":
             )
 
         total_strength_platoons = {}
-        for plt in [1, 2, 3, 4]:
-            strength = get_company_strength(str(plt), records_nominal)
+        # Updated to include 'Coy HQ'
+        for plt in platoon_options:
+            strength = get_company_strength(plt, records_nominal)
             total_strength_platoons[plt] = strength
+            print(total_strength_platoons[plt])
 
-        pt_plts = ['0/0', '0/0', '0/0', '0/0']
+        # Initialize pt_plts with 'Coy HQ'
+        pt_plts = ['0/0', '0/0', '0/0', '0/0', '0/0']
         participating = 0
         for row in edited_data:
             if not row.get('Is_Outlier', False):
                 participating += 1
 
-        pt_plts[int(platoon)-1] = f"{participating}/{total_strength_platoons[int(platoon)]}"
+        if platoon in platoon_options:
+            if platoon != "Coy HQ":
+                index = int(platoon) - 1  # Platoons 1-4 map to indices 0-3
+            else:
+                index = 4  # 'Coy HQ' maps to index 4
+            pt_plts[index] = f"{participating}/{total_strength_platoons[platoon]}"
 
         x_total = 0
         for pt in pt_plts:
@@ -1598,6 +1607,7 @@ if feature == "Add Conduct":
             pt_plts[1],
             pt_plts[2],
             pt_plts[3],
+            pt_plts[4],
             pt_total,
             ", ".join(all_outliers) if all_outliers else "None",
             pointers,
@@ -1606,7 +1616,7 @@ if feature == "Add Conduct":
         logger.info(
             f"Appended Conduct: {formatted_date_str}, {cname}, "
             f"P/T PLT1: {pt_plts[0]}, P/T PLT2: {pt_plts[1]}, P/T PLT3: {pt_plts[2]}, "
-            f"P/T PLT4: {pt_plts[3]}, P/T Total: {pt_total}, Outliers: {', '.join(all_outliers) if all_outliers else 'None'}, "
+            f"P/T PLT4: {pt_plts[3]}, P/T Coy HQ: {pt_plts[4]}, P/T Total: {pt_total}, Outliers: {', '.join(all_outliers) if all_outliers else 'None'}, "
             f"Pointers: {pointers}, Submitted_By: {submitted_by} in company '{selected_company}'."
         )
 
@@ -1633,7 +1643,7 @@ if feature == "Add Conduct":
             st.stop()
 
         try:
-            SHEET_CONDUCTS.update_cell(conduct_row, 7, pt_total)
+            SHEET_CONDUCTS.update_cell(conduct_row, 8, pt_total)
             logger.info(f"Updated P/T Total to {pt_total} for conduct '{cname}' in company '{selected_company}'.")
         except Exception as e:
             st.error(f"Error updating P/T Total: {e}")
@@ -1648,6 +1658,7 @@ if feature == "Add Conduct":
             f"P/T PLT2: {pt_plts[1]}\n"
             f"P/T PLT3: {pt_plts[2]}\n"
             f"P/T PLT4: {pt_plts[3]}\n"
+            f"P/T Coy HQ: {pt_plts[4]}\n"
             f"P/T Total: {pt_total}\n"
             f"Outliers: {', '.join(all_outliers) if all_outliers else 'None'}\n"
             f"Pointers:\n{pointers if pointers else 'None'}\n"
@@ -1655,7 +1666,7 @@ if feature == "Add Conduct":
         )
 
         st.session_state.conduct_date = ""
-        st.session_state.conduct_platoon = 1
+        st.session_state.conduct_platoon = platoon_options[0]
         st.session_state.conduct_name = conduct_options[0]
         st.session_state.conduct_table = []
         st.session_state.conduct_pointers = [
@@ -1695,10 +1706,11 @@ elif feature == "Update Conduct":
     conduct_record = records_conducts[conduct_index]
 
     st.subheader("Select Platoon to Update")
-    selected_platoon = st.selectbox(
+    platoon_options = ["1", "2", "3", "4", "Coy HQ"]
+    st.session_state.conduct_platoon = st.selectbox( 
         "Select Platoon",
-        options=[1, 2, 3, 4],
-        format_func=lambda x: f"Platoon {x}",
+        options=platoon_options,
+        index=platoon_options.index(str(st.session_state.conduct_platoon)) if str(st.session_state.conduct_platoon) in platoon_options else 0,
         key="update_conduct_platoon_select"
     )
 
@@ -1710,7 +1722,7 @@ elif feature == "Update Conduct":
         st.session_state.update_platoon_selected_prev = None
 
     current_selected_conduct = selected_conduct
-    current_selected_platoon = selected_platoon
+    current_selected_platoon = st.session_state.conduct_platoon
     if current_selected_platoon != st.session_state.update_platoon_selected_prev:
         # Update the previous selection
         st.session_state.update_platoon_selected_prev = current_selected_platoon
@@ -1816,7 +1828,7 @@ elif feature == "Update Conduct":
     # Button to add a new pointer
     st.button("➕ Add Another Pointer", on_click=add_update_pointer)
     if st.button("Load On-Status for Update"):
-        platoon = str(selected_platoon).strip()
+        platoon = str(st.session_state.conduct_platoon).strip()
         date_str = conduct_record['date']
         try:
             date_obj = datetime.strptime(date_str, "%d%m%Y")
@@ -1838,7 +1850,7 @@ elif feature == "Update Conduct":
         )
 
     if "update_conduct_table" in st.session_state and st.session_state.update_conduct_table:
-        st.subheader(f"Edit Conduct Data for Platoon {selected_platoon}")
+        st.subheader(f"Edit Conduct Data for Platoon {st.session_state.conduct_platoon}")
         st.write("Toggle 'Is_Outlier' if not participating, or add new rows for extra people.")
         edited_data = st.data_editor(
             st.session_state.update_conduct_table,
@@ -1850,7 +1862,7 @@ elif feature == "Update Conduct":
 
     if st.button("Update Conduct Data") and edited_data is not None:
         rows_updated = 0
-        platoon = str(selected_platoon).strip()
+        platoon = str(st.session_state.conduct_platoon).strip()
         pt_field = f"P/T PLT{platoon}"
         new_participating = sum([1 for row in edited_data if not row.get('Is_Outlier', False)])
         new_total = len(edited_data)
@@ -2021,20 +2033,41 @@ elif feature == "Update Conduct":
             st.error(f"Error locating Conduct in the sheet: {e}")
             logger.error(f"Exception while locating Conduct '{selected_conduct}': {e}")
             st.stop()
-
         try:
-            SHEET_CONDUCTS.update_cell(row_number, 3 + int(platoon) - 1, new_pt_value)
+            # Determine the column index based on the selected platoon
+            if platoon != "Coy HQ":
+                # For Platoons 1-4, map to columns 3-6 respectively
+                platoon_num = int(platoon)  # Convert platoon to integer
+                column_index = 2 + platoon_num  # Platoon 1 -> Column 3, Platoon 2 -> Column 4, etc.
+                pt_field = f"P/T PLT{platoon_num}"
+            else:
+                # For 'Coy HQ', assume it maps to Column 7
+                column_index = 7
+                pt_field = "P/T Coy HQ"
+            
+            # Update the specified cell in the Google Sheet
+            SHEET_CONDUCTS.update_cell(row_number, column_index, new_pt_value)
+            
+            # Log the update action
             logger.info(
                 f"Updated {pt_field} to {new_pt_value} for conduct '{selected_conduct}' "
                 f"in company '{selected_company}' by user '{st.session_state.username}'."
             )
+            
+        except ValueError:
+            # Handle the case where platoon is not an integer and not 'Coy HQ'
+            st.error(f"Invalid platoon selection: '{platoon}'. Please select a valid platoon.")
+            logger.error(f"Invalid platoon selection: '{platoon}'. Update aborted.")
+            st.stop()
+            
         except Exception as e:
-            st.error(f"Error updating {pt_field}: {e}")
-            logger.error(f"Exception while updating {pt_field}: {e}")
+            # Handle other potential exceptions
+            st.error(f"An error occurred while updating the conduct: {e}")
+            logger.error(f"Exception while updating conduct '{selected_conduct}': {e}")
             st.stop()
 
         try:
-            SHEET_CONDUCTS.update_cell(row_number, 8, updated_outliers if updated_outliers else "None")
+            SHEET_CONDUCTS.update_cell(row_number, 9, updated_outliers if updated_outliers else "None")
             logger.info(
                 f"Updated Outliers to '{updated_outliers}' for conduct '{selected_conduct}' "
                 f"in company '{selected_company}' by user '{st.session_state.username}'."
@@ -2046,7 +2079,7 @@ elif feature == "Update Conduct":
 
         if new_pointers:
             try:
-                SHEET_CONDUCTS.update_cell(row_number, 9, new_pointers)
+                SHEET_CONDUCTS.update_cell(row_number, 10, new_pointers)
                 logger.info(
                     f"Updated Pointers to '{new_pointers}' for conduct '{selected_conduct}' "
                     f"in company '{selected_company}' by user '{st.session_state.username}'."
@@ -2061,21 +2094,23 @@ elif feature == "Update Conduct":
             pt2 = SHEET_CONDUCTS.cell(row_number, 4).value
             pt3 = SHEET_CONDUCTS.cell(row_number, 5).value
             pt4 = SHEET_CONDUCTS.cell(row_number, 6).value
+            pt5 = SHEET_CONDUCTS.cell(row_number, 7).value
 
             pt1_part = int(pt1.split('/')[0]) if '/' in pt1 and pt1.split('/')[0].isdigit() else 0
             pt2_part = int(pt2.split('/')[0]) if '/' in pt2 and pt2.split('/')[0].isdigit() else 0
             pt3_part = int(pt3.split('/')[0]) if '/' in pt3 and pt3.split('/')[0].isdigit() else 0
             pt4_part = int(pt4.split('/')[0]) if '/' in pt4 and pt4.split('/')[0].isdigit() else 0
+            pt5_part = int(pt5.split('/')[0]) if '/' in pt5 and pt5.split('/')[0].isdigit() else 0
 
-            x_total = pt1_part + pt2_part + pt3_part + pt4_part
+            x_total = pt1_part + pt2_part + pt3_part + pt4_part + pt5_part
             y_total = sum([
                 int(p.split('/')[1]) if '/' in p and p.split('/')[1].isdigit() else 0 
-                for p in [pt1, pt2, pt3, pt4]
+                for p in [pt1, pt2, pt3, pt4, pt5]
             ])
 
             pt_total = f"{x_total}/{y_total}"
 
-            SHEET_CONDUCTS.update_cell(row_number, 7, pt_total)
+            SHEET_CONDUCTS.update_cell(row_number, 8, pt_total)
             logger.info(
                 f"Updated P/T Total to {pt_total} for conduct '{selected_conduct}' in company '{selected_company}' "
                 f"by user '{st.session_state.username}'."
