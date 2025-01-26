@@ -1369,9 +1369,48 @@ if feature == "Add Conduct":
         options=[1, 2, 3, 4],
         format_func=lambda x: str(x)
     )
-    st.session_state.conduct_name = st.text_input(
-        "Conduct Name (e.g. IPPT)",
-        value=st.session_state.conduct_name
+    conduct_options = [
+        "",
+        "RESILIENCE LEARNING",
+        "STRENGTH TRAINING",
+        "SPORTS AND GAMES",
+        "MO TALK",
+        "COY FIRE DRILL",
+        "OO ENGAGEMENT",
+        "SAFE & INCLUSIVE WORKPLACE",
+        "ORIENTATION RUN",
+        "Combat physical training",
+        "CBA&CPR-AED",
+        "Intro to Heartrate",
+        "Speed Agility Quickness",
+        "Metabolic circuit",
+        "FOOT DRILLS",
+        "NATIONAL EDUCATION",
+        "LEADERSHIP VALUES",
+        "IPPT",
+        "AQUA",
+        "ENDURANCE RUN TEMPO",
+        "DISTANCE INTERVAL",
+        "ENDURANCE RUN",
+        "PHYSICAL TRAINING LECTURE",
+        "GYM ORIENTATION",
+        "GYM TRAINING",
+        "ROUTE MARCH(3KM)",
+        "BALANCING, FLEXIBILITY, MOBILITY",
+        "FARTLEK",
+        "INFANTRY SMALL ARMS DEMONSTRATION",
+        "WEAPON PRESENTATION PREPARATION",
+        "CADENCE RUN",
+        "ELISS FAMILIARISATION",
+        "2.4KM CONDITIONING RUN",
+        "SAFRA TALK",
+        "TECHNICAL HANDLING"
+    ]
+
+    st.session_state.conduct_name = st.selectbox(
+        "Conduct Name",
+        options=conduct_options,
+        index=conduct_options.index(st.session_state.conduct_name) if st.session_state.conduct_name in conduct_options else 0
     )
 
     if 'conduct_pointers' not in st.session_state:
@@ -1617,7 +1656,7 @@ if feature == "Add Conduct":
 
         st.session_state.conduct_date = ""
         st.session_state.conduct_platoon = 1
-        st.session_state.conduct_name = ""
+        st.session_state.conduct_name = conduct_options[0]
         st.session_state.conduct_table = []
         st.session_state.conduct_pointers = [
              {"observation": "", "reflection": "", "recommendation": ""}
