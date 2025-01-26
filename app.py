@@ -1546,6 +1546,25 @@ if feature == "Add Conduct":
         index=conduct_options.index(st.session_state.conduct_name) if st.session_state.conduct_name in conduct_options else 0
     )
 
+    if 'conduct_session' not in st.session_state:
+        st.session_state.conduct_session = 1
+    # Only show session number input if a conduct is selected
+    if st.session_state.conduct_name:
+        # Session Number Input using number_input
+        st.session_state.conduct_session = st.number_input(
+            "Session Number",
+            min_value=1,
+            step=1,
+            value=int(st.session_state.conduct_session) if isinstance(st.session_state.conduct_session, int) else 1
+        )
+
+    # Display Final Conduct Name
+    if st.session_state.conduct_name and st.session_state.conduct_session:
+        final_conduct_name = f"{st.session_state.conduct_name} {st.session_state.conduct_session}"
+        st.write(f"**Final Conduct Name:** {final_conduct_name}")
+    elif st.session_state.conduct_name:
+        st.write(f"**Final Conduct Name:** {st.session_state.conduct_name}")
+
     if 'conduct_pointers' not in st.session_state:
         st.session_state.conduct_pointers = [
         {"observation": "", "reflection": "", "recommendation": ""}
@@ -1625,7 +1644,7 @@ if feature == "Add Conduct":
     if st.button("Finalize Conduct"):
         date_str = st.session_state.conduct_date.strip()
         platoon = str(st.session_state.conduct_platoon).strip()
-        cname = st.session_state.conduct_name.strip()
+        cname = final_conduct_name.strip()
         observation = st.session_state.conduct_pointers_observation.strip()
         reflection = st.session_state.conduct_pointers_reflection.strip()
         recommendation = st.session_state.conduct_pointers_recommendation.strip()
