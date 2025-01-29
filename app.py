@@ -681,17 +681,45 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
     """
     Adds a new column (DATE, ConductName) to the 'Progressive' sheet, updates the Yes/No attendance,
     then REARRANGES the columns so that conduct columns are grouped/sorted by 'conduct_name'.
+    Only keeps columns that match specified conduct names.
 
     :param sheet_progressive: gspread Worksheet object for the 'Progressive' sheet.
     :param conduct_date: e.g. '15012025'
     :param conduct_name: e.g. 'RESILIENCE LEARNING 4: Goal setting'
     :param attendance_data: list of tuples (name, rank, is_present)
     """
+    # Define allowed conduct prefixes/names
+    ALLOWED_CONDUCTS = {
+        "FARTLEK",
+        "Intro to Heartrate",
+        "Speed Agility Quickness",
+        "Metabolic circuit",
+        "STRENGTH TRAINING",
+        "AQUA",
+        "DISTANCE INTERVAL",
+        "ENDURANCE RUN",
+        "ROUTE MARCH(3KM)",
+        "BALANCING, FLEXIBILITY, MOBILITY",
+        "CADENCE RUN",
+        "GYM ORIENTATION",
+        "GYM TRAINING",
+        "ENDURANCE RUN TEMPO",
+        "Combat physical training"
+    }
+
+    def is_allowed_conduct(conduct_name: str) -> bool:
+        """Check if a conduct name matches any of the allowed conducts"""
+        conduct_upper = conduct_name.upper()
+        return any(
+            allowed.upper() in conduct_upper or conduct_upper.startswith(allowed.upper())
+            for allowed in ALLOWED_CONDUCTS
+        )
+
     # 1) Build new header label: "DDMMYYYY, CONDUCT_NAME"
     new_col_header = f"{conduct_date}, {conduct_name}"
 
     # 2) Read ALL data from Progressive sheet
-    all_data = sheet_progressive.get_all_values()  # 2D list: row-wise
+    all_data = sheet_progressive.get_all_values()
     if not all_data:
         raise ValueError("No data found in Progressive sheet")
 
@@ -699,7 +727,6 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
     num_cols = len(all_data[0])
 
     # 4) Insert (append) the new header at the end of the header row
-    #    We'll fill the data in that new column, then reorder columns in memory.
     sheet_progressive.update_cell(1, num_cols + 1, new_col_header)
 
     # 5) Create a {name: is_present} map for easy lookup
@@ -707,11 +734,10 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
 
     # 6) Fill the new column (temporary location at the far right)
     updates = []
-    for row_idx, row in enumerate(all_data[1:], start=2):  # skipping header row
+    for row_idx, row in enumerate(all_data[1:], start=2):
         if len(row) < 2:
-            continue  # skip malformed
-        name_in_sheet = row[1].strip()  # Typically "Name" is the second column
-        # If the name is in attendance_map => "Yes" or "No"
+            continue
+        name_in_sheet = row[1].strip()
         value = "Yes" if attendance_map.get(name_in_sheet, False) else "No"
         cell_a1 = gspread.utils.rowcol_to_a1(row_idx, num_cols + 1)
         updates.append({"range": cell_a1, "values": [[value]]})
@@ -719,70 +745,48 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
     if updates:
         sheet_progressive.batch_update(updates)
 
-    # -------------------------------------------------------------------------
-    # 7) REORDER THE COLUMNS IN MEMORY
-    # -------------------------------------------------------------------------
-    #
-    # We'll:
-    #   - read the updated data again,
-    #   - parse the header,
-    #   - reorder columns by the 'conduct_name' portion of each header
-    #   - re-upload the entire sheet with the columns rearranged.
-    #
+    # Read updated data
     all_data_updated = sheet_progressive.get_all_values()
     if not all_data_updated:
         raise ValueError("No data found after adding the new conduct column in Progressive.")
 
     header_row = all_data_updated[0]
-    body_rows = all_data_updated[1:]  # everything except the header
+    body_rows = all_data_updated[1:]
 
-    # We'll assume the first 2 columns in header_row might be "Rank" and "Name" (or however your sheet is structured).
-    # Then from column 3 onward are "conduct columns" with a header like "DDMMYYYY, SomeConduct".
-    #
-    # You can adjust the "start_of_conduct_cols" if your structure is different.
-    start_of_conduct_cols = 2  # i.e. 0-based => columns [0]="Rank", [1]="Name"; from [2] onward => conducts
-
-    # Split the columns into:
-    #   A) the "fixed" columns (Rank, Name, etc.)
-    #   B) the "conduct" columns that we want to reorder
+    start_of_conduct_cols = 2
     fixed_cols = header_row[:start_of_conduct_cols]
     conduct_cols = header_row[start_of_conduct_cols:]
 
-    # We'll parse the portion after the comma as "conduct_name"
-    # Example header = "15012025, RESILIENCE LEARNING"
-    # => splitted[0]="15012025", splitted[1]="RESILIENCE LEARNING"
     def get_conduct_name(hdr: str) -> str:
         parts = hdr.split(",", 1)
         if len(parts) == 2:
-            return parts[1].strip()  # the text after the comma
+            return parts[1].strip()
         return hdr.strip()
 
-    # We'll sort the "conduct_cols" by the extracted conduct name (alphabetically),
-    # so that e.g. "RESILIENCE LEARNING" and "RESILIENCE LEARNING 4: Goal setting" appear side-by-side.
+    # Filter out conduct columns that don't match allowed conducts
+    filtered_conduct_cols = [
+        col for col in conduct_cols
+        if is_allowed_conduct(get_conduct_name(col))
+    ]
+
+    # Sort the filtered conduct columns
     conduct_cols_sorted = sorted(
-        conduct_cols,
+        filtered_conduct_cols,
         key=lambda h: get_conduct_name(h).upper()
     )
 
-    # Now, we must reorder the entire matrix of data accordingly.
-    # Let's figure out the original indices for each conduct header (in the unsorted order),
-    # then map them to the new sorted order:
+    # Map old indices for the filtered and sorted columns
     old_conduct_index_map = {hdr: i for i, hdr in enumerate(conduct_cols, start=start_of_conduct_cols)}
 
-    # Build the new header in the correct sorted order
+    # Build new header with only allowed conducts
     new_header = list(fixed_cols) + conduct_cols_sorted
 
-    # We'll reconstruct all the body rows in memory. We'll do something like:
-    #   new_matrix[r][c] = old_matrix[r][ mapped_column ]
-    # for each row r in body_rows, each sorted col c in conduct_cols_sorted, etc.
-    new_matrix = [new_header]  # first row
+    # Reconstruct matrix with only allowed conducts
+    new_matrix = [new_header]
 
     for row_idx, row_values in enumerate(body_rows, start=1):
-        # row_values is a list of length = num_cols (+ maybe we appended a new col)
-        # First, keep the fixed columns in place
         new_row = row_values[:start_of_conduct_cols]
 
-        # For the conduct columns, fill them in sorted order
         for sorted_hdr in conduct_cols_sorted:
             old_abs_index = old_conduct_index_map[sorted_hdr]
             cell_val = ""
@@ -792,21 +796,9 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
 
         new_matrix.append(new_row)
 
-    # -------------------------------------------------------------------------
-    # 8) Write the entire new_matrix back to the "Progressive" sheet
-    #    (clearing first, or just batch_update in one shot).
-    # -------------------------------------------------------------------------
-    # Easiest is to clear the sheet (except maybe the formatting) then update.
+    # Update the sheet with filtered data
     sheet_progressive.clear()
     sheet_progressive.update("A1", new_matrix)
-
-    # Done! Now the columns for conducts should be grouped side by side
-    # by the alphabetical order of the "conduct_name" part of the header.
-    #
-    # For example:
-    #  "RESILIENCE LEARNING" < "RESILIENCE LEARNING 4: Goal setting" < "MO TALK",
-    # so you'll see them in that order in the final sheet columns.
-
 
 
 def generate_leopards_message(all_records_nominal, all_records_parade):
