@@ -146,10 +146,8 @@ def is_ha_activity(conduct_name: str, for_qualification: bool = True) -> bool:
     qualification_base_activities = {
         'FARTLEK',
         'ENDURANCE RUN',
-        'ENDURANCE RUN',
         'ENDURANCE TEMPO RUN',
         'DISTANCE INTERVAL',
-        'ROUTE MARCH',
         'STRENGTH TRAINING',
         'METABOLIC CIRCUIT',
         'INTRO TO HEARTRATE',
@@ -157,9 +155,7 @@ def is_ha_activity(conduct_name: str, for_qualification: bool = True) -> bool:
     }
     
     currency_base_activities = {
-        'ABILITY GROUP RUN',
         'FARTLEK',
-        'ENDURANCE RUN',
         'ENDURANCE RUN',
         'ENDURANCE TEMPO RUN',
         'DISTANCE INTERVAL',
@@ -313,7 +309,6 @@ def check_ha_currency_from_data(all_data, person_name: str, qualification_date: 
     if not person_row:
         return False, []
     
-    # Rest of the function remains the same as check_ha_currency
     currency_activities = []
     for header, participation in zip(headers[2:], person_row[2:]):
         if participation.strip().upper() == 'YES':
@@ -333,7 +328,6 @@ def check_ha_currency_from_data(all_data, person_name: str, qualification_date: 
     if not currency_activities:
         return False, []
 
-    # Use the latest activity date as the reference 'current' date
     latest_activity_date = max([a[0] for a in currency_activities])
     days_since_qual = (latest_activity_date - qualification_date).days
     periods_passed = days_since_qual // 14
@@ -344,15 +338,21 @@ def check_ha_currency_from_data(all_data, person_name: str, qualification_date: 
         if current_period_start <= activity[0] < current_period_start + timedelta(days=14)
     ]
 
-    for activity in current_period_activities:
-        week_end = activity[0] + timedelta(days=7)
+    # Check for any 7-day window in reverse order to find the latest valid pair
+    current_period_activities_sorted = sorted(current_period_activities, key=lambda x: x[0], reverse=True)
+    
+    for activity in current_period_activities_sorted:
+        week_start = activity[0] - timedelta(days=6)
         week_activities = [
-            a for a in current_period_activities
-            if activity[0] <= a[0] < week_end
+            a for a in current_period_activities_sorted
+            if week_start <= a[0] <= activity[0]
         ]
-        if len(week_activities) >= 2:
-            return True, [a[1] for a in week_activities[:2]]
-
+        week_activities_sorted = sorted(week_activities, key=lambda x: x[0])
+        if len(week_activities_sorted) >= 2:
+            # Take the last two activities in the window
+            qualifying = week_activities_sorted[-2:]
+            return True, [a[1] for a in qualifying]
+    
     return False, []
 # Update analyze_ha_status to add requalification information
 def analyze_ha_status(everything_sheet, batch_size=100, start_row=1):
