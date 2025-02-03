@@ -294,12 +294,19 @@ def get_ha_qualification_status_from_data(all_data, person_name: str) -> Tuple[b
     return True, qual_date, qual_activities, is_extended
 
 def check_ha_currency_from_data(all_data, person_name: str, qualification_date: datetime) -> Tuple[bool, List[str]]:
-    """Modified version of check_ha_currency that works with pre-fetched data."""
+    """
+    Check HA currency across all periods from qualification date to latest activity.
+    Returns (is_current, latest_qualifying_activities).
+    
+    Currency requires 2 activities within any 7-day window in each 14-day period.
+    If any period fails this requirement, currency is lost.
+    """
     if not all_data or len(all_data) < 2:
         return False, []
     
     headers = all_data[0]
     
+    # Find person's row
     person_row = None
     for row in all_data:
         if row[1].strip().upper() == person_name.strip().upper():
@@ -309,6 +316,24 @@ def check_ha_currency_from_data(all_data, person_name: str, qualification_date: 
     if not person_row:
         return False, []
     
+    # First find the latest activity date of ANY kind
+    latest_activity_date = None
+    for header, participation in zip(headers[2:], person_row[2:]):
+        if participation.strip().upper() == 'YES':
+            try:
+                date_str, _ = header.split(',', 1)
+                date_str = date_str.strip()
+                activity_date = parse_date(date_str)
+                
+                if latest_activity_date is None or activity_date > latest_activity_date:
+                    latest_activity_date = activity_date
+            except ValueError:
+                continue
+    
+    if not latest_activity_date:
+        return False, []
+    
+    # Now collect all currency-eligible activities after qualification date
     currency_activities = []
     for header, participation in zip(headers[2:], person_row[2:]):
         if participation.strip().upper() == 'YES':
@@ -318,42 +343,62 @@ def check_ha_currency_from_data(all_data, person_name: str, qualification_date: 
                 conduct_name = conduct_name.strip()
                 activity_date = parse_date(date_str)
                 
-                if activity_date >= qualification_date and is_ha_activity(conduct_name, False):
+                if activity_date > qualification_date and is_ha_activity(conduct_name, False):
                     currency_activities.append((activity_date, conduct_name))
             except ValueError:
                 continue
     
-    currency_activities.sort(key=lambda x: x[0])
-    
     if not currency_activities:
         return False, []
-
-    latest_activity_date = max([a[0] for a in currency_activities])
-    days_since_qual = (latest_activity_date - qualification_date).days
-    periods_passed = days_since_qual // 14
-    current_period_start = qualification_date + timedelta(days=periods_passed * 14)
-
-    current_period_activities = [
-        activity for activity in currency_activities
-        if current_period_start <= activity[0] < current_period_start + timedelta(days=14)
-    ]
-
-    # Check for any 7-day window in reverse order to find the latest valid pair
-    current_period_activities_sorted = sorted(current_period_activities, key=lambda x: x[0], reverse=True)
     
-    for activity in current_period_activities_sorted:
-        week_start = activity[0] - timedelta(days=6)
-        week_activities = [
-            a for a in current_period_activities_sorted
-            if week_start <= a[0] <= activity[0]
+    currency_activities.sort(key=lambda x: x[0])
+    first_period_start = qualification_date + timedelta(days=1)
+    # Calculate all periods from qualification date to latest activity of ANY kind
+    days_since_qual = (latest_activity_date - first_period_start).days
+    total_periods = (days_since_qual // 14) +1
+    print(days_since_qual, total_periods)
+    
+    # Check each period
+    for period_num in range(total_periods):
+        period_start = first_period_start + timedelta(days=period_num * 14)
+        period_end = period_start + timedelta(days=13)  # 14 days inclusive
+        print(period_start)
+        print(period_end)
+        # Get activities in this period
+        period_activities = [
+            activity for activity in currency_activities
+            if period_start <= activity[0] <= period_end
         ]
-        week_activities_sorted = sorted(week_activities, key=lambda x: x[0])
-        if len(week_activities_sorted) >= 2:
-            # Take the last two activities in the window
-            qualifying = week_activities_sorted[-2:]
-            return True, [a[1] for a in qualifying]
+        
+        if not period_activities:
+            return False, []
+        
+        # Check for any 7-day window with at least 2 activities
+        valid_window_found = False
+        period_activities.sort(key=lambda x: x[0])
+        
+        for i, activity in enumerate(period_activities):
+            window_start = activity[0]
+            window_end = window_start + timedelta(days=6)
+            
+            # Find activities within this 7-day window
+            window_activities = [
+                a for a in period_activities
+                if window_start <= a[0] <= window_end
+            ]
+            
+            if len(window_activities) >= 2:
+                valid_window_found = True
+                # If this is the last period, store these activities as the latest qualifying ones
+                if period_num == total_periods - 1:
+                    return True, [a[1] for a in window_activities[-2:]]
+                break
+        
+        if not valid_window_found:
+            return False, []
     
-    return False, []
+    # If we've checked all periods and haven't returned False, the person is current
+    return True, [a[1] for a in period_activities[-2:]]
 # Update analyze_ha_status to add requalification information
 def analyze_ha_status(everything_sheet, batch_size=100, start_row=1):
     """
@@ -440,23 +485,75 @@ def display_ha_status(batch_size=100, start_row=1):
                         st.write(f"- {activity}")
                     
                     now = datetime.now()
+                    qual_date = datetime.strptime(person['qualification_date'], "%d%m%Y")
                     
-                    # Check if currency end date has passed
-                    if person['currency_end_date']:
-                        currency_end = datetime.strptime(person['currency_end_date'], "%d%m%Y")
+                    # Find latest activity date and calculate current period
+                    def get_latest_activity_date(all_data, person_name):
+                        headers = all_data[0]
+                        person_row = None
+                        for row in all_data:
+                            if row[1].strip().upper() == person_name.strip().upper():
+                                person_row = row
+                                break
                         
-                        if now > currency_end:
-                            st.error("HA Qualification Expired - Requalification Required")
-                        elif person['is_current']:
-                            st.success("HA Currency: Maintained")
-                            st.write("Current Period Currency Activities:")
-                            for activity in person['currency_activities']:
-                                st.write(f"- {activity}")
+                        if not person_row:
+                            return None
+                            
+                        latest_date = None
+                        for header, participation in zip(headers[2:], person_row[2:]):
+                            if participation.strip().upper() == 'YES':
+                                try:
+                                    date_str, _ = header.split(',', 1)
+                                    date_str = date_str.strip()
+                                    activity_date = parse_date(date_str)
+                                    if latest_date is None or activity_date > latest_date:
+                                        latest_date = activity_date
+                                except ValueError:
+                                    continue
+                        return latest_date
+                    
+                    latest_activity = get_latest_activity_date(worksheets['everything'].get_all_values(), person['name'])
+                    if latest_activity:
+                        #print(latest_activity)
+                        days_since_qual = (latest_activity - qual_date).days - 1
+                        #print(days_since_qual)
+                        if days_since_qual == -1:
+                            days_since_qual = 0
+                        #print(days_since_qual)
+                        current_period_number = days_since_qual // 14
+                        
+                        # Calculate the period boundaries
+                        period_start = qual_date + timedelta(days=current_period_number * 14)
+                        period_end = period_start + timedelta(days=14)
+                        next_period_end = period_end + timedelta(days=14)
+                        
+                        # Format dates for comparison
+                        period_end_str = period_end.strftime("%d%m%Y")
+                        next_period_end_str = next_period_end.strftime("%d%m%Y")
+                        latest_activity_str = latest_activity.strftime("%d%m%Y")
+                        
+                        if person['currency_end_date']:
+                            if person['is_current']:
+                                st.success("HA Currency: Maintained")
+                                st.write("Current Period Currency Activities:")
+                                for activity in person['currency_activities']:
+                                    st.write(f"- {activity}")
+                            else:
+                                # Compare dates to determine which end date to show
+                                latest_activity_date = datetime.strptime(latest_activity_str, "%d%m%Y")
+                                period_end_date = datetime.strptime(period_end_str, "%d%m%Y")
+                                
+                                if latest_activity_date <= period_end_date:
+                                    display_date = period_end_str
+                                else:
+                                    display_date = next_period_end_str
+                                    
+                                st.warning(f"HA Currency: Not Done - Still Have Time Until {display_date}")
+                                st.info("Need 2 activity periods within 7 days to maintain currency")
                         else:
-                            st.warning(f"HA Currency: Not Done - Still Have Time Until {person['currency_end_date']}")
-                            st.info("Need 2 activity periods within 7 days to maintain currency")
+                            st.error("HA Qualification Error: No Currency End Date")
                     else:
-                        st.error("HA Qualification Error: No Currency End Date")
+                        st.error("Could not determine latest activity date")
                         
         else:
             st.info("No personnel have achieved HA qualification in this batch.")
@@ -481,7 +578,6 @@ def display_ha_status(batch_size=100, start_row=1):
                 st.write(f"- {person['name']}: Not yet qualified")
         else:
             st.info("All personnel in this batch have achieved HA qualification.")
-
 def extract_attendance_data(edited_data):
     """
     Extracts attendance data from the edited conduct data.
