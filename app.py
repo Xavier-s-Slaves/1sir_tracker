@@ -2037,40 +2037,40 @@ if feature == "Add Conduct":
     )
     conduct_options = [
         "",
-        "RESILIENCE LEARNING",
-        "STRENGTH TRAINING",
-        "SPORTS AND GAMES",
-        "MO TALK",
-        "COY FIRE DRILL",
-        "OO ENGAGEMENT",
-        "SAFE & INCLUSIVE WORKPLACE",
-        "ORIENTATION RUN",
-        "CPT",
-        "CBA&CPR-AED",
-        "Intro to Heartrate",
-        "Speed Agility Quickness",
-        "Metabolic circuit",
-        "FOOT DRILLS",
-        "NATIONAL EDUCATION",
-        "LEADERSHIP VALUES",
-        "IPPT",
+        "2.4KM CONDITIONING RUN",
         "AQUA",
-        "ENDURANCE RUN TEMPO",
+        "BALANCING, FLEXIBILITY, MOBILITY",
+        "CBA&CPR-AED",
+        "CADENCE RUN",
+        "COY FIRE DRILL",
+        "CPT",
         "DISTANCE INTERVAL",
+        "ELISS FAMILIARISATION",
         "ENDURANCE RUN",
-        "PHYSICAL TRAINING LECTURE",
+        "ENDURANCE RUN TEMPO",
+        "FARTLEK",
+        "FOOT DRILLS",
         "GYM ORIENTATION",
         "GYM TRAINING",
-        "ROUTE MARCH(3KM)",
-        "BALANCING, FLEXIBILITY, MOBILITY",
-        "FARTLEK",
         "INFANTRY SMALL ARMS DEMONSTRATION",
-        "WEAPON PRESENTATION PREPARATION",
-        "CADENCE RUN",
-        "ELISS FAMILIARISATION",
-        "2.4KM CONDITIONING RUN",
+        "INTRO TO HEARTRATE",
+        "IPPT",
+        "LEADERSHIP VALUES",
+        "MO TALK",
+        "METABOLIC CIRCUIT",
+        "NATIONAL EDUCATION",
+        "OO ENGAGEMENT",
+        "ORIENTATION RUN",
+        "PHYSICAL TRAINING LECTURE",
+        "RESILIENCE LEARNING",
+        "ROUTE MARCH(3KM)",
+        "SAFE & INCLUSIVE WORKPLACE",
         "SAFRA TALK",
-        "TECHNICAL HANDLING"
+        "SPEED AGILITY QUICKNESS",
+        "SPORTS AND GAMES",
+        "STRENGTH TRAINING",
+        "TECHNICAL HANDLING",
+        "WEAPON PRESENTATION PREPARATION"
     ]
 
     st.session_state.conduct_name = st.selectbox(
@@ -3151,7 +3151,7 @@ elif feature == "Queries":
                     return datetime.strptime(str(d), "%d%m%Y")
                 except ValueError:
                     return datetime.min
-            valid_status_prefixes = ("ex", "rib", "ld", "mc", "ma")
+            valid_status_prefixes = ("ex", "rib", "ld", "mc", "ma", "ml")
             filtered_person_rows = [
                 row for row in person_rows if row.get("status", "").lower().startswith(valid_status_prefixes)
             ]
