@@ -291,8 +291,109 @@ def get_ha_qualification_status_from_data(all_data, person_name: str) -> Tuple[b
     if not qualified or not qual_date:
         return False, None, [], False
     
+    is_current, nil = check_ha(all_data, person_name, qual_date)
+    if not is_current:
+        return False, None, [], False
+    
     return True, qual_date, qual_activities, is_extended
-
+def check_ha(all_data, person_name: str, qualification_date: datetime) -> Tuple[bool, List[str]]:
+    """
+    Check HA currency across periods from qualification date to latest activity.
+    For completed periods: if they exist and meet requirement (2 activities in 7-day window), return True
+    For incomplete periods: automatically return True
+    Returns (is_current, latest_qualifying_activities).
+    """
+    if not all_data or len(all_data) < 2:
+        return False, []
+    
+    headers = all_data[0]
+    
+    # Find person's row
+    person_row = None
+    for row in all_data:
+        if row[1].strip().upper() == person_name.strip().upper():
+            person_row = row
+            break
+    
+    if not person_row:
+        return False, []
+    
+    # First find the latest activity date of ANY kind
+    latest_activity_date = None
+    for header, participation in zip(headers[2:], person_row[2:]):
+        if participation.strip().upper() == 'YES':
+            try:
+                date_str, _ = header.split(',', 1)
+                date_str = date_str.strip()
+                activity_date = parse_date(date_str)
+                
+                if latest_activity_date is None or activity_date > latest_activity_date:
+                    latest_activity_date = activity_date
+            except ValueError:
+                continue
+    
+    if not latest_activity_date:
+        return False, []
+    
+    # Now collect all currency-eligible activities after qualification date
+    currency_activities = []
+    for header, participation in zip(headers[2:], person_row[2:]):
+        if participation.strip().upper() == 'YES':
+            try:
+                date_str, conduct_name = header.split(',', 1)
+                date_str = date_str.strip()
+                conduct_name = conduct_name.strip()
+                activity_date = parse_date(date_str)
+                
+                if activity_date > qualification_date and is_ha_activity(conduct_name, False):
+                    currency_activities.append((activity_date, conduct_name))
+            except ValueError:
+                continue
+    
+    if not currency_activities:
+        return False, []
+    
+    currency_activities.sort(key=lambda x: x[0])
+    first_period_start = qualification_date + timedelta(days=1)
+    
+    # Calculate latest complete period end date (floor to 14 days from start)
+    days_since_start = (latest_activity_date - first_period_start).days
+    last_complete_period_end = first_period_start + timedelta(days=((days_since_start // 14) * 14) - 1)
+    
+    # If we have complete periods, check the last complete one
+    if days_since_start >= 14:
+        period_start = last_complete_period_end - timedelta(days=13)
+        period_end = last_complete_period_end
+        
+        # Get activities in this period
+        period_activities = [
+            activity for activity in currency_activities
+            if period_start <= activity[0] <= period_end
+        ]
+        
+        # Check for any 7-day window with at least 2 activities
+        valid_window_found = False
+        for activity in period_activities:
+            window_start = activity[0]
+            window_end = window_start + timedelta(days=6)
+            
+            window_activities = [
+                a for a in period_activities
+                if window_start <= a[0] <= window_end
+            ]
+            
+            if len(window_activities) >= 2:
+                valid_window_found = True
+                if period_end == last_complete_period_end:
+                    return True, [a[1] for a in window_activities[-2:]]
+                break
+        
+        if not valid_window_found:
+            return False, []
+    
+    # If we're in an incomplete period or no complete periods exist, return True
+    # with the latest activities
+    return True, [a[1] for a in currency_activities[-2:]]
 def check_ha_currency_from_data(all_data, person_name: str, qualification_date: datetime) -> Tuple[bool, List[str]]:
     """
     Check HA currency across all periods from qualification date to latest activity.
