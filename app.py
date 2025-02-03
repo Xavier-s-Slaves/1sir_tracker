@@ -351,7 +351,7 @@ def check_ha(all_data, person_name: str, qualification_date: datetime) -> Tuple[
                 continue
     
     if not currency_activities:
-        return False, []
+        return True, []
     
     currency_activities.sort(key=lambda x: x[0])
     first_period_start = qualification_date + timedelta(days=1)
