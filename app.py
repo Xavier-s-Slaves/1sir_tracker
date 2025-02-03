@@ -3151,7 +3151,7 @@ elif feature == "Queries":
                     return datetime.strptime(str(d), "%d%m%Y")
                 except ValueError:
                     return datetime.min
-            valid_status_prefixes = ("ex", "rib", "ld", "mc", "ma", "ml")
+            valid_status_prefixes = ("ex", "rib", "ld", "mc", "ml")
             filtered_person_rows = [
                 row for row in person_rows if row.get("status", "").lower().startswith(valid_status_prefixes)
             ]
