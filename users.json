@@ -1,14 +1,14 @@
 {
     "admin": {
         "password": "pass",
-        "companies": ["Alpha", "Bravo", "Charlie", "Support", "MSC"]
+        "companies": ["Wolf", "Bravo", "Charlie", "Viper", "MSC"]
     },
     "3sg_ishneet": {
         "password": "pass",
-        "companies": ["Support"]
+        "companies": ["Viper"]
     },
     "3sg_yan_hongg": {
         "password": "passw1234!",
-        "companies": ["Support"]
+        "companies": ["Viper"]
     }
 }

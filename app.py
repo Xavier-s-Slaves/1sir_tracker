@@ -131,10 +131,10 @@ creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", SCO
 
 # List of available companies and their corresponding spreadsheet names
 COMPANY_SPREADSHEETS = {
-    "Alpha": "Alpha",
+    "Wolf": "Wolf",
     "Bravo": "Bravo",
     "Charlie": "Charlie",
-    "Support": "Support",
+    "Viper": "Viper",
     "MSC": "MSC"  # Added MSC
 }
 
