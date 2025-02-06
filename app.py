@@ -767,7 +767,7 @@ def update_conduct_column_everything(sheet_everything, conduct_date: str, conduc
             conduct_col_index = headers.index(target_col_header) + 1  # 1-based index for gspread
         except ValueError:
             logger.error(f"Conduct column '{target_col_header}' not found in Everything sheet")
-            st.error(f"Conduct column '{target_col_header}' not found in Everything sheet")
+            #st.error(f"Conduct column '{target_col_header}' not found in Everything sheet")
             return
 
         # Create a mapping of names to their attendance
