@@ -1112,6 +1112,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             name = parade.get('name', '')
             name_key = name.strip().lower()
             status = parade.get('status', '').upper()
+            d = parade.get('4d_number', '')
             start_str = parade.get('start_date_ddmmyyyy', '')
             end_str = parade.get('end_date_ddmmyyyy', '')
             try:
@@ -1133,6 +1134,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             if status_prefix in LEGEND_STATUS_PREFIXES:
                 conformant_absentees.append({
                     'rank': rank,
+                    '4d': d,
                     'name': name,
                     'status': status,
                     'details': details
@@ -1140,6 +1142,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             else:
                 non_conformant_absentees.append({
                     'rank': rank,
+                    '4d': d,
                     'name': name,
                     'status': status,
                     'details': details
@@ -1184,7 +1187,10 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
         # Add conformant absentees to the message
         if detail['conformant']:
             for absentee in detail['conformant']:
-                message_lines.append(f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
+                if absentee['4d']:
+                    message_lines.append(f"> {absentee['rank']} {absentee['4d']} {absentee['name']} ({absentee['status']} {absentee['details']})")
+                else:
+                    message_lines.append(f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
 
         # Add Pl Statuses count
         status_group = defaultdict(list)
@@ -1193,9 +1199,10 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             for person in detail['non_conformant']:
                 rank = person['rank']
                 name = person['name']
+                d = person['4d']
                 status_code = person['status']
                 details = person['details']
-                key = (rank, name)
+                key = (rank, name, d)
                 # Combine Status Code with Details for clarity
                 status_entry = f"{status_code} {details}"
                 status_group[key].append(status_entry)
@@ -1204,11 +1211,11 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
         message_lines.append(f"\nPl Statuses: {pl_status_count:02d}/{detail['nominal']:02d}")
         if detail['non_conformant']:
             # Iterate through the grouped statuses and append consolidated lines
-            for (rank, name), details_list in status_group.items():
-                if rank and name:
-                    line_prefix = f"> {rank} {name}"
+            for (rank, name, d), details_list in status_group.items():
+                if rank and name and d:
+                    line_prefix = f"> {rank} {d} {name}"
                 else:
-                    line_prefix = f"> {name}"
+                    line_prefix = f"> {rank} {name}"
                 consolidated_details = ", ".join(details_list)
                 message_lines.append(f"{line_prefix} ({consolidated_details})")
 
