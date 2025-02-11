@@ -1188,7 +1188,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
         if detail['conformant']:
             for absentee in detail['conformant']:
                 if absentee['4d']:
-                    message_lines.append(f"> {absentee['rank']} {absentee['4d']} {absentee['name']} ({absentee['status']} {absentee['details']})")
+                    message_lines.append(f"> {absentee['4d']} {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
                 else:
                     message_lines.append(f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
 
@@ -1213,7 +1213,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             # Iterate through the grouped statuses and append consolidated lines
             for (rank, name, d), details_list in status_group.items():
                 if rank and name and d:
-                    line_prefix = f"> {rank} {d} {name}"
+                    line_prefix = f"> {d} {rank} {name}"
                 else:
                     line_prefix = f"> {rank} {name}"
                 consolidated_details = ", ".join(details_list)
