@@ -2973,7 +2973,8 @@ elif feature == "Update Parade":
                 continue
 
             # (4) If the status indicates leave, schedule the Nominal_Roll updates.
-            if any(keyword in status_val.lower() for keyword in ["leave", "ll", "ol"]):
+            leave_pattern = re.compile(r'\b(?:leave|ll|ol)\b', re.IGNORECASE)
+            if leave_pattern.search(status_val):
                 half_day = "(am)" in status_val.lower() or "(pm)" in status_val.lower()
                 dates_str = (
                     f"{formatted_start_val}-{formatted_end_val}" 
@@ -3014,7 +3015,7 @@ elif feature == "Update Parade":
                 try:
                     current_leaves_left = SHEET_NOMINAL.cell(nominal_record.row, 5).value
                     try:
-                        current_leaves_left = int(current_leaves_left)
+                        current_leaves_left = float(current_leaves_left)
                     except ValueError:
                         current_leaves_left = 14
                         logger.warning(f"Invalid 'Number of Leaves Left' for {name_val}/{four_d}. Resetting to 14.")
