@@ -2291,19 +2291,30 @@ if feature == "Add Conduct":
         pt_total = f"{x_total}/{y_total}"
 
         formatted_date_str = ensure_date_str(date_str)
+                # Prepare outliers per platoon – order: PLT1, PLT2, PLT3, PLT4, Coy HQ
+        outliers_list = ["None"] * 5
+        if platoon in platoon_options:
+            index = int(platoon) - 1 if platoon != "Coy HQ" else 4
+            outliers_list[index] = ", ".join(all_outliers) if all_outliers else "None"
+
         SHEET_CONDUCTS.append_row([
-            formatted_date_str,
-            cname,
-            pt_plts[0],
-            pt_plts[1],
-            pt_plts[2],
-            pt_plts[3],
-            pt_plts[4],
-            pt_total,
-            ", ".join(all_outliers) if all_outliers else "None",
-            pointers,
-            submitted_by
+            formatted_date_str,  # Column 1: Date
+            cname,               # Column 2: Conduct_Name
+            pt_plts[0],          # Column 3: P/T PLT1
+            pt_plts[1],          # Column 4: P/T PLT2
+            pt_plts[2],          # Column 5: P/T PLT3
+            pt_plts[3],          # Column 6: P/T PLT4
+            pt_plts[4],          # Column 7: P/T Coy HQ
+            pt_total,            # Column 8: P/T Total
+            outliers_list[0],    # Column 9: PLT1 Outliers
+            outliers_list[1],    # Column 10: PLT2 Outliers
+            outliers_list[2],    # Column 11: PLT3 Outliers
+            outliers_list[3],    # Column 12: PLT4 Outliers
+            outliers_list[4],    # Column 13: Coy HQ Outliers
+            pointers,            # Column 14: Pointers
+            submitted_by         # Column 15: Submitted_By
         ])
+
         logger.info(
             f"Appended Conduct: {formatted_date_str}, {cname}, "
             f"P/T PLT1: {pt_plts[0]}, P/T PLT2: {pt_plts[1]}, P/T PLT3: {pt_plts[2]}, "
@@ -2655,72 +2666,44 @@ elif feature == "Update Conduct":
                     outliers_list.append(f"{entry['original']}")
             return ", ".join(outliers_list) if outliers_list else "None"
 
-        def update_outliers(edited_data, conduct_record):
-            """
-            Updates the outliers based on edited_data and existing conduct_record.
-            
-            Args:
-                edited_data (list of dict): The edited data rows.
-                conduct_record (dict): The record containing existing outliers.
-            
-            Returns:
-                str: The updated outliers string.
-            """
-            # Step 1: Parse existing outliers
-            existing_outliers_str = ensure_str(conduct_record.get('outliers', ''))
+        def update_outliers(edited_data, conduct_record, platoon):
+            # Determine which outlier column key to use based on platoon
+            if platoon != "Coy HQ":
+                outlier_key = f"PLT{platoon} Outliers"
+            else:
+                outlier_key = "Coy HQ Outliers"
+                
+            existing_outliers_str = ensure_str(conduct_record.get(outlier_key, ''))
             existing_outliers = parse_existing_outliers(existing_outliers_str)
             
-            # To track identifiers processed in edited_data
             processed_identifiers = set()
             
-            # Step 2: Process edited_data to build new outliers
             for row in edited_data:
                 four_d = is_valid_4d(row.get("4D_Number", ""))
                 name = ensure_str(row.get("Name", ""))
                 status_desc = ensure_str(row.get("StatusDesc", ""))
                 is_outlier = row.get("Is_Outlier", False)
                 
-                # Determine the identifier
                 identifier = four_d if four_d else name
                 identifier_key = identifier.lower()
                 
                 if is_outlier:
-                    # Mark as processed
                     processed_identifiers.add(identifier_key)
-                    
-                    # Check if identifier exists in existing_outliers
                     if identifier_key in existing_outliers:
-                        # Check if status_desc has changed
-                        existing_status = existing_outliers[identifier_key]['status_desc']
-                        if existing_status != status_desc:
-                            # Update status_desc
+                        if existing_outliers[identifier_key]['status_desc'] != status_desc:
                             existing_outliers[identifier_key]['status_desc'] = status_desc
-                        # Else, no change needed
                     else:
-                        # Add new outlier
                         existing_outliers[identifier_key] = {
                             'original': identifier,
                             'status_desc': status_desc
                         }
                 else:
-                    # If not an outlier, ensure it's removed from existing_outliers if present
                     if identifier_key in existing_outliers:
                         del existing_outliers[identifier_key]
             
-            # Step 3: Handle any existing outliers not present in edited_data
-            # (Assuming that if an outlier is not in edited_data, it remains unchanged)
-            # If instead, you want to remove outliers not present in edited_data, uncomment the following lines:
-            #
-            # identifiers_in_existing = set(existing_outliers.keys())
-            # outliers_to_remove = identifiers_in_existing - processed_identifiers
-            # for identifier_key in outliers_to_remove:
-            #     del existing_outliers[identifier_key]
-            
-            # Step 4: Reconstruct the outliers string
             updated_outliers = reconstruct_outliers(existing_outliers)
-            
             return updated_outliers
-        updated_outliers = update_outliers(edited_data, conduct_record)
+        updated_outliers = update_outliers(edited_data, conduct_record, platoon)
 
         new_pt_value = f"{new_participating}/{new_total}"
 
@@ -2770,7 +2753,15 @@ elif feature == "Update Conduct":
             st.stop()
 
         try:
-            SHEET_CONDUCTS.update_cell(row_number, 9, updated_outliers if updated_outliers else "None")
+            if platoon != "Coy HQ":
+                # For platoon "1" through "4"
+                outlier_column_index = 8 + int(platoon)  # e.g., platoon "1": 8+1 = 9
+            else:
+                outlier_column_index = 13  # Coy HQ
+
+            SHEET_CONDUCTS.update_cell(row_number, outlier_column_index, updated_outliers if updated_outliers else "None")
+
+            #SHEET_CONDUCTS.update_cell(row_number, 9, updated_outliers if updated_outliers else "None")
             logger.info(
                 f"Updated Outliers to '{updated_outliers}' for conduct '{selected_conduct}' "
                 f"in company '{selected_company}' by user '{st.session_state.username}'."
@@ -2782,7 +2773,7 @@ elif feature == "Update Conduct":
 
         if new_pointers:
             try:
-                SHEET_CONDUCTS.update_cell(row_number, 10, new_pointers)
+                SHEET_CONDUCTS.update_cell(row_number, 14, new_pointers)
                 logger.info(
                     f"Updated Pointers to '{new_pointers}' for conduct '{selected_conduct}' "
                     f"in company '{selected_company}' by user '{st.session_state.username}'."
