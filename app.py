@@ -721,7 +721,7 @@ def add_conduct_column_everything(sheet_everything, conduct_date: str, conduct_n
         # Prepare batch updates
         updates = []
         for row_idx, row in enumerate(all_data[1:], start=2):  # Start from row 2
-            name = row[1].strip()  # Assuming Name is in second column
+            name = row[2].strip()  # Assuming Name is in second column
             # Check if this person was in the conduct
             if name in attendance_map:
                 value = "Yes" if attendance_map[name] else "No"
@@ -776,7 +776,7 @@ def update_conduct_column_everything(sheet_everything, conduct_date: str, conduc
         # Prepare updates
         updates = []
         for row_idx, row in enumerate(all_data[1:], start=2):  # Start from 2 to skip header
-            name = row[1].strip()  # Assuming Name is in second column
+            name = row[2].strip()  # Assuming Name is in second column
             if name in attendance_map:
                 value = "Yes" if attendance_map[name] else "No"
                 cell = gspread.utils.rowcol_to_a1(row_idx, conduct_col_index)
@@ -1283,9 +1283,9 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
     # 6) Fill the new column (temporary location at the far right)
     updates = []
     for row_idx, row in enumerate(all_data[1:], start=2):
-        if len(row) < 2:
+        if len(row) < 3:
             continue
-        name_in_sheet = row[1].strip()
+        name_in_sheet = row[2].strip()
         value = "Yes" if attendance_map.get(name_in_sheet, False) else "No"
         cell_a1 = gspread.utils.rowcol_to_a1(row_idx, num_cols + 1)
         updates.append({"range": cell_a1, "values": [[value]]})
@@ -1301,7 +1301,7 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
     header_row = all_data_updated[0]
     body_rows = all_data_updated[1:]
 
-    start_of_conduct_cols = 2
+    start_of_conduct_cols = 3
     fixed_cols = header_row[:start_of_conduct_cols]
     conduct_cols = header_row[start_of_conduct_cols:]
 
