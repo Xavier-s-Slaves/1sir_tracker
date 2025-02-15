@@ -1162,8 +1162,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             'nominal': platoon_nominal,
             'absent': platoon_absent,
             'conformant': conformant_absentees,
-            'non_conformant': non_conformant_absentees,
-            'platoon': platoon  # Save raw platoon value for later use
+            'non_conformant': non_conformant_absentees
         })
 
     # Calculate total_present after determining total_absent
@@ -1183,53 +1182,15 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     for detail in platoon_details:
         message_lines.append(f"_*{detail['label']}*_")
         message_lines.append(f"Pl Present Strength: {detail['present']:02d}/{detail['nominal']:02d}")
-        
-        # For Platoon 1-4, add absent breakdown into Commanders and Recruits
-        if detail['label'].startswith("Platoon "):
-            platoon_num = detail['platoon']
-            if platoon_num in {"1", "2", "3", "4"}:
-                # Calculate commanders and recruits nominal counts from the nominal records
-                commanders_nominal = [
-                    r for r in company_nominal_records
-                    if r.get('platoon', 'Coy HQ') == platoon_num and r.get('rank', '').lower() != 'rec'
-                ]
-                recruits_nominal = [
-                    r for r in company_nominal_records
-                    if r.get('platoon', 'Coy HQ') == platoon_num and r.get('rank', '').lower() == 'rec'
-                ]
-                # Split conformant absentees into commanders and recruits
-                commanders_absent = [a for a in detail['conformant'] if a['rank'].lower() != 'rec']
-                recruits_absent = [a for a in detail['conformant'] if a['rank'].lower() == 'rec']
-                
-                message_lines.append(f"Pl Absent Strength: {detail['absent']:02d}/{detail['nominal']:02d}")
-                message_lines.append(f"Commanders Absent Strength: {len(commanders_absent):02d}/{len(commanders_nominal):02d}")
-                for absentee in commanders_absent:
-                    if absentee['4d']:
-                        message_lines.append(f"> {absentee['4d']} {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
-                    else:
-                        message_lines.append(f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
-                message_lines.append(f"\nRecruits Absent Strength: {len(recruits_absent):02d}/{len(recruits_nominal):02d}")
-                for absentee in recruits_absent:
-                    if absentee['4d']:
-                        message_lines.append(f"> {absentee['4d']} {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
-                    else:
-                        message_lines.append(f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
-            else:
-                message_lines.append(f"Pl Absent Strength: {detail['absent']:02d}/{detail['nominal']:02d}")
-                if detail['conformant']:
-                    for absentee in detail['conformant']:
-                        if absentee['4d']:
-                            message_lines.append(f"> {absentee['4d']} {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
-                        else:
-                            message_lines.append(f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
-        else:
-            message_lines.append(f"Pl Absent Strength: {detail['absent']:02d}/{detail['nominal']:02d}")
-            if detail['conformant']:
-                for absentee in detail['conformant']:
-                    if absentee['4d']:
-                        message_lines.append(f"> {absentee['4d']} {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
-                    else:
-                        message_lines.append(f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
+        message_lines.append(f"Pl Absent Strength: {detail['absent']:02d}/{detail['nominal']:02d}")
+
+        # Add conformant absentees to the message
+        if detail['conformant']:
+            for absentee in detail['conformant']:
+                if absentee['4d']:
+                    message_lines.append(f"> {absentee['4d']} {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
+                else:
+                    message_lines.append(f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
 
         # Add Pl Statuses count
         status_group = defaultdict(list)
