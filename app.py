@@ -1162,7 +1162,8 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             'nominal': platoon_nominal,
             'absent': platoon_absent,
             'conformant': conformant_absentees,
-            'non_conformant': non_conformant_absentees
+            'non_conformant': non_conformant_absentees,
+            'platoon': platoon  # Save raw platoon value for later use
         })
 
     # Calculate total_present after determining total_absent
@@ -1185,7 +1186,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
         
         # For Platoon 1-4, add absent breakdown into Commanders and Recruits
         if detail['label'].startswith("Platoon "):
-            platoon_num = detail['label'].split()[1]
+            platoon_num = detail['platoon']
             if platoon_num in {"1", "2", "3", "4"}:
                 # Calculate commanders and recruits nominal counts from the nominal records
                 commanders_nominal = [
