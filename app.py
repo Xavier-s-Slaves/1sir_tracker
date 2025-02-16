@@ -1037,14 +1037,16 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     Returns:
     - A formatted string message.
     """
-    # Define the legend-based status prefixes
-
-    # Get current date and day of the week
+    # Get current date and time
     today = datetime.now(TIMEZONE)
     date_str = today.strftime("%d%m%y, %A")
+    # Determine parade state based on the time: if after 4pm, mark as "LAST PARADE STATE"
+    parade_state = "LAST PARADE STATE" if today.hour >= 16 else "FIRST PARADE STATE"
 
     # Filter nominal records for the selected company
-    company_nominal_records = [record for record in nominal_records if record['company'] == selected_company]
+    company_nominal_records = [
+        record for record in nominal_records if record['company'] == selected_company
+    ]
 
     # Create a mapping from Name to Rank for quick lookup (case-insensitive)
     name_to_rank = {
@@ -1052,6 +1054,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
         for record in company_nominal_records
         if record['name']
     }
+
     # Extract all platoons from nominal records for the selected company
     all_platoons = set(record.get('platoon', 'Coy HQ') for record in company_nominal_records)
 
@@ -1060,11 +1063,10 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
 
     # Process parade records to find those active today and organize them by platoon
     for parade in parade_records:
-        company = parade.get('company', '')
-        if company != selected_company:
+        if parade.get('company', '') != selected_company:
             continue
 
-        platoon = parade.get('platoon', 'Coy HQ')  # Default to 'Coy HQ' if platoon not specified
+        platoon = parade.get('platoon', 'Coy HQ')  # Default to 'Coy HQ' if not specified
 
         start_str = parade.get('start_date_ddmmyyyy', '')
         end_str = parade.get('end_date_ddmmyyyy', '')
@@ -1079,35 +1081,36 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             )
             continue
 
-    # Initialize counters for total nominal and absent strengths
+    # Initialize counters for overall nominal and absent strengths
     total_nominal = len(company_nominal_records)
     total_absent = 0
 
     # Initialize storage for platoon-wise details
     platoon_details = []
 
+    # Sort platoons so that Coy HQ appears first
     sorted_platoons = sorted(all_platoons, key=lambda x: (0, x) if x.lower() == 'coy hq' else (1, x))
-    # Iterate through all platoons to gather data
     for platoon in sorted_platoons:
-        records = active_parade_by_platoon.get(platoon, [])  # Get parade records for this platoon, if any
+        records = active_parade_by_platoon.get(platoon, [])
 
-        # Determine if the platoon is 'Coy HQ' or a regular platoon
+        # Determine platoon label
         if platoon.lower() == 'coy hq':
             platoon_label = "Coy HQ"
         else:
             platoon_label = f"Platoon {platoon}"
 
-        # Calculate platoon nominal strength
+        # Total nominal strength for this platoon
         platoon_nominal = len([
             record for record in company_nominal_records
             if record.get('platoon', 'Coy HQ') == platoon
         ])
 
-        # Initialize lists for categorizing absentees
-        conformant_absentees = []
+        # Initialize lists for conformant absentees split into commander and REC,
+        # plus non-conformant parade records (to be shown under "Pl Statuses")
+        commander_absentees = []
+        rec_absentees = []
         non_conformant_absentees = []
 
-        # List absentees with reasons
         for parade in records:
             name = parade.get('name', '')
             name_key = name.strip().lower()
@@ -1127,18 +1130,27 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                 logger.warning(
                     f"Invalid dates for {name}: {start_str} - {end_str} in company '{selected_company}'"
                 )
-
+            # Look up the nominal rank; default to "N/A" if not found
             rank = name_to_rank.get(name_key, "N/A")
-            # Check if the status conforms to the legend-based statuses
-            status_prefix = status.lower().split()[0]  # Extract the prefix
+            status_prefix = status.lower().split()[0]
             if status_prefix in LEGEND_STATUS_PREFIXES:
-                conformant_absentees.append({
-                    'rank': rank,
-                    '4d': d,
-                    'name': name,
-                    'status': status,
-                    'details': details
-                })
+                # Split conformant absentees by whether their rank indicates a REC
+                if "rec" in rank.lower():
+                    rec_absentees.append({
+                        'rank': rank,
+                        '4d': d,
+                        'name': name,
+                        'status': status,
+                        'details': details
+                    })
+                else:
+                    commander_absentees.append({
+                        'rank': rank,
+                        '4d': d,
+                        'name': name,
+                        'status': status,
+                        'details': details
+                    })
             else:
                 non_conformant_absentees.append({
                     'rank': rank,
@@ -1148,69 +1160,112 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                     'details': details
                 })
 
-        # Update total_absent based on conformant absentees
-        platoon_absent = len(conformant_absentees)
+        # Total absent strength only counts conformant absentees
+        platoon_absent = len(commander_absentees) + len(rec_absentees)
         total_absent += platoon_absent
 
-        # Calculate platoon present strength based on conformant absentees
-        platoon_present = platoon_nominal - platoon_absent
+        # For platoons (other than Coy HQ), calculate nominal breakdown based on rank
+        if platoon.lower() != 'coy hq':
+            platoon_nominal_records = [
+                r for r in company_nominal_records
+                if r.get('platoon', 'Coy HQ') == platoon
+            ]
+            commander_nominal = sum(
+                1 for r in platoon_nominal_records if "rec" not in r.get('rank', '').lower()
+            )
+            rec_nominal = sum(
+                1 for r in platoon_nominal_records if "rec" in r.get('rank', '').lower()
+            )
+        else:
+            commander_nominal = None
+            rec_nominal = None
 
-        # Store the details for this platoon
         platoon_details.append({
             'label': platoon_label,
-            'present': platoon_present,
+            'present': platoon_nominal - platoon_absent,
             'nominal': platoon_nominal,
             'absent': platoon_absent,
-            'conformant': conformant_absentees,
-            'non_conformant': non_conformant_absentees
+            'commander_absentees': commander_absentees,
+            'rec_absentees': rec_absentees,
+            'non_conformant': non_conformant_absentees,
+            'commander_nominal': commander_nominal,
+            'rec_nominal': rec_nominal
         })
 
-    # Calculate total_present after determining total_absent
+    # Calculate overall present strength
     total_present = total_nominal - total_absent
 
-    # Start building the message
+    # Start building the message header
     message_lines = []
     message_lines.append(f"*🐆 {selected_company.upper()} COY*")
-    message_lines.append("*🗒️ FIRST PARADE STATE*")
+    message_lines.append(f"*🗒️ {parade_state}*")
     message_lines.append(f"*🗓️ {date_str}*\n")
-
-    # Add the overall strength
     message_lines.append(f"Coy Present Strength: {total_present:02d}/{total_nominal:02d}")
     message_lines.append(f"Coy Absent Strength: {total_absent:02d}/{total_nominal:02d}\n")
 
-    # Iterate through stored platoon details to build the message
+    # Build platoon-specific sections
     for detail in platoon_details:
         message_lines.append(f"_*{detail['label']}*_")
         message_lines.append(f"Pl Present Strength: {detail['present']:02d}/{detail['nominal']:02d}")
         message_lines.append(f"Pl Absent Strength: {detail['absent']:02d}/{detail['nominal']:02d}")
 
-        # Add conformant absentees to the message
-        if detail['conformant']:
-            for absentee in detail['conformant']:
+        # For platoons other than Coy HQ, show commander/REC breakdown
+        if detail['label'] != "Coy HQ":
+            # Always show commander absent strength line even if 0
+            message_lines.append(
+                f"Commander Absent Strength: {len(detail['commander_absentees']):02d}/{detail['commander_nominal']:02d}"
+            )
+            if detail['commander_absentees']:
+                for absentee in detail['commander_absentees']:
+                    if absentee['4d']:
+                        message_lines.append(
+                            f"> {absentee['4d']} {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})"
+                        )
+                    else:
+                        message_lines.append(
+                            f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})"
+                        )
+            # Always show REC absent strength line even if 0
+            message_lines.append(
+                f"REC Absent Strength: {len(detail['rec_absentees']):02d}/{detail['rec_nominal']:02d}"
+            )
+            if detail['rec_absentees']:
+                for absentee in detail['rec_absentees']:
+                    if absentee['4d']:
+                        message_lines.append(
+                            f"> {absentee['4d']} {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})"
+                        )
+                    else:
+                        message_lines.append(
+                            f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})"
+                        )
+        else:
+            # For Coy HQ, list all conformant absentees together
+            combined = detail.get('commander_absentees', []) + detail.get('rec_absentees', [])
+            for absentee in combined:
                 if absentee['4d']:
-                    message_lines.append(f"> {absentee['4d']} {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
+                    message_lines.append(
+                        f"> {absentee['4d']} {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})"
+                    )
                 else:
-                    message_lines.append(f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})")
+                    message_lines.append(
+                        f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})"
+                    )
 
-        # Add Pl Statuses count
+        # Add non-conformant parade statuses if any exist
         status_group = defaultdict(list)
-        # Add non-conformant absentees if any
         if detail['non_conformant']:
             for person in detail['non_conformant']:
                 rank = person['rank']
                 name = person['name']
                 d = person['4d']
                 status_code = person['status']
-                details = person['details']
+                details_str = person['details']
                 key = (rank, name, d)
-                # Combine Status Code with Details for clarity
-                status_entry = f"{status_code} {details}"
+                status_entry = f"{status_code} {details_str}"
                 status_group[key].append(status_entry)
-
-        pl_status_count = len(status_group)
-        message_lines.append(f"\nPl Statuses: {pl_status_count:02d}/{detail['nominal']:02d}")
-        if detail['non_conformant']:
-            # Iterate through the grouped statuses and append consolidated lines
+            pl_status_count = len(status_group)
+            message_lines.append(f"\nPl Statuses: {pl_status_count:02d}/{detail['nominal']:02d}")
             for (rank, name, d), details_list in status_group.items():
                 if rank and name and d:
                     line_prefix = f"> {d} {rank} {name}"
@@ -1219,11 +1274,12 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                 consolidated_details = ", ".join(details_list)
                 message_lines.append(f"{line_prefix} ({consolidated_details})")
 
-        message_lines.append("")  # Add a blank line for separation
+        message_lines.append("")  # Blank line for separation
 
-    # Combine all lines into a single message
     final_message = "\n".join(message_lines)
     return final_message
+
+
 
 def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct_name: str, attendance_data: List[tuple]):
     """
