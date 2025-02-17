@@ -1025,7 +1025,7 @@ def safety_sharing_app_form(SHEET_SAFETY):
 # 3) Helper Functions + Caching
 # ------------------------------------------------------------------------------
 
-def generate_company_message(selected_company: str, nominal_records: List[Dict], parade_records: List[Dict], target_date: Optional[datetime] = None) -> str:
+def generate_company_message(selected_company: str, nominal_records: List[Dict], parade_records: List[Dict], target_date: Optional[datetime] = None, selected_time: str = "FP") -> str:
     """
     Generate a company-specific message in the specified format.
 
@@ -1033,16 +1033,23 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     - selected_company: The company name.
     - nominal_records: List of nominal records from Nominal_Roll.
     - parade_records: List of parade records from Parade_State.
+    - target_date: The date for which the parade is to be checked.
+    - selected_time: The parade time indicator ("FP" for First Parade, "LP" for Last Parade).
 
     Returns:
     - A formatted string message.
     """
-    # Get current date and time
+    # Get the parade date (either passed in or use current date)
     today = target_date if target_date else datetime.now(TIMEZONE)
-    t = datetime.now(TIMEZONE)
     date_str = today.strftime("%d%m%y, %A")
-    # Determine parade state based on the time: if after 4pm, mark as "LAST PARADE STATE"
-    parade_state = "LAST PARADE STATE" if t.hour >= 16 else "FIRST PARADE STATE"
+    
+    # Determine parade state based on the selected_time
+    if selected_time.upper() == "FP":
+        parade_state = "FIRST PARADE STATE"
+    elif selected_time.upper() == "LP":
+        parade_state = "LAST PARADE STATE"
+    else:
+        parade_state = "FIRST PARADE STATE"  # Default/fallback if an unexpected value is given
 
     # Filter nominal records for the selected company
     company_nominal_records = [
@@ -1062,9 +1069,12 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     # Initialize a dictionary to hold parade records active today, organized by platoon
     active_parade_by_platoon = defaultdict(list)
 
-    # Process parade records to find those active today and organize them by platoon
+    # Process parade records to find those active today, matching the selected_time, and organize them by platoon
     for parade in parade_records:
         if parade.get('company', '') != selected_company:
+            continue
+        # Only process parade records that match the selected parade time (FP/LP)
+        if parade.get('time', '').upper() != selected_time.upper():
             continue
 
         platoon = parade.get('platoon', 'Coy HQ')  # Default to 'Coy HQ' if not specified
@@ -1676,6 +1686,7 @@ def get_parade_records(selected_company: str, _sheet_parade):
         record['end_date_ddmmyyyy'] = ensure_date_str(record.get('end_date_ddmmyyyy', ''))
         record['status'] = ensure_str(record.get('status', ''))
         record['company'] = selected_company  # Add company information
+        record['time'] = ensure_str(record.get('time', ''))
 
         try:
             ed = datetime.strptime(record['end_date_ddmmyyyy'], "%d%m%Y").date()
@@ -1720,6 +1731,7 @@ def get_allparade_records(selected_company: str, _sheet_parade):
         record['end_date_ddmmyyyy'] = ensure_date_str(record.get('end_date_ddmmyyyy', ''))
         record['status'] = ensure_str(record.get('status', ''))
         record['company'] = selected_company  # Add company information
+        record['time'] = ensure_str(record.get('time', ''))
 
         try:
             ed = datetime.strptime(record['end_date_ddmmyyyy'], "%d%m%Y").date()
@@ -3537,6 +3549,7 @@ elif feature == "Generate WhatsApp Message":
     with tab2:
         st.code(leopards_message, language='text')
     with tab3:
+        selected_time = st.radio("Select Parade Time", options=["FP", "LP"], index=0)
         selected_date = st.date_input("Select Parade Date", datetime.now(TIMEZONE).date())
         target_datetime = datetime.combine(selected_date, datetime.min.time())
         # Fetch nominal and parade records for the selected company
@@ -3548,7 +3561,7 @@ elif feature == "Generate WhatsApp Message":
             st.stop()
 
         # Generate the company-specific message
-        company_message = generate_company_message(selected_company, company_nominal, company_parade, target_date=target_datetime)
+        company_message = generate_company_message(selected_company, company_nominal, company_parade, target_date=target_datetime, selected_time=selected_time)
         st.code(company_message, language='text')
 
 
