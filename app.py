@@ -1821,6 +1821,7 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
                 'Status': parade.get('status', ''),
                 'Start_Date': parade.get('start_date_ddmmyyyy', ''),
                 'End_Date': parade.get('end_date_ddmmyyyy', ''),
+                'Time': parade.get('time', ''),
                 'Number_of_Leaves_Left': row.get('number of leaves left', 14),
                 'Dates_Taken': row.get('dates taken', ''),
                 '_row_num': parade.get('_row_num')
@@ -1834,6 +1835,7 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
             'Status': '',
             'Start_Date': '',
             'End_Date': '',
+            'Time': '',
             'Number_of_Leaves_Left': row.get('number of leaves left', 14),
             'Dates_Taken': row.get('dates taken', ''),
             '_row_num': None
@@ -2968,13 +2970,14 @@ elif feature == "Update Parade":
             start_val = ensure_str(row.get("Start_Date", "")).strip()
             end_val = ensure_str(row.get("End_Date", "")).strip()
             four_d = is_valid_4d(row.get("4D_Number", ""))
+            time_val = ensure_str(row.get("Time", "")).strip()  # New: Retrieve Time value
 
             rank = ensure_str(row.get("Rank", "")).strip()
             parade_entry = st.session_state.parade_table[idx]
             row_num = parade_entry.get('_row_num')  # Existing row number (if any)
 
             # (1) If all key fields are empty on an existing row then schedule deletion.
-            if not status_val and not start_val and not end_val and row_num:
+            if not status_val and not start_val and not end_val and not time_val and row_num:
                 parade_requests.append({
                     'deleteDimension': {
                         'range': {
@@ -2999,7 +3002,7 @@ elif feature == "Update Parade":
                 continue
 
             # (2) If an existing row has no status then schedule deletion.
-            if not status_val and row_num:
+            if not status_val and not time_val and row_num:
                 parade_requests.append({
                     'deleteDimension': {
                         'range': {
@@ -3162,6 +3165,7 @@ elif feature == "Update Parade":
                     start_date_col = header.index("start_date_ddmmyyyy") + 1
                     end_date_col = header.index("end_date_ddmmyyyy") + 1
                     submitted_by_col = header.index("submitted_by") + 1 if "submitted_by" in header else None
+                    time_col = header.index("time") + 1
                 except ValueError as ve:
                     st.error(f"Required column missing in Parade_State: {ve}.")
                     logger.error(f"Required column missing in Parade_State: {ve} in company '{selected_company}'.")
@@ -3240,6 +3244,23 @@ elif feature == "Update Parade":
                             }],
                             'fields': 'userEnteredValue'
                         }
+                    },
+                    {
+                        'updateCells': {
+                            'range': {
+                                'sheetId': SHEET_PARADE.id,
+                                'startRowIndex': row_num - 1,
+                                'endRowIndex': row_num,
+                                'startColumnIndex': time_col - 1,
+                                'endColumnIndex': time_col,
+                            },
+                            'rows': [{
+                                'values': [{
+                                    'userEnteredValue': {'stringValue': time_val}
+                                }]
+                            }],
+                            'fields': 'userEnteredValue'
+                        }
                     }
                 ])
                 # If any key field changed then update the "Submitted_By" column
@@ -3278,7 +3299,8 @@ elif feature == "Update Parade":
                     status_val,
                     formatted_start_val,
                     formatted_end_val,
-                    submitted_by
+                    submitted_by,
+                    time_val
                 ]
                 append_rows.append(new_row)
                 rows_updated += 1
