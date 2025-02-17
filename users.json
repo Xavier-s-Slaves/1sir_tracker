@@ -182,5 +182,10 @@
   "3SG_CHONG_ZHI_JUN": {
     "password": "pass",
     "companies": ["Wolf"]
+  },
+  "3SG_KAI_MING": {
+    "password": "pass",
+    "companies": ["Viper"]
   }
+
 }
