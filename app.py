@@ -10,7 +10,7 @@ import logging
 import urllib.parse
 import json
 import os
-from typing import List, Dict
+from typing import List, Dict, Optional
 from zoneinfo import ZoneInfo  # type: ignore
 # ------------------------------------------------------------------------------
 # Setup Logging
@@ -1025,7 +1025,7 @@ def safety_sharing_app_form(SHEET_SAFETY):
 # 3) Helper Functions + Caching
 # ------------------------------------------------------------------------------
 
-def generate_company_message(selected_company: str, nominal_records: List[Dict], parade_records: List[Dict]) -> str:
+def generate_company_message(selected_company: str, nominal_records: List[Dict], parade_records: List[Dict], target_date: Optional[datetime] = None) -> str:
     """
     Generate a company-specific message in the specified format.
 
@@ -1038,10 +1038,11 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     - A formatted string message.
     """
     # Get current date and time
-    today = datetime.now(TIMEZONE)
+    today = target_date if target_date else datetime.now(TIMEZONE)
+    t = datetime.now(TIMEZONE)
     date_str = today.strftime("%d%m%y, %A")
     # Determine parade state based on the time: if after 4pm, mark as "LAST PARADE STATE"
-    parade_state = "LAST PARADE STATE" if today.hour >= 16 else "FIRST PARADE STATE"
+    parade_state = "LAST PARADE STATE" if t.hour >= 16 else "FIRST PARADE STATE"
 
     # Filter nominal records for the selected company
     company_nominal_records = [
@@ -3837,6 +3838,8 @@ elif feature == "Generate WhatsApp Message":
     with tab2:
         st.code(leopards_message, language='text')
     with tab3:
+        selected_date = st.date_input("Select Parade Date", datetime.now(TIMEZONE).date())
+        target_datetime = datetime.combine(selected_date, datetime.min.time())
         # Fetch nominal and parade records for the selected company
         company_nominal = [record for record in records_nominal if record['company'] == selected_company]
         company_parade = [record for record in records_parade if record['company'] == selected_company]
@@ -3846,7 +3849,7 @@ elif feature == "Generate WhatsApp Message":
             st.stop()
 
         # Generate the company-specific message
-        company_message = generate_company_message(selected_company, company_nominal, company_parade)
+        company_message = generate_company_message(selected_company, company_nominal, company_parade, target_date=target_datetime)
         st.code(company_message, language='text')
 
 
