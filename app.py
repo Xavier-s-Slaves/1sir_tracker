@@ -1754,7 +1754,11 @@ def get_conduct_records(selected_company: str, _sheet_conducts):
         normalized_row['p/t plt3'] = ensure_str(normalized_row.get('p/t plt3', '0/0'))
         normalized_row['p/t plt4'] = ensure_str(normalized_row.get('p/t plt4', '0/0'))
         normalized_row['p/t total'] = ensure_str(normalized_row.get('p/t total', '0/0'))
-        normalized_row['outliers'] = ensure_str(normalized_row.get('outliers', ''))
+        normalized_row['plt1 outliers'] = ensure_str(normalized_row.get('plt1 outliers', ''))
+        normalized_row['plt2 outliers'] = ensure_str(normalized_row.get('plt2 outliers', ''))
+        normalized_row['plt3 outliers'] = ensure_str(normalized_row.get('plt3 outliers', ''))
+        normalized_row['plt4 outliers'] = ensure_str(normalized_row.get('plt4 outliers', ''))
+        normalized_row['coy hq outliers'] = ensure_str(normalized_row.get('coy hq outliers', ''))
         normalized_row['pointers'] = ensure_str(normalized_row.get('pointers', ''))
         normalized_row['submitted_by'] = ensure_str(normalized_row.get('submitted_by', ''))
         normalized_records.append(normalized_row)
@@ -3560,4 +3564,145 @@ elif feature == "Safety Sharing":
 
 elif feature == "HA":
     display_ha_status()
-   
+elif feature == "Overall View":
+    st.header("Overall View of All Conducts")
+    # (a) Fetch all conducts
+    conducts = get_conduct_records(selected_company, SHEET_CONDUCTS)
+    if not conducts:
+        st.info("No conducts available to display.")
+    else:
+        # (b) Convert to DataFrame
+        df = pd.DataFrame(conducts)
+
+        # (c) Convert the 'date' field to datetime objects for sorting
+        # Assumes date format is "DDMMYYYY" as produced by ensure_date_str
+        def parse_date(date_str):
+            try:
+                return datetime.strptime(date_str, "%d%m%Y")
+            except ValueError:
+                return None
+
+        df['Date'] = df['date'].apply(parse_date)
+
+        # (d) Warn if any dates could not be parsed
+        invalid_dates = df['Date'].isnull()
+        if invalid_dates.any():
+            st.warning(f"{invalid_dates.sum()} conduct(s) have invalid date formats and will appear at the bottom.")
+            logger.warning(f"{invalid_dates.sum()} conduct(s) have invalid date formats in company '{selected_company}'.")
+
+        # (e) Sort the DataFrame by Date (latest first)
+        df_sorted = df.sort_values(by='Date', ascending=False)
+
+        # (f) Format the 'Date' column for display
+        df_sorted['Date'] = df_sorted['Date'].dt.strftime("%d-%m-%Y")
+
+        # (g) Select and rename columns for display (remove outlier and pointer columns)
+        display_columns = {
+            'Date': 'Date',
+            'conduct_name': 'Conduct Name',
+            'p/t plt1': 'P/T PLT1',
+            'p/t plt2': 'P/T PLT2',
+            'p/t plt3': 'P/T PLT3',
+            'p/t plt4': 'P/T PLT4',
+            'p/t coy hq': 'P/T Coy HQ',
+            'p/t total': 'P/T Total',
+            'submitted_by': 'Submitted By'
+        }
+        df_display = df_sorted.rename(columns=display_columns)[list(display_columns.values())]
+
+        # -------------------------------------------------------------------------
+        # **Added: Filtering and Sorting Options**
+        # -------------------------------------------------------------------------
+        st.subheader("Filter and Sort Conducts")
+        with st.expander("🔍 Filter Conducts"):
+            search_term = st.text_input(
+                "Search by Conduct Name or Date (DDMMYYYY):",
+                value="",
+                help="Enter a keyword to filter conducts by name or date."
+            )
+            sort_field = st.selectbox("Sort By", options=["Date", "Conduct Name"], index=0)
+            sort_order = st.radio("Sort Order", options=["Ascending", "Descending"], index=1)
+            
+            # Apply filtering
+            if search_term:
+                search_term_upper = search_term.upper()
+                df_display = df_display[
+                    df_display['Conduct Name'].str.upper().str.contains(search_term_upper) |
+                    df_display['Date'].str.contains(search_term)
+                ]
+            
+            # Apply sorting
+            ascending = True if sort_order == "Ascending" else False
+            if sort_field == "Date":
+                df_display['Date_Sort'] = pd.to_datetime(df_display['Date'], format="%d-%m-%Y", errors='coerce')
+                df_display = df_display.sort_values(by='Date_Sort', ascending=ascending)
+                df_display = df_display.drop(columns=['Date_Sort'])
+            elif sort_field == "Conduct Name":
+                df_display = df_display.sort_values(by='Conduct Name', ascending=ascending)
+
+        # -------------------------------------------------------------------------
+        st.subheader("All Conducts")
+        st.dataframe(df_display, use_container_width=True)
+        # -------------------------------------------------------------------------
+        # **Added: Individuals' Missed Conducts**
+        # -------------------------------------------------------------------------
+        st.subheader("Individuals' Missed Conducts")
+        # Build a dictionary to track which individuals (by their 4D number) missed which conducts
+        missed_conducts_dict = defaultdict(set)
+        # List of outlier columns in the normalized conduct records
+        outlier_columns = [
+            "plt1 outliers",
+            "plt2 outliers",
+            "plt3 outliers",
+            "plt4 outliers",
+            "coy hq outliers"
+        ]
+        for conduct in conducts:
+            conduct_name = ensure_str(conduct.get('conduct_name', ''))
+            conduct_outliers = set()
+            for col in outlier_columns:
+                outliers_str = ensure_str(conduct.get(col, ''))
+                if outliers_str.lower() == 'none' or not outliers_str.strip():
+                    continue  # Skip if no outliers listed
+                # Split the outliers string by comma
+                outliers = [o.strip() for o in outliers_str.split(',') if o.strip()]
+                for outlier in outliers:
+                    # Extract the 4D number using regex (e.g., "4D1204")
+                    match = re.match(r'(4D\d{3,4})(?:\s*\(.*\))?', outlier, re.IGNORECASE)
+                    if match:
+                        four_d = match.group(1).upper()
+                        conduct_outliers.add(four_d)
+            for four_d in conduct_outliers:
+                missed_conducts_dict[four_d].add(conduct_name)
+
+        # Build a list of dictionaries for each individual
+        missed_conducts_data = []
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        # Build a lookup: normalized 4D number (uppercase) to the person's name
+        four_d_to_name = {row['4d_number'].upper(): row['name'] for row in records_nominal}
+        for four_d, conducts_missed in missed_conducts_dict.items():
+            name = four_d_to_name.get(four_d, "Unknown")
+            missed_conducts_data.append({
+                "4D_Number": four_d,
+                "Name": name,
+                "Missed Conducts Count": len(conducts_missed),
+                "Missed Conducts": ", ".join(sorted(conducts_missed))
+            })
+
+        if missed_conducts_data:
+            df_missed = pd.DataFrame(missed_conducts_data)
+            # Sort individuals from most missed conducts to least
+            df_missed = df_missed.sort_values(by="Missed Conducts Count", ascending=False).reset_index(drop=True)
+
+            # Apply styling to bold the top 3 individuals
+            def highlight_top3(row):
+                return ['font-weight: bold' if row.name < 3 else '' for _ in row]
+            styled_df = df_missed.style.apply(highlight_top3, axis=1)
+            st.subheader("Missed Conducts by Individuals (Most to Least)")
+            st.dataframe(styled_df, use_container_width=True)
+        else:
+            st.info("✅ **No individuals have missed any conducts.**")
+            logger.info(f"No missed conducts recorded in company '{selected_company}' by user '{st.session_state.username}'.")
+
+        # -------------------------------------------------------------------------
+        logger.info(f"Displayed overall view of all conducts in company '{selected_company}' by user '{st.session_state.username}'.")
