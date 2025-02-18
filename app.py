@@ -2883,7 +2883,6 @@ elif feature == "Update Conduct":
 
 
         # Optionally, clear the conduct table if desired
-
 elif feature == "Update Parade":
     st.header("Update Parade State")
 
@@ -2924,6 +2923,7 @@ elif feature == "Update Parade":
                     "Start_Date": status.get("start_date_ddmmyyyy", ""),
                     "End_Date": status.get("end_date_ddmmyyyy", "")
                 })
+            #st.write(formatted_statuses)
             logger.info(
                 f"Displayed current parade statuses for platoon {platoon} in company '{selected_company}' "
                 f"by user '{submitted_by}'."
@@ -2949,9 +2949,24 @@ elif feature == "Update Parade":
         records_parade = get_parade_records(selected_company, SHEET_PARADE)
 
         # Initialize lists to collect batch requests for each sheet
-        parade_requests = []      # For all deletions and updates in Parade_State
+        delete_requests = []      # For all deletions in Parade_State
+        update_requests = []      # For updates in Parade_State
         nominal_requests = []     # For updates to the Nominal_Roll (leaves)
-        append_rows = []          # For any new rows to be appended
+        append_rows = []          # For any new rows to be appended to Parade_State
+
+        # Retrieve the header to figure out column indices for updates
+        try:
+            header = SHEET_PARADE.row_values(1)
+            header = [h.strip().lower() for h in header]
+            name_col = header.index("name") + 1
+            status_col = header.index("status") + 1
+            start_date_col = header.index("start_date_ddmmyyyy") + 1
+            end_date_col = header.index("end_date_ddmmyyyy") + 1
+            submitted_by_col = header.index("submitted_by") + 1 if "submitted_by" in header else None
+        except ValueError as ve:
+            st.error(f"Required column missing in Parade_State: {ve}. Cannot proceed.")
+            logger.error(f"Required column missing in Parade_State: {ve} in company '{selected_company}'.")
+            st.stop()
 
         # Process each row from the data editor
         for idx, row in enumerate(edited_data):
@@ -2965,9 +2980,9 @@ elif feature == "Update Parade":
             parade_entry = st.session_state.parade_table[idx]
             row_num = parade_entry.get('_row_num')  # Existing row number (if any)
 
-            # (1) If all key fields are empty on an existing row then schedule deletion.
-            if not status_val and not start_val and not end_val and row_num:
-                parade_requests.append({
+            # 1) If all key fields are empty on an existing row -> schedule deletion.
+            if row_num and not status_val and not start_val and not end_val:
+                delete_requests.append({
                     'deleteDimension': {
                         'range': {
                             'sheetId': SHEET_PARADE.id,
@@ -2978,21 +2993,20 @@ elif feature == "Update Parade":
                     }
                 })
                 logger.info(
-                    f"Scheduled deletion of Parade_State row {row_num} for {name_val} in company '{selected_company}' "
-                    f"by user '{submitted_by}'."
+                    f"Scheduled deletion of Parade_State row {row_num} for {name_val} in company '{selected_company}'."
                 )
                 rows_updated += 1
                 continue
 
-            # Ensure the name is provided
+            # Ensure the name is provided if we are not deleting
             if not name_val:
                 st.error(f"Name is required for row {idx}. Skipping.")
                 logger.error(f"Name missing for row {idx} in company '{selected_company}'.")
                 continue
 
-            # (2) If an existing row has no status then schedule deletion.
-            if not status_val and row_num:
-                parade_requests.append({
+            # 2) If an existing row has no status -> schedule deletion.
+            if row_num and not status_val:
+                delete_requests.append({
                     'deleteDimension': {
                         'range': {
                             'sheetId': SHEET_PARADE.id,
@@ -3008,40 +3022,49 @@ elif feature == "Update Parade":
                 rows_updated += 1
                 continue
 
-            # (3) Ensure all required fields are present.
-            if not status_val or not start_val or not end_val:
+            # 3) If row has partial but not enough info (missing status/date), skip.
+            if (status_val and (not start_val or not end_val)) or ((start_val or end_val) and not status_val):
+                st.error(f"Missing fields (Status/Start/End) for {name_val}. Skipping.")
                 logger.error(f"Missing fields for {name_val} in company '{selected_company}'. Skipping.")
                 continue
 
-            # Format and validate the date fields.
-            formatted_start_val = ensure_date_str(start_val)
-            formatted_end_val = ensure_date_str(end_val)
-            try:
-                start_dt = datetime.strptime(formatted_start_val, "%d%m%Y")
-                end_dt = datetime.strptime(formatted_end_val, "%d%m%Y")
-                if end_dt < start_dt:
-                    st.error(f"End date is before start date for {name_val}, skipping.")
-                    logger.error(f"End date before start date for {name_val} in company '{selected_company}'.")
-                    continue
-            except ValueError:
-                st.error(f"Invalid date(s) for {name_val}, skipping.")
-                logger.error(
-                    f"Invalid date format for {name_val}: Start={formatted_start_val}, End={formatted_end_val} "
-                    f"in company '{selected_company}'."
-                )
+            # If there's no status, start, end, it's a new blank row. Skip if no changes:
+            if not row_num and not status_val and not start_val and not end_val:
                 continue
 
-            # (4) If the status indicates leave, schedule the Nominal_Roll updates.
+            # 4) Validate dates if present
+            formatted_start_val = ""
+            formatted_end_val = ""
+            if start_val and end_val:
+                formatted_start_val = ensure_date_str(start_val)
+                formatted_end_val = ensure_date_str(end_val)
+                try:
+                    start_dt = datetime.strptime(formatted_start_val, "%d%m%Y")
+                    end_dt = datetime.strptime(formatted_end_val, "%d%m%Y")
+                    if end_dt < start_dt:
+                        st.error(f"End date is before start date for {name_val}. Skipping.")
+                        logger.error(f"End date before start date for {name_val} in company '{selected_company}'.")
+                        continue
+                except ValueError:
+                    st.error(f"Invalid date(s) for {name_val}, skipping.")
+                    logger.error(
+                        f"Invalid date format for {name_val}: Start={formatted_start_val}, End={formatted_end_val} "
+                        f"in company '{selected_company}'."
+                    )
+                    continue
+
+            # 5) If the status indicates leave, schedule the Nominal_Roll updates.
             leave_pattern = re.compile(r'\b(?:leave|ll|ol)\b', re.IGNORECASE)
             if leave_pattern.search(status_val):
                 half_day = "(am)" in status_val.lower() or "(pm)" in status_val.lower()
                 dates_str = (
                     f"{formatted_start_val}-{formatted_end_val}" 
-                    if formatted_start_val != formatted_end_val 
+                    if (formatted_start_val and formatted_end_val and formatted_start_val != formatted_end_val) 
                     else formatted_start_val
                 )
                 logger.debug(f"Constructed dates_str for {name_val}: {dates_str}")
 
+                # Attempt to find a matching Nominal Record
                 try:
                     nominal_record = SHEET_NOMINAL.find(name_val, in_column=2)
                 except Exception as e:
@@ -3068,9 +3091,11 @@ elif feature == "Update Parade":
                     continue
 
                 if has_overlapping_status(four_d, start_dt, end_dt, records_parade):
+                    st.error(f"Leave dates overlap with existing record for {name_val}. Skipping.")
                     logger.error(f"Leave dates overlap for {name_val}: {dates_str} in company '{selected_company}'.")
                     continue
 
+                # Update Leaves
                 try:
                     current_leaves_left = SHEET_NOMINAL.cell(nominal_record.row, 5).value
                     try:
@@ -3090,7 +3115,7 @@ elif feature == "Update Parade":
                         continue
 
                     new_leaves_left = current_leaves_left - leaves_used
-                    # Schedule an update for the "Number of Leaves Left" cell in Nominal_Roll.
+                    # Nominal_Roll 'Number of Leaves Left' update
                     nominal_requests.append({
                         'updateCells': {
                             'range': {
@@ -3108,17 +3133,18 @@ elif feature == "Update Parade":
                             'fields': 'userEnteredValue'
                         }
                     })
-                    # Prepare the updated "Dates Taken" value.
+
+                    # Nominal_Roll 'Dates Taken' update
                     new_dates_entry = dates_str
                     if existing_dates:
-                        if existing_dates.strip() and existing_dates.strip()[-1] != ',':
+                        existing_dates = existing_dates.strip()
+                        if existing_dates and not existing_dates.endswith(','):
                             updated_dates = f"{existing_dates},{new_dates_entry}"
                         else:
                             updated_dates = f"{existing_dates}{new_dates_entry}"
                     else:
                         updated_dates = new_dates_entry
 
-                    logger.debug(f"Updated 'Dates Taken' for {name_val}/{four_d}: {updated_dates}")
                     nominal_requests.append({
                         'updateCells': {
                             'range': {
@@ -3137,30 +3163,27 @@ elif feature == "Update Parade":
                         }
                     })
                     logger.info(
-                        f"Scheduled updates for Nominal_Roll for {name_val}/{four_d}: New leaves left = {new_leaves_left}, Dates = {updated_dates}."
+                        f"Scheduled updates for Nominal_Roll for {name_val}/{four_d}: "
+                        f"New leaves left = {new_leaves_left}, Dates = {updated_dates}."
                     )
                 except Exception as e:
                     st.error(f"Error updating leaves for {name_val}/{four_d}: {e}. Skipping.")
                     logger.error(f"Exception while updating leaves for {name_val}/{four_d}: {e}.")
                     continue
 
-            # (5) Build batch update requests for the Parade_State.
-            header = SHEET_PARADE.row_values(1)
-            header = [h.strip().lower() for h in header]
+            # 6) Build the batch update requests for the Parade_State if this row is existing:
             if row_num:
-                try:
-                    name_col = header.index("name") + 1
-                    status_col = header.index("status") + 1
-                    start_date_col = header.index("start_date_ddmmyyyy") + 1
-                    end_date_col = header.index("end_date_ddmmyyyy") + 1
-                    submitted_by_col = header.index("submitted_by") + 1 if "submitted_by" in header else None
-                except ValueError as ve:
-                    st.error(f"Required column missing in Parade_State: {ve}.")
-                    logger.error(f"Required column missing in Parade_State: {ve} in company '{selected_company}'.")
-                    continue
+                # Compare with original to see if changed
+                original_entry = st.session_state.parade_table[idx]
+                is_changed = (
+                    row.get('Status', '') != original_entry.get('Status', '') or
+                    row.get('Start_Date', '') != original_entry.get('Start_Date', '') or
+                    row.get('End_Date', '') != original_entry.get('End_Date', '')
+                )
 
-                # Prepare a list of cell update requests (each targeting a single cell)
-                parade_requests.extend([
+                # Prepare separate "updateCells" requests for each column
+                # (Name, Status, Start, End) to the same row.
+                update_requests.extend([
                     # Update "Name"
                     {
                         'updateCells': {
@@ -3234,15 +3257,10 @@ elif feature == "Update Parade":
                         }
                     }
                 ])
-                # If any key field changed then update the "Submitted_By" column
-                original_entry = st.session_state.parade_table[idx]
-                is_changed = (
-                    row.get('Status', '') != original_entry.get('Status', '') or
-                    row.get('Start_Date', '') != original_entry.get('Start_Date', '') or
-                    row.get('End_Date', '') != original_entry.get('End_Date', '')
-                )
+
+                # If status/dates changed, update "Submitted_By"
                 if submitted_by_col and is_changed:
-                    parade_requests.append({
+                    update_requests.append({
                         'updateCells': {
                             'range': {
                                 'sheetId': SHEET_PARADE.id,
@@ -3259,9 +3277,11 @@ elif feature == "Update Parade":
                             'fields': 'userEnteredValue'
                         }
                     })
+
                 rows_updated += 1
+
             else:
-                # (6) For new rows, accumulate the row data for a batch append.
+                # This is a new entry to be appended
                 new_row = [
                     platoon,
                     rank,
@@ -3275,11 +3295,29 @@ elif feature == "Update Parade":
                 append_rows.append(new_row)
                 rows_updated += 1
 
-        # Finally, execute all the batched operations:
-        if parade_requests:
-            SHEET_PARADE.spreadsheet.batch_update({"requests": parade_requests})
+        # =======================
+        # Execute the batched operations in a safe order
+        # =======================
+
+        # 1) Nominal Roll updates (independent of row references in Parade sheet)
         if nominal_requests:
             SHEET_PARADE.spreadsheet.batch_update({"requests": nominal_requests})
+
+        # 2) Parade updates (existing rows only)
+        if update_requests:
+            SHEET_PARADE.spreadsheet.batch_update({"requests": update_requests})
+
+        # 3) Deletions in descending order, so row shifts do not break references
+        if delete_requests:
+            # Sort by 'startIndex' descending so we delete from bottom to top
+            delete_requests = sorted(
+                delete_requests,
+                key=lambda r: r['deleteDimension']['range']['startIndex'],
+                reverse=True
+            )
+            SHEET_PARADE.spreadsheet.batch_update({"requests": delete_requests})
+
+        # 4) Append brand-new rows
         if append_rows:
             SHEET_PARADE.append_rows(append_rows, value_input_option='USER_ENTERED')
 
@@ -3292,6 +3330,7 @@ elif feature == "Update Parade":
         # Reset the session state
         st.session_state.parade_platoon = 1
         st.session_state.parade_table = []
+
 
 # ------------------------------------------------------------------------------
 # 11) Feature D: Queries
