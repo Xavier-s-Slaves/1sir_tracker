@@ -1025,7 +1025,7 @@ def safety_sharing_app_form(SHEET_SAFETY):
 # 3) Helper Functions + Caching
 # ------------------------------------------------------------------------------
 
-def generate_company_message(selected_company: str, nominal_records: List[Dict], parade_records: List[Dict], target_date: Optional[datetime] = None, selected_time: str = "FP") -> str:
+def generate_company_message(selected_company: str, nominal_records: List[Dict], parade_records: List[Dict], target_date: Optional[datetime] = None) -> str:
     """
     Generate a company-specific message in the specified format.
 
@@ -1033,23 +1033,16 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     - selected_company: The company name.
     - nominal_records: List of nominal records from Nominal_Roll.
     - parade_records: List of parade records from Parade_State.
-    - target_date: The date for which the parade is to be checked.
-    - selected_time: The parade time indicator ("FP" for First Parade, "LP" for Last Parade).
 
     Returns:
     - A formatted string message.
     """
-    # Get the parade date (either passed in or use current date)
+    # Get current date and time
     today = target_date if target_date else datetime.now(TIMEZONE)
+    t = datetime.now(TIMEZONE)
     date_str = today.strftime("%d%m%y, %A")
-    
-    # Determine parade state based on the selected_time
-    if selected_time.upper() == "FP":
-        parade_state = "FIRST PARADE STATE"
-    elif selected_time.upper() == "LP":
-        parade_state = "LAST PARADE STATE"
-    else:
-        parade_state = "FIRST PARADE STATE"  # Default/fallback if an unexpected value is given
+    # Determine parade state based on the time: if after 4pm, mark as "LAST PARADE STATE"
+    parade_state = "LAST PARADE STATE" if t.hour >= 16 else "FIRST PARADE STATE"
 
     # Filter nominal records for the selected company
     company_nominal_records = [
@@ -1069,12 +1062,9 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     # Initialize a dictionary to hold parade records active today, organized by platoon
     active_parade_by_platoon = defaultdict(list)
 
-    # Process parade records to find those active today, matching the selected_time, and organize them by platoon
+    # Process parade records to find those active today and organize them by platoon
     for parade in parade_records:
         if parade.get('company', '') != selected_company:
-            continue
-        # Only process parade records that match the selected parade time (FP/LP)
-        if parade.get('time', '').upper() != selected_time.upper():
             continue
 
         platoon = parade.get('platoon', 'Coy HQ')  # Default to 'Coy HQ' if not specified
@@ -1686,7 +1676,6 @@ def get_parade_records(selected_company: str, _sheet_parade):
         record['end_date_ddmmyyyy'] = ensure_date_str(record.get('end_date_ddmmyyyy', ''))
         record['status'] = ensure_str(record.get('status', ''))
         record['company'] = selected_company  # Add company information
-        record['time'] = ensure_str(record.get('time', ''))
 
         try:
             ed = datetime.strptime(record['end_date_ddmmyyyy'], "%d%m%Y").date()
@@ -1731,7 +1720,6 @@ def get_allparade_records(selected_company: str, _sheet_parade):
         record['end_date_ddmmyyyy'] = ensure_date_str(record.get('end_date_ddmmyyyy', ''))
         record['status'] = ensure_str(record.get('status', ''))
         record['company'] = selected_company  # Add company information
-        record['time'] = ensure_str(record.get('time', ''))
 
         try:
             ed = datetime.strptime(record['end_date_ddmmyyyy'], "%d%m%Y").date()
@@ -1821,7 +1809,6 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
                 'Status': parade.get('status', ''),
                 'Start_Date': parade.get('start_date_ddmmyyyy', ''),
                 'End_Date': parade.get('end_date_ddmmyyyy', ''),
-                'Time': parade.get('time', ''),
                 'Number_of_Leaves_Left': row.get('number of leaves left', 14),
                 'Dates_Taken': row.get('dates taken', ''),
                 '_row_num': parade.get('_row_num')
@@ -1835,7 +1822,6 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
             'Status': '',
             'Start_Date': '',
             'End_Date': '',
-            'Time': '',
             'Number_of_Leaves_Left': row.get('number of leaves left', 14),
             'Dates_Taken': row.get('dates taken', ''),
             '_row_num': None
@@ -2970,14 +2956,13 @@ elif feature == "Update Parade":
             start_val = ensure_str(row.get("Start_Date", "")).strip()
             end_val = ensure_str(row.get("End_Date", "")).strip()
             four_d = is_valid_4d(row.get("4D_Number", ""))
-            time_val = ensure_str(row.get("Time", "")).strip()  # New: Retrieve Time value
 
             rank = ensure_str(row.get("Rank", "")).strip()
             parade_entry = st.session_state.parade_table[idx]
             row_num = parade_entry.get('_row_num')  # Existing row number (if any)
 
             # (1) If all key fields are empty on an existing row then schedule deletion.
-            if not status_val and not start_val and not end_val and not time_val and row_num:
+            if not status_val and not start_val and not end_val and row_num:
                 parade_requests.append({
                     'deleteDimension': {
                         'range': {
@@ -3002,7 +2987,7 @@ elif feature == "Update Parade":
                 continue
 
             # (2) If an existing row has no status then schedule deletion.
-            if not status_val and not time_val and row_num:
+            if not status_val and row_num:
                 parade_requests.append({
                     'deleteDimension': {
                         'range': {
@@ -3165,7 +3150,6 @@ elif feature == "Update Parade":
                     start_date_col = header.index("start_date_ddmmyyyy") + 1
                     end_date_col = header.index("end_date_ddmmyyyy") + 1
                     submitted_by_col = header.index("submitted_by") + 1 if "submitted_by" in header else None
-                    time_col = header.index("time") + 1
                 except ValueError as ve:
                     st.error(f"Required column missing in Parade_State: {ve}.")
                     logger.error(f"Required column missing in Parade_State: {ve} in company '{selected_company}'.")
@@ -3244,23 +3228,6 @@ elif feature == "Update Parade":
                             }],
                             'fields': 'userEnteredValue'
                         }
-                    },
-                    {
-                        'updateCells': {
-                            'range': {
-                                'sheetId': SHEET_PARADE.id,
-                                'startRowIndex': row_num - 1,
-                                'endRowIndex': row_num,
-                                'startColumnIndex': time_col - 1,
-                                'endColumnIndex': time_col,
-                            },
-                            'rows': [{
-                                'values': [{
-                                    'userEnteredValue': {'stringValue': time_val}
-                                }]
-                            }],
-                            'fields': 'userEnteredValue'
-                        }
                     }
                 ])
                 # If any key field changed then update the "Submitted_By" column
@@ -3299,8 +3266,7 @@ elif feature == "Update Parade":
                     status_val,
                     formatted_start_val,
                     formatted_end_val,
-                    submitted_by,
-                    time_val
+                    submitted_by
                 ]
                 append_rows.append(new_row)
                 rows_updated += 1
@@ -3571,7 +3537,6 @@ elif feature == "Generate WhatsApp Message":
     with tab2:
         st.code(leopards_message, language='text')
     with tab3:
-        selected_time = st.radio("Select Parade Time", options=["FP", "LP"], index=0)
         selected_date = st.date_input("Select Parade Date", datetime.now(TIMEZONE).date())
         target_datetime = datetime.combine(selected_date, datetime.min.time())
         # Fetch nominal and parade records for the selected company
@@ -3583,7 +3548,7 @@ elif feature == "Generate WhatsApp Message":
             st.stop()
 
         # Generate the company-specific message
-        company_message = generate_company_message(selected_company, company_nominal, company_parade, target_date=target_datetime, selected_time=selected_time)
+        company_message = generate_company_message(selected_company, company_nominal, company_parade, target_date=target_datetime)
         st.code(company_message, language='text')
 
 
