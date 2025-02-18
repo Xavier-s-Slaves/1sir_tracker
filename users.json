@@ -186,6 +186,10 @@
   "3SG_KAI_MING": {
     "password": "pass",
     "companies": ["Viper"]
+  },
+  "3SG_LUCAS": {
+    "password": "pass",
+    "companies": ["Viper"]
   }
 
 }
