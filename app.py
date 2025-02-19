@@ -39,7 +39,28 @@ LEGEND_STATUS_PREFIXES = {
         "hl": "[HL]",   # Hospitalisation Leave
         "others": "[Others]",   # Hospitalisation Leave
     }
-
+def parse_existing_outliers(existing_outliers_str):
+    """
+    Parses a string of outliers from the Conduct sheet.
+    E.g. "4D123 (MC), 4D234 (Excused), John Doe" => 
+         {
+            "4d123": { "original": "4D123", "status_desc": "MC" },
+            "4d234": { "original": "4D234", "status_desc": "Excused" },
+            "john doe": { "original": "John Doe", "status_desc": "" }
+         }
+    """
+    if existing_outliers_str.strip().lower() == "none":
+        return {}
+    pattern = re.compile(r'(4D\d{3,4}|[A-Za-z]+(?:\s[A-Za-z]+)*)\s*(?:\(([^)]+)\))?', re.IGNORECASE)
+    outliers_dict = {}
+    for match in pattern.finditer(existing_outliers_str):
+        identifier = match.group(1).strip()
+        status_desc = match.group(2).strip() if match.group(2) else ''
+        outliers_dict[identifier.lower()] = {
+            'original': identifier,
+            'status_desc': status_desc
+        }
+    return outliers_dict
 def load_user_db(path: str):
     """
     Load the user database from a JSON file.
@@ -2609,6 +2630,59 @@ elif feature == "Update Conduct":
         records_parade = get_allparade_records(selected_company, SHEET_PARADE)
 
         conduct_data = build_conduct_table(platoon, date_obj, records_nominal, records_parade)
+
+                # 1) Determine the outlier column for this platoon
+        if platoon != "Coy HQ":
+            outlier_key = f"plt{platoon} outliers"  # all lower
+        else:
+            outlier_key = "coy hq outliers"
+
+        # 2) Get the existing outlier string from the conduct_record
+        existing_outliers_str = conduct_record.get(outlier_key, "")  # or use ensure_str() if you want
+        existing_outliers = parse_existing_outliers(existing_outliers_str)
+        print("DEBUG outlier_key:", outlier_key)
+        print("DEBUG existing_outliers_str:", existing_outliers_str)
+        # 3) Make a helper to find rows in the conduct_data
+        def find_in_table(data_list, identifier):
+            """
+            Returns the row (a dict) if the row's 4D_Number or Name matches `identifier`.
+            Otherwise returns None.
+            """
+            for row in data_list:
+                if row.get("4D_Number", "").lower() == identifier.lower():
+                    return row
+                if row.get("Name", "").lower() == identifier.lower():
+                    return row
+            return None
+
+        # 4) Merge existing outliers into the table
+        for _, outlier_info in existing_outliers.items():
+            identifier_original = outlier_info["original"]  # e.g. "4D123" or "John Doe"
+            status_desc = outlier_info["status_desc"]       # e.g. "MC", "Excused", or ""
+
+            # Check if they already exist in the table
+            existing_row = find_in_table(conduct_data, identifier_original)
+
+            if existing_row:
+                # Mark them outlier = True and update status_desc
+                existing_row["Is_Outlier"] = True
+                if status_desc:
+                    existing_row["StatusDesc"] = status_desc
+            else:
+                # If not in the table, create a brand new row
+                new_row = {
+                    "4D_Number": identifier_original if "4d" in identifier_original.lower() else "",
+                    "Name": identifier_original if "4d" not in identifier_original.lower() else "",
+                    "Rank": "",
+                    "Platoon": platoon,
+                    "Status": "",
+                    "StatusDesc": status_desc,
+                    "Is_Outlier": True
+                }
+                conduct_data.append(new_row)
+
+
+
         st.session_state.update_conduct_table = conduct_data
         st.success(
             f"Loaded {len(conduct_data)} personnel for Platoon {platoon} from Conduct '{selected_conduct}'."
