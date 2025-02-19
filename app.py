@@ -1183,7 +1183,25 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                 })
 
         # Total absent strength only counts conformant absentees
-        platoon_absent = len(commander_absentees) + len(rec_absentees)
+        commander_group = defaultdict(list)
+        for absentee in commander_absentees:
+            key = (absentee['4d'].strip(), absentee['rank'].strip(), absentee['name'].strip())
+            commander_group[key].append(f"{absentee['status']} {absentee['details']}")
+
+        rec_group = defaultdict(list)
+        for absentee in rec_absentees:
+            key = (absentee['4d'].strip(), absentee['rank'].strip(), absentee['name'].strip())
+            rec_group[key].append(f"{absentee['status']} {absentee['details']}")
+
+        if platoon.lower() != 'coy hq':
+            platoon_absent = len(commander_group) + len(rec_group)
+        else:
+            # For Coy HQ, combine both groups
+            combined_group = defaultdict(list)
+            for absentee in (commander_absentees + rec_absentees):
+                key = (absentee['4d'].strip(), absentee['rank'].strip(), absentee['name'].strip())
+                combined_group[key].append(f"{absentee['status']} {absentee['details']}")
+            platoon_absent = len(combined_group)
         total_absent += platoon_absent
 
         # For platoons (other than Coy HQ), calculate nominal breakdown based on rank
@@ -1204,11 +1222,11 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
 
         platoon_details.append({
             'label': platoon_label,
-            'present': platoon_nominal - platoon_absent,
             'nominal': platoon_nominal,
-            'absent': platoon_absent,
-            'commander_absentees': commander_absentees,
-            'rec_absentees': rec_absentees,
+            'unique_absent': platoon_absent,  # use the grouped count here
+            'present': platoon_nominal - platoon_absent,
+            'commander_group': commander_group,
+            'rec_group': rec_group,
             'non_conformant': non_conformant_absentees,
             'commander_nominal': commander_nominal,
             'rec_nominal': rec_nominal
@@ -1229,50 +1247,42 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     for detail in platoon_details:
         message_lines.append(f"_*{detail['label']}*_")
         message_lines.append(f"Pl Present Strength: {detail['present']:02d}/{detail['nominal']:02d}")
-        message_lines.append(f"Pl Absent Strength: {detail['absent']:02d}/{detail['nominal']:02d}")
+        message_lines.append(f"Pl Absent Strength: {detail['unique_absent']:02d}/{detail['nominal']:02d}")
 
         # For platoons other than Coy HQ, show commander/REC breakdown
         if detail['label'] != "Coy HQ":
-            # Always show commander absent strength line even if 0
             message_lines.append(
-                f"Commander Absent Strength: {len(detail['commander_absentees']):02d}/{detail['commander_nominal']:02d}"
+                f"Commander Absent Strength: {len(detail['commander_group']):02d}/{detail['commander_nominal']:02d}"
             )
-            if detail['commander_absentees']:
-                for absentee in detail['commander_absentees']:
-                    if absentee['4d']:
-                        message_lines.append(
-                            f"> {absentee['4d']} {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})"
-                        )
-                    else:
-                        message_lines.append(
-                            f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})"
-                        )
-            # Always show REC absent strength line even if 0
-            message_lines.append(
-                f"REC Absent Strength: {len(detail['rec_absentees']):02d}/{detail['rec_nominal']:02d}"
-            )
-            if detail['rec_absentees']:
-                for absentee in detail['rec_absentees']:
-                    if absentee['4d']:
-                        message_lines.append(
-                            f"> {absentee['4d']} {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})"
-                        )
-                    else:
-                        message_lines.append(
-                            f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})"
-                        )
-        else:
-            # For Coy HQ, list all conformant absentees together
-            combined = detail.get('commander_absentees', []) + detail.get('rec_absentees', [])
-            for absentee in combined:
-                if absentee['4d']:
-                    message_lines.append(
-                        f"> {absentee['4d']} {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})"
-                    )
+            for (d, rank, name), details_list in detail['commander_group'].items():
+                details_str = ", ".join(details_list)
+                if d:
+                    message_lines.append(f"> {d} {rank} {name} ({details_str})")
                 else:
-                    message_lines.append(
-                        f"> {absentee['rank']} {absentee['name']} ({absentee['status']} {absentee['details']})"
-                    )
+                    message_lines.append(f"> {rank} {name} ({details_str})")
+
+            message_lines.append(
+                f"REC Absent Strength: {len(detail['rec_group']):02d}/{detail['rec_nominal']:02d}"
+            )
+            for (d, rank, name), details_list in detail['rec_group'].items():
+                details_str = ", ".join(details_list)
+                if d:
+                    message_lines.append(f"> {d} {rank} {name} ({details_str})")
+                else:
+                    message_lines.append(f"> {rank} {name} ({details_str})")
+        else:
+            # For Coy HQ, combine commander and REC into one list
+            combined_group = defaultdict(list)
+            for key, details_list in detail['commander_group'].items():
+                combined_group[key].extend(details_list)
+            for key, details_list in detail['rec_group'].items():
+                combined_group[key].extend(details_list)
+            for (d, rank, name), details_list in combined_group.items():
+                details_str = ", ".join(details_list)
+                if d:
+                    message_lines.append(f"> {d} {rank} {name} ({details_str})")
+                else:
+                    message_lines.append(f"> {rank} {name} ({details_str})")
 
         # Add non-conformant parade statuses if any exist
         status_group = defaultdict(list)
