@@ -950,15 +950,19 @@ def safety_sharing_app_form(SHEET_SAFETY, SHEET_PARADE, selected_company):
                 name_idx = parade_header.index("name")
                 start_idx = parade_header.index("start_date_ddmmyyyy")
                 end_idx = parade_header.index("end_date_ddmmyyyy")
+                status_idx = parade_header.index("status")
                 for row in parade_data[1:]:
                     if len(row) <= max(name_idx, start_idx, end_idx):
                         continue
                     try:
                         start_dt = datetime.strptime(row[start_idx].strip(), "%d%m%Y").date()
                         end_dt = datetime.strptime(row[end_idx].strip(), "%d%m%Y").date()
+                        status_val = row[status_idx].strip().upper()
                         if start_dt <= safety_date <= end_dt:
                             # Person appears in parade data → on status → NOT attended.
-                            parade_attendees.add(row[name_idx].strip().upper())
+                            status_prefix = status_val.lower().split()[0]
+                            if status_prefix in LEGEND_STATUS_PREFIXES:
+                                parade_attendees.add(row[name_idx].strip().upper())
                     except ValueError:
                         continue
             except ValueError:
