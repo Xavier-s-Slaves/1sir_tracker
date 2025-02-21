@@ -863,185 +863,205 @@ def is_leave_accounted(existing_dates, new_dates_str):
     
     return normalized_new in normalized_existing
 
-def safety_sharing_app_form(SHEET_SAFETY):
-    """
-    Safety Sharing UI with st.data_editor inside a form,
-    so the app won't re-run on every checkbox tick.
-    The sheet is updated only when the form is submitted.
-    """
-
-
-    # 1) Read Safety sheet header
+def safety_sharing_app_form(SHEET_SAFETY, SHEET_PARADE, selected_company):
+    # === 1) Read Safety Sheet Header ===
     header_row = SHEET_SAFETY.row_values(1)
-    if not header_row:
-        st.error("Safety sheet is empty. Ensure row 1 has at least 'Rank' and 'Name'.")
+    if not header_row or len(header_row) < 3:
+        st.error("Safety sheet must have at least 3 columns: 'Rank', '4D_Number', 'Name'.")
         return
+    fixed_cols = header_row[:3]            # Fixed columns: Rank, 4D_Number, Name.
+    existing_cols = header_row[3:]           # Attendance columns.
 
-    if len(header_row) < 2:
-        st.error("Safety sheet header must have at least 2 columns: 'Rank', 'Name'.")
-        return
-
-    # Collect existing columns (Weeks) after "Rank" & "Name"
-    existing_cols = header_row[2:]
-
-    # Keep track of which column is selected in session_state
+    # === 2) Choose or Create a Safety Column ===
     if "safety_selected_col" not in st.session_state:
         st.session_state.safety_selected_col = None
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # SECTION A: Select or Create a Week Column
-    # ──────────────────────────────────────────────────────────────────────────
-    st.subheader("1) Choose or Create a Week Column")
-
+    st.subheader("Choose or Create a Safety Column")
     if st.session_state.safety_selected_col:
-        # Already have a selected column
-        st.info(f"Currently selected column: **{st.session_state.safety_selected_col}**")
+        st.info(f"Selected column: **{st.session_state.safety_selected_col}**")
         if st.button("Change/Reset Column"):
             st.session_state.safety_selected_col = None
             st.rerun()
     else:
-        # No column chosen yet → radio to select or create
-        week_mode = st.radio("Week Mode:", ["Select Existing", "Create New"], horizontal=True)
-
-        if week_mode == "Select Existing":
+        mode_choice = st.radio("Mode:", ["Select Existing", "Create New"], horizontal=True)
+        if mode_choice == "Select Existing":
             if not existing_cols:
-                st.warning("No existing columns found. Create one first.")
+                st.warning("No existing safety columns found. Please create one.")
             else:
-                chosen_col = st.selectbox("Choose a Column:", options=existing_cols)
+                selected = st.selectbox("Select a column:", options=existing_cols)
                 if st.button("Use This Column"):
-                    st.session_state.safety_selected_col = chosen_col
+                    st.session_state.safety_selected_col = selected
                     st.rerun()
-
         else:
-            # Creating a new column
-            user_week = st.text_input("Week # (e.g. 'Week 1')")
-            user_pointers = st.text_input("Pointers (short description)")
-
+            # New column: include week number and description.
+            week_number = st.number_input("Enter week number", min_value=1, step=1, value=1)
+            description = st.text_input("Enter description (optional)", value="")
             if st.button("Create New Column"):
-                if not user_week.strip():
-                    st.error("Please enter something like 'Week 1'.")
-                    return
-
-                new_col_name = user_week.strip()
-                if user_pointers.strip():
-                    new_col_name += f" ({user_pointers.strip()})"
-
+                header_value = f"Week {int(week_number)}"
+                if description.strip():
+                    header_value += f" ({description.strip()})"
                 try:
                     current_header = SHEET_SAFETY.row_values(1)
-                    new_col_index = len(current_header) + 1  # next free column
-                    SHEET_SAFETY.update_cell(1, new_col_index, new_col_name)
-                    st.success(f"Created new column: '{new_col_name}'")
-
-                    # store in session & re-run
-                    st.session_state.safety_selected_col = new_col_name
+                    new_col_index = len(current_header) + 1
+                    SHEET_SAFETY.update_cell(row=1, col=new_col_index, value=header_value)
+                    st.success(f"Created new column '{header_value}'")
+                    st.session_state.safety_selected_col = header_value
                     st.rerun()
-
                 except Exception as e:
-                    st.error(f"Error creating column '{new_col_name}': {e}")
+                    st.error(f"Error creating column: {e}")
                     return
 
-    # If still no column is chosen, stop
-    if not st.session_state.safety_selected_col:
-        return
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # SECTION B: Data Editor & Date Input in a Form
-    # ──────────────────────────────────────────────────────────────────────────
-    selected_col_name = st.session_state.safety_selected_col
+    selected_col = st.session_state.safety_selected_col
     updated_header = SHEET_SAFETY.row_values(1)
-    if selected_col_name not in updated_header:
-        st.error(f"Column '{selected_col_name}' not found in the updated header.")
+    if selected_col not in updated_header:
+        #st.error("Selected safety column not found in the sheet header.")S
         return
+    col_index = updated_header.index(selected_col) + 1  # 1-based index
 
-    col_index = updated_header.index(selected_col_name) + 1  # 1-based index
+    # === 3) Operation Mode Selection ===
+    st.subheader("Operation Mode")
+    op_mode = st.radio("Select Mode:", ["New Safety Column", "Update Safety Column"])
+    st.write(f"Mode selected: **{op_mode}**")
 
-    st.subheader(f"2) Enter Date & Tick Attendees in '{selected_col_name}'")
+    # === 4) Date Input (only for New mode) ===
+    if op_mode == "New Safety Column":
+        date_input = st.text_input("Enter date (DDMMYYYY)", value="")
+    else:
+        date_input = None  # No global date input for update mode.
 
-    # Grab all rows
-    all_values = SHEET_SAFETY.get_all_values()
-    if len(all_values) < 2:
-        st.warning("No data rows below the header. Ensure your sheet has personnel data in row 2+.")
-        return
+    # === 5) Load Personnel Data ===
+    if op_mode == "New Safety Column":
+        # In New mode, the column should be blank.
+        if not date_input.strip():
+            st.error("Please enter a date for the new safety column.")
+            return
+        try:
+            safety_date = datetime.strptime(date_input.strip(), "%d%m%Y").date()
+        except ValueError:
+            st.error("Invalid date format. Please use DDMMYYYY.")
+            return
 
-    # Build data for the editor
-    data_for_editor = []
-    for row_idx, row_vals in enumerate(all_values[1:], start=2):
-        rank_val = row_vals[0] if len(row_vals) > 0 else ""
-        name_val = row_vals[1] if len(row_vals) > 1 else ""
+        # Load parade data.
+        parade_data = SHEET_PARADE.get_all_values()
+        parade_attendees = set()
+        if parade_data and len(parade_data) >= 2:
+            parade_header = [h.strip().lower() for h in parade_data[0]]
+            try:
+                name_idx = parade_header.index("name")
+                start_idx = parade_header.index("start_date_ddmmyyyy")
+                end_idx = parade_header.index("end_date_ddmmyyyy")
+                for row in parade_data[1:]:
+                    if len(row) <= max(name_idx, start_idx, end_idx):
+                        continue
+                    try:
+                        start_dt = datetime.strptime(row[start_idx].strip(), "%d%m%Y").date()
+                        end_dt = datetime.strptime(row[end_idx].strip(), "%d%m%Y").date()
+                        if start_dt <= safety_date <= end_dt:
+                            # Person appears in parade data → on status → NOT attended.
+                            parade_attendees.add(row[name_idx].strip().upper())
+                    except ValueError:
+                        continue
+            except ValueError:
+                st.error("Parade sheet missing required columns ('name', 'start_date_ddmmyyyy', 'end_date_ddmmyyyy').")
+        else:
+            st.warning("No parade data found.")
 
-        existing_attendance = ""
-        if len(row_vals) >= col_index:
-            existing_attendance = row_vals[col_index - 1].strip()
+        # Load Safety sheet data.
+        safety_values = SHEET_SAFETY.get_all_values()
+        editor_data = []
+        for i, row in enumerate(safety_values[1:], start=2):
+            rank_val = row[0] if len(row) >= 1 else ""
+            four_d_val = row[1] if len(row) >= 2 else ""
+            name_val = row[2] if len(row) >= 3 else ""
+            # For new mode, ignore any existing cell value.
+            # Pre-populate: if the person's name is in parade_attendees, mark as NOT attended; else attended.
+            attended = (name_val.strip().upper() not in parade_attendees)
+            editor_data.append({
+                "RowIndex": i,
+                "Rank": rank_val,
+                "4D_Number": four_d_val,
+                "Name": name_val,
+                "Attended": attended
+            })
+        st.session_state.safety_editor_data = editor_data
+        st.session_state.safety_date = date_input.strip()
+        st.success(f"Loaded {len(editor_data)} records for New Safety Column.")
+    else:
+        # Update mode: load current Safety sheet data.
+        safety_values = SHEET_SAFETY.get_all_values()
+        editor_data = []
+        for i, row in enumerate(safety_values[1:], start=2):
+            rank_val = row[0] if len(row) >= 1 else ""
+            four_d_val = row[1] if len(row) >= 2 else ""
+            name_val = row[2] if len(row) >= 3 else ""
+            cell_val = row[col_index - 1].strip() if len(row) >= col_index else ""
+            if cell_val.startswith("Yes,"):
+                # Extract the date part (everything after "Yes,")
+                date_val = cell_val[4:].strip()
+                attended = True
+            else:
+                date_val = ""
+                attended = False
+            # In update mode, we simply load the current value.
+            editor_data.append({
+                "RowIndex": i,
+                "Rank": rank_val,
+                "4D_Number": four_d_val,
+                "Name": name_val,
+                "Attended": attended,
+                "Date": date_val  # This field is shown for reference/editing if needed.
+            })
+        st.session_state.safety_editor_data = editor_data
+        st.success(f"Loaded {len(editor_data)} records for Update Safety Column.")
 
-        # If it starts with "Yes", interpret as attended
-        attended_bool = existing_attendance.startswith("Yes")
-
-        data_for_editor.append({
-            "RowIndex": row_idx,
-            "Rank": rank_val,
-            "Name": name_val,
-            "Attended": attended_bool
-        })
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # PUT EVERYTHING INSIDE A FORM
-    # ──────────────────────────────────────────────────────────────────────────
-    with st.form("safety_form", clear_on_submit=False):
-        st.info("Tick 'Attended' for each person. No reruns will happen until you click 'Submit'.")
-        date_input = st.text_input("Date (DDMMYYYY)")
+    # === 6) Display Editor & Batch Update ===
+    if "safety_editor_data" in st.session_state:
+        st.subheader("Review & Update Attendance")
         edited_data = st.data_editor(
-            data_for_editor,
+            st.session_state.safety_editor_data,
+            key="safety_editor",
             use_container_width=True,
             hide_index=True,
             num_rows="fixed"
         )
+        st.session_state.safety_editor_data = edited_data
 
-        # Pressing this button will "submit" the form (one-time run).
-        submitted = st.form_submit_button("Update Attendance")
-
-    if submitted:
-        # The sheet is updated ONLY when this button is clicked
-        if not date_input.strip():
-            st.error("Please enter a date in DDMMYYYY format before submitting.")
-            return
-
-        # Validate date
-        try:
-            datetime.strptime(date_input, "%d%m%Y")
-        except ValueError:
-            st.error("Invalid date format. Must be DDMMYYYY.")
-            return
-
-        rows_updated = 0
-        for entry in edited_data:
-            row_idx = entry["RowIndex"]
-            # Fetch the existing value from the sheet
-            existing_attendance = all_values[row_idx - 1][col_index - 1].strip() if len(all_values[row_idx - 1]) >= col_index else ""
-
-            # Determine if there's a change in the checkbox state
-            checkbox_state_changed = (entry["Attended"] and not existing_attendance.startswith("Yes")) or \
-                                    (not entry["Attended"] and existing_attendance.startswith("Yes"))
-
-            if checkbox_state_changed:
-                # Update the new value based on the checkbox state
-                if entry["Attended"]:
-                    new_value = f"Yes, {date_input}"
-                else:
-                    new_value = ""
-
-                # Update the sheet only if there's a meaningful change
+        if st.button("Update Attendance"):
+            update_requests = []
+            if op_mode == "New Safety Column":
+                # Every row is updated with the global date.
+                date_str = st.session_state.safety_date
+                for entry in st.session_state.safety_editor_data:
+                    row_idx = entry["RowIndex"]
+                    new_attended = entry["Attended"]
+                    new_value = f"Yes, {date_str}" if new_attended else ""
+                    update_requests.append({
+                        "range": gspread.utils.rowcol_to_a1(row_idx, col_index),
+                        "values": [[new_value]]
+                    })
+            else:
+                # Update mode: update only rows that have changed.
+                current_col_values = SHEET_SAFETY.col_values(col_index)[1:]  # Skip header.
+                for entry in st.session_state.safety_editor_data:
+                    row_idx = entry["RowIndex"]
+                    new_attended = entry["Attended"]
+                    # For update mode, use the per-row Date field.
+                    new_date = entry["Date"].strip()
+                    new_value = f"Yes, {new_date}" if new_attended else ""
+                    orig_value = current_col_values[row_idx - 2] if (row_idx - 2) < len(current_col_values) else ""
+                    if new_value != orig_value:
+                        update_requests.append({
+                            "range": gspread.utils.rowcol_to_a1(row_idx, col_index),
+                            "values": [[new_value]]
+                        })
+            if update_requests:
                 try:
-                    SHEET_SAFETY.update_cell(row_idx, col_index, new_value)
-                    rows_updated += 1
+                    SHEET_SAFETY.batch_update(update_requests)
+                    st.success("Attendance updated successfully via batch update.")
                 except Exception as e:
-                    st.error(f"Failed to update row {row_idx} for {entry['Name']}: {e}")
-
-        if rows_updated > 0:
-            st.success(
-                f"Updated."
-            )
-        else:
-            st.info("No rows were updated as there were no changes to the data.")
+                    st.error(f"Batch update failed: {e}")
+            else:
+                st.info("No updates to apply.")
 # ------------------------------------------------------------------------------
 # 3) Helper Functions + Caching
 # ------------------------------------------------------------------------------
@@ -3682,7 +3702,8 @@ elif feature == "Generate WhatsApp Message":
 elif feature == "Safety Sharing":
     st.header("Safety Sharing")
     SHEET_SAFETY = worksheets["safety"]
-    safety_sharing_app_form(SHEET_SAFETY)
+    safety_sharing_app_form(SHEET_SAFETY, SHEET_PARADE, selected_company)
+
    
 
 elif feature == "HA":
