@@ -42,20 +42,49 @@ LEGEND_STATUS_PREFIXES = {
 def parse_existing_outliers(existing_outliers_str):
     """
     Parses a string of outliers from the Conduct sheet.
-    E.g. "4D123 (MC), 4D234 (Excused), John Doe" => 
+    E.g. "4D123 (MC), 4D234 (Excused), John Doe" =>
          {
             "4d123": { "original": "4D123", "status_desc": "MC" },
             "4d234": { "original": "4D234", "status_desc": "Excused" },
             "john doe": { "original": "John Doe", "status_desc": "" }
          }
+    This version handles nested parentheses in the status description.
     """
     if existing_outliers_str.strip().lower() == "none":
         return {}
-    pattern = re.compile(r'(4D\d{3,4}|[A-Za-z]+(?:\s[A-Za-z]+)*)\s*(?:\(([^)]+)\))?', re.IGNORECASE)
+    
+    def split_outliers(s):
+        """Splits the string on commas that are not inside parentheses."""
+        parts = []
+        current = []
+        depth = 0
+        for char in s:
+            if char == '(':
+                depth += 1
+            elif char == ')':
+                depth -= 1
+            # When encountering a comma at depth 0, finish the current part.
+            if char == ',' and depth == 0:
+                parts.append(''.join(current).strip())
+                current = []
+            else:
+                current.append(char)
+        if current:
+            parts.append(''.join(current).strip())
+        return parts
+
+    parts = split_outliers(existing_outliers_str)
     outliers_dict = {}
-    for match in pattern.finditer(existing_outliers_str):
-        identifier = match.group(1).strip()
-        status_desc = match.group(2).strip() if match.group(2) else ''
+    for part in parts:
+        # If the part contains a status in parentheses, extract it.
+        if '(' in part and part.endswith(')'):
+            # Find the first '(' and assume the last ')' is the closing of the outer group.
+            idx = part.index('(')
+            identifier = part[:idx].strip()
+            status_desc = part[idx+1:-1].strip()  # remove the outer parentheses
+        else:
+            identifier = part.strip()
+            status_desc = ''
         outliers_dict[identifier.lower()] = {
             'original': identifier,
             'status_desc': status_desc
