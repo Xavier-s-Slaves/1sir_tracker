@@ -2163,6 +2163,8 @@ if feature == "Add Conduct":
         "2.4KM CONDITIONING RUN",
         "AQUA",
         "BALANCING, FLEXIBILITY, MOBILITY",
+        "BPK",
+        "BSK",
         "CBA&CPR-AED",
         "CADENCE RUN",
         "COY FIRE DRILL",
