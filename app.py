@@ -3071,11 +3071,21 @@ elif feature == "Update Parade":
     if st.session_state.parade_table:
         st.subheader("Edit Parade Data, Then Click 'Update'")
         st.write("Fill in 'Status', 'Start_Date (DDMMYYYY)', 'End_Date (DDMMYYYY)'")
+        st.write("To delete an existing status, please delete the values in 'Status', 'Start_Date (DDMMYYYY)', 'End_Date (DDMMYYYY)' only.")
         edited_data = st.data_editor(
             st.session_state.parade_table,
             num_rows="dynamic",
             use_container_width=True,
-            hide_index=True
+            hide_index=True,
+            column_config={
+                "Name": st.column_config.TextColumn("Name", disabled=True),
+                "4D_Number": st.column_config.TextColumn("4D_Number", disabled=True),
+                "Rank": st.column_config.TextColumn("Rank", disabled=True),
+                "Number_of_Leaves_Left": st.column_config.TextColumn("Number_of_Leaves_Left", disabled=True),
+                "Dates_Taken": st.column_config.TextColumn("Dates_Taken", disabled=True),
+                "_row_num": st.column_config.TextColumn("_row_num", disabled=True),
+
+            }
         )
     else:
         edited_data = None
