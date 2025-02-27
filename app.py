@@ -2216,6 +2216,7 @@ if feature == "Add Conduct":
         "OO ENGAGEMENT",
         "ORIENTATION RUN",
         "PHYSICAL TRAINING LECTURE",
+        "RAMADHAN BRIEF",
         "RESILIENCE LEARNING",
         "ROUTE MARCH(3KM)",
         "SAFE & INCLUSIVE WORKPLACE",
