@@ -2317,8 +2317,10 @@ if feature == "Add Conduct":
 
     if st.session_state.conduct_table:
         st.write("Toggle 'Is_Outlier' if not participating, or add new rows for extra people.")
+        sorted_conduct_table = sorted(st.session_state.conduct_table, 
+                                 key=lambda x: "ZZZ" if x.get("Rank", "").upper() == "REC" else x.get("Rank", ""))
         edited_data = st.data_editor(
-            st.session_state.conduct_table,
+            sorted_conduct_table,
             use_container_width=True,
             num_rows="fixed",
             hide_index=True,
@@ -2804,6 +2806,8 @@ elif feature == "Update Conduct":
     if "update_conduct_table" in st.session_state and st.session_state.update_conduct_table:
         #st.subheader(f"Edit Conduct Data for Platoon {st.session_state.conduct_platoon}")
         #st.write("Toggle 'Is_Outlier' if not participating, or add new rows for extra people.")
+        sorted_conduct_table = sorted(st.session_state.update_conduct_table, 
+                                 key=lambda x: "ZZZ" if x.get("Rank", "").upper() == "REC" else x.get("Rank", ""))
         st.write("In order to update, make sure correct platoon chosen and then press load on status for the table to reflect correct platoon. Hence, whenever changing platoon make sure to press load after that to reflect accordingly.")
         edited_data = st.data_editor(
             st.session_state.update_conduct_table,
@@ -3118,8 +3122,10 @@ elif feature == "Update Parade":
         st.subheader("Edit Parade Data, Then Click 'Update'")
         st.write("Fill in 'Status', 'Start_Date (DDMMYYYY)', 'End_Date (DDMMYYYY)'")
         st.write("To delete an existing status, please delete the values in 'Status', 'Start_Date (DDMMYYYY)', 'End_Date (DDMMYYYY)' only.")
+        sorted_conduct_table = sorted(st.session_state.parade_table, 
+                                 key=lambda x: "ZZZ" if x.get("Rank", "").upper() == "REC" else x.get("Rank", ""))
         edited_data = st.data_editor(
-            st.session_state.parade_table,
+            sorted_conduct_table,
             num_rows="fixed",
             use_container_width=True,
             hide_index=True,
