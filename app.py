@@ -3528,17 +3528,24 @@ elif feature == "Update Parade":
 
 
 # ------------------------------------------------------------------------------
-# 11) Feature D: Queries
+# 11) Feature D: Queries with Multiple Options
 # ------------------------------------------------------------------------------
 elif feature == "Queries":
-    st.subheader("Query All Medical Statuses for a Person")
-    # Modified to allow either 4D or partial Name
+    st.subheader("Query Person Information")
+    
+    # Add tabs for different query types
+    tab1, tab2, tab3 = st.tabs(["Medical Statuses", "Leave Counter", "MC Counter"])
+    
+    # Common input field for all tabs
     person_input = st.text_input("Enter the 4D Number or partial Name", key="query_person_input")
-    if st.button("Get Statuses", key="btn_query_person"):
+    search_button = st.button("Search", key="btn_query_person")
+    
+    if search_button:
         if not person_input:
             st.error("Please enter a 4D Number or Name.")
             st.stop()
-
+            
+        # Common data fetching for all tabs
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         records_parade = get_allparade_records(selected_company, SHEET_PARADE)
         parade_data = records_parade
@@ -3570,52 +3577,182 @@ elif feature == "Queries":
                     return datetime.strptime(str(d), "%d%m%Y")
                 except ValueError:
                     return datetime.min
-            valid_status_prefixes = ("ex", "rib", "ld", "mc", "ml")
-            filtered_person_rows = [
-                row for row in person_rows if row.get("status", "").lower().startswith(valid_status_prefixes)
-            ]
-            print(filtered_person_rows)
-            filtered_person_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
-
-            enhanced_rows = []
-            for row in filtered_person_rows:
-                # Grab 4D or empty
-                four_d_val = is_valid_4d(row.get("4d_number", "")) or ""
-                # Grab rank from nominal if possible
-                rank_val = ""
-                # We can look up 4D if it exists, or match by name if not
+                    
+            # Get person details for display in all tabs
+            four_d_val = ""
+            name_val = ""
+            rank_val = ""
+            
+            if person_rows:
+                first_row = person_rows[0]
+                four_d_val = is_valid_4d(first_row.get("4d_number", "")) or ""
+                
+                # Try to get more details from nominal roll
                 if four_d_val:
-                    # If 4D is valid, match by 4D
                     for nominal in records_nominal:
                         if nominal['4d_number'].upper() == four_d_val.upper():
+                            name_val = nominal['name']
                             rank_val = nominal['rank']
                             break
-                    name_val = find_name_by_4d(row.get("4d_number", ""), records_nominal)
+                
+                # If we don't have a name yet, use the one from parade state
+                if not name_val:
+                    name_val = first_row.get("name", "")
+            
+            # TAB 1: MEDICAL STATUSES (Original Functionality)
+            with tab1:
+                st.subheader(f"Medical Statuses for {rank_val} {name_val} ({four_d_val})")
+                
+                valid_status_prefixes = ("ex", "rib", "ld", "mc", "ml")
+                filtered_person_rows = [
+                    row for row in person_rows if row.get("status", "").lower().startswith(valid_status_prefixes)
+                ]
+                filtered_person_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
+
+                enhanced_rows = []
+                for row in filtered_person_rows:
+                    # Grab 4D or empty
+                    row_four_d = is_valid_4d(row.get("4d_number", "")) or ""
+                    # Grab rank from nominal if possible
+                    row_rank = ""
+                    row_name = ""
+                    
+                    # We can look up 4D if it exists, or match by name if not
+                    if row_four_d:
+                        # If 4D is valid, match by 4D
+                        for nominal in records_nominal:
+                            if nominal['4d_number'].upper() == row_four_d.upper():
+                                row_rank = nominal['rank']
+                                break
+                        row_name = find_name_by_4d(row.get("4d_number", ""), records_nominal)
+                    else:
+                        # If no 4D, match by name partially
+                        name_from_parade = ensure_str(row.get("name", ""))
+                        for nominal in records_nominal:
+                            # For partial match, ensure the parade name is quite specific
+                            # but here we'll just do a direct equality ignoring case
+                            if nominal['name'].strip().lower() == name_from_parade.strip().lower():
+                                row_four_d = nominal['4d_number']
+                                row_rank = nominal['rank']
+                                break
+                        row_name = name_from_parade
+
+                    enhanced_rows.append({
+                        "Rank": row_rank,
+                        "Name": row_name,
+                        "4D_Number": row_four_d,
+                        "Status": row.get("status", ""),
+                        "Start_Date": row.get("start_date_ddmmyyyy", ""),
+                        "End_Date": row.get("end_date_ddmmyyyy", "")
+                    })
+
+                if enhanced_rows:
+                    st.table(enhanced_rows)
                 else:
-                    # If no 4D, match by name partially
-                    name_from_parade = ensure_str(row.get("name", ""))
-                    for nominal in records_nominal:
-                        # For partial match, ensure the parade name is quite specific
-                        # but here we'll just do a direct equality ignoring case
-                        if nominal['name'].strip().lower() == name_from_parade.strip().lower():
-                            four_d_val = nominal['4d_number']
-                            rank_val = nominal['rank']
-                            break
-                    name_val = name_from_parade
+                    st.info("No medical status records found")
 
-                enhanced_rows.append({
-                    "Rank": rank_val,
-                    "Name": name_val,
-                    "4D_Number": four_d_val,
-                    "Status": row.get("status", ""),
-                    "Start_Date": row.get("start_date_ddmmyyyy", ""),
-                    "End_Date": row.get("end_date_ddmmyyyy", "")
-                })
+            # TAB 2: LEAVE COUNTER
+            with tab2:
+                st.subheader(f"Leave Status for {rank_val} {name_val} ({four_d_val})")
+                
+                # Filter for leave-related statuses
+                leave_prefixes = ("ll", "ol", "leave")
+                leave_rows = [
+                    row for row in person_rows if any(row.get("status", "").lower().startswith(prefix) for prefix in leave_prefixes)
+                ]
+                leave_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
 
-            st.subheader(f"Statuses for '{person_input}'")
-            st.table(enhanced_rows)
-            logger.info(f"Displayed statuses for '{person_input}' in company '{selected_company}'.")
+                # Calculate total leaves taken and remaining
+                total_leave_days = 0
+                leave_details = []
+                
+                for row in leave_rows:
+                    start_date = parse_ddmmyyyy(row.get("start_date_ddmmyyyy", ""))
+                    end_date = parse_ddmmyyyy(row.get("end_date_ddmmyyyy", ""))
+                    
+                    # If end_date is valid, calculate duration
+                    if end_date != datetime.min and start_date != datetime.min:
+                        duration = (end_date - start_date).days + 1  # inclusive of both start and end dates
+                        total_leave_days += duration
+                    else:
+                        duration = "Unknown"  # Handle case where dates are missing
+                    
+                    leave_details.append({
+                        "Status": row.get("status", ""),
+                        "Start_Date": row.get("start_date_ddmmyyyy", ""),
+                        "End_Date": row.get("end_date_ddmmyyyy", ""),
+                        "Duration": duration if isinstance(duration, str) else f"{duration} days"
+                    })
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Leaves Taken", f"{total_leave_days} days")
+                with col2:
+                    st.metric("Annual Leave Entitled", "14 days")
+                with col3:
+                    remaining_leaves = 14 - total_leave_days
+                    st.metric("Remaining Leaves", f"{max(0, remaining_leaves)} days", 
+                              delta=f"{'-' if remaining_leaves < 0 else ''}{abs(remaining_leaves)}" if remaining_leaves != 14 else None)
+                
+                # Display leave history
+                if leave_details:
+                    st.subheader("Leave History")
+                    st.table(leave_details)
+                else:
+                    st.info("No leave records found")
 
+            # TAB 3: MC COUNTER
+            with tab3:
+                st.subheader(f"Medical Status for {rank_val} {name_val} ({four_d_val})")
+                
+                # Filter for medical-related statuses
+                medical_prefixes = ("mc", "ml")
+                medical_rows = [
+                    row for row in person_rows if any(row.get("status", "").lower().startswith(prefix) for prefix in medical_prefixes)
+                ]
+                medical_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
+
+                # Calculate total medical leave days
+                total_mc_days = 0
+                total_ml_days = 0
+                medical_details = []
+                
+                for row in medical_rows:
+                    start_date = parse_ddmmyyyy(row.get("start_date_ddmmyyyy", ""))
+                    end_date = parse_ddmmyyyy(row.get("end_date_ddmmyyyy", ""))
+                    status = row.get("status", "").lower()
+                    
+                    # If end_date is valid, calculate duration
+                    if end_date != datetime.min and start_date != datetime.min:
+                        duration = (end_date - start_date).days + 1  # inclusive of both start and end dates
+                        
+                        # Count by type
+                        if status.startswith("mc"):
+                            total_mc_days += duration
+                        elif status.startswith("ml"):
+                            total_ml_days += duration
+                    else:
+                        duration = "Unknown"  # Handle case where dates are missing
+                    
+                    medical_details.append({
+                        "Status": row.get("status", ""),
+                        "Start_Date": row.get("start_date_ddmmyyyy", ""),
+                        "End_Date": row.get("end_date_ddmmyyyy", ""),
+                        "Duration": duration if isinstance(duration, str) else f"{duration} days"
+                    })
+
+                
+                total_medical = total_mc_days + total_ml_days
+                st.metric("Total MC/ML", f"{total_medical} days")
+                
+                # Display medical history
+                if medical_details:
+                    st.subheader("Medical History")
+                    st.table(medical_details)
+                else:
+                    st.info("No medical records found")
+                
+            logger.info(f"Displayed information for '{person_input}' in company '{selected_company}'.")
 # ------------------------------------------------------------------------------
 # 14) Feature F: Generate WhatsApp Message
 # ------------------------------------------------------------------------------
