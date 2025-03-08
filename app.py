@@ -2319,14 +2319,16 @@ if feature == "Add Conduct":
         st.write("Toggle 'Is_Outlier' if not participating, or add new rows for extra people.")
         edited_data = st.data_editor(
             st.session_state.conduct_table,
-            num_rows="dynamic",
-            use_container_width=True
+            use_container_width=True,
+            num_rows="fixed",
+            hide_index=True,
         )
     else:
         edited_data = st.data_editor(
             [],
-            num_rows="dynamic",
-            use_container_width=True
+            use_container_width=True,
+            num_rows="fixed",
+            hide_index=True,
         )
 
     if st.button("Finalize Conduct"):
@@ -2695,59 +2697,100 @@ elif feature == "Update Conduct":
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         records_parade = get_allparade_records(selected_company, SHEET_PARADE)
 
-        conduct_data = build_conduct_table(platoon, date_obj, records_nominal, records_parade)
-
-                # 1) Determine the outlier column for this platoon
+        # Check if we should load from parade state instead of using existing data
+        load_from_parade_state = False
+        
+        # Get the P/T and Outliers values for the selected platoon
         if platoon != "Coy HQ":
-            outlier_key = f"plt{platoon} outliers"  # all lower
+            pt_col = int(platoon) + 2  # Column index for P/T PLT1, PLT2, etc.
+            outlier_col = int(platoon) + 8  # Column index for PLT1 Outliers, etc.
         else:
-            outlier_key = "coy hq outliers"
+            pt_col = 7  # Column for P/T Coy HQ
+            outlier_col = 13  # Column for Coy HQ Outliers
+        
+        try:
+            row_num = None
+            try:
+                conduct_name = selected_conduct.split(" - ")[1]
+                cell = SHEET_CONDUCTS.find(conduct_name, in_column=2)
+                if cell:
+                    row_num = cell.row
+            except Exception as e:
+                logger.error(f"Error finding conduct row: {e}")
+                
+            if row_num:
+                pt_value = SHEET_CONDUCTS.cell(row_num, pt_col).value
+                outliers_value = SHEET_CONDUCTS.cell(row_num, outlier_col).value
+                
+                # Check if P/T is 0/0 and Outliers is empty or "None"
+                is_zero_pt = pt_value == "0/0"
+                is_empty_outliers = not outliers_value or outliers_value.strip().lower() == "none"
+                
+                if is_zero_pt and is_empty_outliers:
+                    load_from_parade_state = True
+                    logger.info(f"P/T is {pt_value} and Outliers is '{outliers_value}', loading from parade state.")
+        except Exception as e:
+            logger.error(f"Error checking P/T and Outliers: {e}")
+            # Default to loading from conducts if there's an error
+            load_from_parade_state = False
 
-        # 2) Get the existing outlier string from the conduct_record
-        existing_outliers_str = conduct_record.get(outlier_key, "")  # or use ensure_str() if you want
-        existing_outliers = parse_existing_outliers(existing_outliers_str)
-        print("DEBUG outlier_key:", outlier_key)
-        print("DEBUG existing_outliers_str:", existing_outliers_str)
-        # 3) Make a helper to find rows in the conduct_data
-        def find_in_table(data_list, identifier):
-            """
-            Returns the row (a dict) if the row's 4D_Number or Name matches `identifier`.
-            Otherwise returns None.
-            """
-            for row in data_list:
-                if row.get("4D_Number", "").lower() == identifier.lower():
-                    return row
-                if row.get("Name", "").lower() == identifier.lower():
-                    return row
-            return None
-
-        # 4) Merge existing outliers into the table
-        for _, outlier_info in existing_outliers.items():
-            identifier_original = outlier_info["original"]  # e.g. "4D123" or "John Doe"
-            status_desc = outlier_info["status_desc"]       # e.g. "MC", "Excused", or ""
-
-            # Check if they already exist in the table
-            existing_row = find_in_table(conduct_data, identifier_original)
-
-            if existing_row:
-                # Mark them outlier = True and update status_desc
-                existing_row["Is_Outlier"] = True
-                if status_desc:
-                    existing_row["StatusDesc"] = status_desc
+        # Now build the conduct table based on the decision
+        if load_from_parade_state:
+            # Load data from parade state
+            conduct_data = build_conduct_table(platoon, date_obj, records_nominal, records_parade)
+            st.info("Loading personnel from parade state since no existing data found.")
+        else:
+            # Load using existing data
+            conduct_data = build_conduct_table(platoon, date_obj, records_nominal, records_parade)
+            
+            # Determine the outlier column for this platoon
+            if platoon != "Coy HQ":
+                outlier_key = f"plt{platoon} outliers"  # all lower
             else:
-                # If not in the table, create a brand new row
-                new_row = {
-                    "4D_Number": identifier_original if "4d" in identifier_original.lower() else "",
-                    "Name": identifier_original if "4d" not in identifier_original.lower() else "",
-                    "Rank": "",
-                    "Platoon": platoon,
-                    "Status": "",
-                    "StatusDesc": status_desc,
-                    "Is_Outlier": True
-                }
-                conduct_data.append(new_row)
+                outlier_key = "coy hq outliers"
 
+            # Get the existing outlier string from the conduct_record
+            existing_outliers_str = conduct_record.get(outlier_key, "")
+            existing_outliers = parse_existing_outliers(existing_outliers_str)
+            
+            # Helper to find rows in the conduct_data
+            def find_in_table(data_list, identifier):
+                """
+                Returns the row (a dict) if the row's 4D_Number or Name matches `identifier`.
+                Otherwise returns None.
+                """
+                for row in data_list:
+                    if row.get("4D_Number", "").lower() == identifier.lower():
+                        return row
+                    if row.get("Name", "").lower() == identifier.lower():
+                        return row
+                return None
 
+            # Merge existing outliers into the table
+            for _, outlier_info in existing_outliers.items():
+                identifier_original = outlier_info["original"]  # e.g. "4D123" or "John Doe"
+                status_desc = outlier_info["status_desc"]       # e.g. "MC", "Excused", or ""
+
+                # Check if they already exist in the table
+                existing_row = find_in_table(conduct_data, identifier_original)
+
+                if existing_row:
+                    # Mark them outlier = True and update status_desc
+                    existing_row["Is_Outlier"] = True
+                    if status_desc:
+                        existing_row["StatusDesc"] = status_desc
+                else:
+                    # If not in the table, create a brand new row
+                    new_row = {
+                        "4D_Number": identifier_original if "4d" in identifier_original.lower() else "",
+                        "Name": identifier_original if "4d" not in identifier_original.lower() else "",
+                        "Rank": "",
+                        "Platoon": platoon,
+                        "Status": "",
+                        "StatusDesc": status_desc,
+                        "Is_Outlier": True
+                    }
+                    conduct_data.append(new_row)
 
         st.session_state.update_conduct_table = conduct_data
         st.success(
@@ -2764,8 +2807,9 @@ elif feature == "Update Conduct":
         st.write("In order to update, make sure correct platoon chosen and then press load on status for the table to reflect correct platoon. Hence, whenever changing platoon make sure to press load after that to reflect accordingly.")
         edited_data = st.data_editor(
             st.session_state.update_conduct_table,
-            num_rows="dynamic",
-            use_container_width=True
+            use_container_width=True,
+            num_rows="fixed",
+            hide_index=True,
         )
     else:
         edited_data = None
@@ -3076,7 +3120,7 @@ elif feature == "Update Parade":
         st.write("To delete an existing status, please delete the values in 'Status', 'Start_Date (DDMMYYYY)', 'End_Date (DDMMYYYY)' only.")
         edited_data = st.data_editor(
             st.session_state.parade_table,
-            num_rows="dynamic",
+            num_rows="fixed",
             use_container_width=True,
             hide_index=True,
             column_config={
