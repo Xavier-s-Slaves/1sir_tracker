@@ -3256,7 +3256,7 @@ elif feature == "Update Parade":
         sorted_conduct_table = sorted(st.session_state.parade_table, 
                                  key=lambda x: "ZZZ" if x.get("Rank", "").upper() == "REC" else x.get("Rank", ""))
         edited_data = st.data_editor(
-            sorted_conduct_table,
+            st.session_state.parade_table,
             num_rows="fixed",
             use_container_width=True,
             hide_index=True,
