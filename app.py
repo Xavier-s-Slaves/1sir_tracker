@@ -48,7 +48,10 @@ def parse_existing_outliers(existing_outliers_str):
             "4d234": { "original": "4D234", "status_desc": "Excused" },
             "john doe": { "original": "John Doe", "status_desc": "" }
          }
-    This version handles nested parentheses in the status description.
+    Also handles entries like:
+    - "4D1416 MOHAMED ELFEE BIN MOHAMED IMBRAN (gay)"
+    - "4D123 James (MC)"
+    - Names with spaces before status descriptions
     """
     if existing_outliers_str.strip().lower() == "none":
         return {}
@@ -75,20 +78,40 @@ def parse_existing_outliers(existing_outliers_str):
 
     parts = split_outliers(existing_outliers_str)
     outliers_dict = {}
+    
     for part in parts:
-        # If the part contains a status in parentheses, extract it.
-        if '(' in part and part.endswith(')'):
-            # Find the first '(' and assume the last ')' is the closing of the outer group.
-            idx = part.index('(')
-            identifier = part[:idx].strip()
-            status_desc = part[idx+1:-1].strip()  # remove the outer parentheses
+        # Extract the status description if it exists
+        status_desc = ""
+        identifier = part
+        
+        # Look for the last parenthetical group
+        if '(' in part and ')' in part:
+            # Use regular expressions to find the last parentheses group
+            import re
+            match = re.search(r'(.*)\(([^()]*)\)[^()]*$', part.strip())
+            if match:
+                identifier = match.group(1).strip()
+                status_desc = match.group(2).strip()  # Remove the parentheses
+        
+        # Handle cases with ID and name
+        # If identifier starts with a pattern like 4D123, split the ID and name
+        id_match = re.match(r'^(\d+[A-Za-z]\d+)\s+(.*?)$', identifier)
+        if id_match:
+            # In this case, use the ID as the key
+            key = id_match.group(1).lower()
+            full_name = id_match.group(2)
+            outliers_dict[key] = {
+                'original': id_match.group(1) + " " + full_name,
+                'status_desc': status_desc
+            }
         else:
-            identifier = part.strip()
-            status_desc = ''
-        outliers_dict[identifier.lower()] = {
-            'original': identifier,
-            'status_desc': status_desc
-        }
+            # Use the lowercase identifier as the key
+            key = identifier.lower()
+            outliers_dict[key] = {
+                'original': identifier,
+                'status_desc': status_desc
+            }
+    
     return outliers_dict
 def load_user_db(path: str):
     """
@@ -2846,8 +2869,7 @@ elif feature == "Update Conduct":
                                  key=lambda x: "ZZZ" if x.get("Rank", "").upper() == "REC" else x.get("Rank", ""))
         st.write("In order to update, make sure correct platoon chosen and then press load on status for the table to reflect correct platoon. Hence, whenever changing platoon make sure to press load after that to reflect accordingly.")
         edited_data = st.data_editor(
-            st.session_state.update_conduct_table,
-            use_container_width=True,
+            sorted_conduct_table,
             num_rows="fixed",
             hide_index=True,
         )
