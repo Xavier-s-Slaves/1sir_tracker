@@ -2030,6 +2030,11 @@ def build_conduct_table(platoon: str, date_obj: datetime, records_nominal, recor
             'StatusDesc': status_desc
         })
     logger.info(f"Built conduct table with {len(data)} personnel for platoon {platoon} on {date_obj.strftime('%d%m%Y')}.")
+    for person in data:
+        if person.get("Rank", "").upper() == "REC":
+            person["Personnel_Type"] = "Recruit"
+        else:
+            person["Personnel_Type"] = "Commander"
     return data
 
 def calculate_leaves_used(dates_str: str) -> int:
@@ -2421,29 +2426,60 @@ if feature == "Add Conduct":
             total_strength_platoons[plt] = strength
             print(total_strength_platoons[plt])
 
-        # Initialize pt_plts with 'Coy HQ'
-        pt_plts = ['0/0', '0/0', '0/0', '0/0', '0/0']
-        participating = 0
+        # Initialize recruit and commander counts for each platoon
+        rec_counts = {"1": 0, "2": 0, "3": 0, "4": 0, "Coy HQ": 0}
+        cmd_counts = {"1": 0, "2": 0, "3": 0, "4": 0, "Coy HQ": 0}
+        rec_totals = {"1": 0, "2": 0, "3": 0, "4": 0, "Coy HQ": 0}
+        cmd_totals = {"1": 0, "2": 0, "3": 0, "4": 0, "Coy HQ": 0}
+
+        # Calculate total rec and cmd for each platoon
+        for person in records_nominal:
+            plt = person.get("platoon", "")
+            if plt in platoon_options:
+                if person.get("rank", "").upper() == "REC":
+                    rec_totals[plt] += 1
+                else:
+                    cmd_totals[plt] += 1
+
+        # Count participating recruits and commanders
         for row in edited_data:
             if not row.get('Is_Outlier', False):
-                participating += 1
+                plt = row.get('Platoon', platoon)
+                if plt in platoon_options:
+                    if row.get('Rank', '').upper() == 'REC':
+                        rec_counts[plt] += 1
+                    else:
+                        cmd_counts[plt] += 1
 
+        # Initialize pt_plts with detailed format for all platoons
+        pt_plts = ['0/0\n0/0\n0/0', '0/0\n0/0\n0/0', '0/0\n0/0\n0/0', '0/0\n0/0\n0/0', '0/0\n0/0\n0/0']
+
+        # Update the platoon that's participating in this conduct
         if platoon in platoon_options:
             if platoon != "Coy HQ":
                 index = int(platoon) - 1  # Platoons 1-4 map to indices 0-3
             else:
                 index = 4  # 'Coy HQ' maps to index 4
-            pt_plts[index] = f"{participating}/{total_strength_platoons[platoon]}"
+            
+            rec_ratio = f"{rec_counts[platoon]}/{rec_totals[platoon]}"
+            cmd_ratio = f"{cmd_counts[platoon]}/{cmd_totals[platoon]}"
+            total_ratio = f"{rec_counts[platoon] + cmd_counts[platoon]}/{total_strength_platoons[platoon]}"
+            
+            pt_plts[index] = f"REC: {rec_ratio}\nCMD: {cmd_ratio}\nTOTAL: {total_ratio}"
 
-        x_total = 0
-        for pt in pt_plts:
-            x = int(pt.split('/')[0]) if '/' in pt and pt.split('/')[0].isdigit() else 0
-            x_total += x
-        y_total = sum(total_strength_platoons.values())
-        pt_total = f"{x_total}/{y_total}"
+        # Calculate total participants and total strength
+        total_rec_part = sum(rec_counts.values())
+        total_rec = sum(rec_totals.values())
+        total_cmd_part = sum(cmd_counts.values())
+        total_cmd = sum(cmd_totals.values())
+        total_part = total_rec_part + total_cmd_part
+        total_strength = sum(total_strength_platoons.values())
+
+        # Format the totals
+        pt_total = f"REC: {total_rec_part}/{total_rec}\nCMD: {total_cmd_part}/{total_cmd}\nTOTAL: {total_part}/{total_strength}"
 
         formatted_date_str = ensure_date_str(date_str)
-                # Prepare outliers per platoon – order: PLT1, PLT2, PLT3, PLT4, Coy HQ
+        # Prepare outliers per platoon – order: PLT1, PLT2, PLT3, PLT4, Coy HQ
         outliers_list = ["None"] * 5
         if platoon in platoon_options:
             index = int(platoon) - 1 if platoon != "Coy HQ" else 4
@@ -2452,12 +2488,12 @@ if feature == "Add Conduct":
         SHEET_CONDUCTS.append_row([
             formatted_date_str,  # Column 1: Date
             cname,               # Column 2: Conduct_Name
-            pt_plts[0],          # Column 3: P/T PLT1
-            pt_plts[1],          # Column 4: P/T PLT2
-            pt_plts[2],          # Column 5: P/T PLT3
-            pt_plts[3],          # Column 6: P/T PLT4
-            pt_plts[4],          # Column 7: P/T Coy HQ
-            pt_total,            # Column 8: P/T Total
+            pt_plts[0],          # Column 3: P/T PLT1 (detailed format)
+            pt_plts[1],          # Column 4: P/T PLT2 (detailed format)
+            pt_plts[2],          # Column 5: P/T PLT3 (detailed format)
+            pt_plts[3],          # Column 6: P/T PLT4 (detailed format)
+            pt_plts[4],          # Column 7: P/T Coy HQ (detailed format)
+            pt_total,            # Column 8: P/T Total (detailed format)
             outliers_list[0],    # Column 9: PLT1 Outliers
             outliers_list[1],    # Column 10: PLT2 Outliers
             outliers_list[2],    # Column 11: PLT3 Outliers
@@ -2530,7 +2566,7 @@ if feature == "Add Conduct":
         st.session_state.conduct_name = conduct_options[0]
         st.session_state.conduct_table = []
         st.session_state.conduct_pointers = [
-             {"observation": "", "reflection": "", "recommendation": ""}
+            {"observation": "", "reflection": "", "recommendation": ""}
         ]
 
 # ------------------------------------------------------------------------------
@@ -2981,6 +3017,34 @@ elif feature == "Update Conduct":
         updated_outliers = update_outliers(edited_data, conduct_record, platoon)
 
         new_pt_value = f"{new_participating}/{new_total}"
+        # Add after the attendance_data extraction but before the sheet updates
+# Initialize recruit and commander counts
+        rec_counts = 0
+        cmd_counts = 0
+
+        # Count participating recruits and commanders
+        for row in edited_data:
+            if not row.get('Is_Outlier', False):
+                if row.get('Rank', '').upper() == 'REC':
+                    rec_counts += 1
+                else:
+                    cmd_counts += 1
+
+        # Get total counts from nominal roll for this platoon
+        #records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        rec_totals = 0
+        cmd_totals = 0
+
+        for person in records_nominal:
+            plt = person.get("platoon", "")
+            if plt == platoon:  # Only count for the selected platoon
+                if person.get("rank", "").upper() == "REC":
+                    rec_totals += 1
+                else:
+                    cmd_totals += 1
+
+        # Format the detailed P/T value
+        new_pt_value = f"REC: {rec_counts}/{rec_totals}\nCMD: {cmd_counts}/{cmd_totals}\nTOTAL: {new_participating}/{new_total}"
 
         try:
             conduct_name = selected_conduct.split(" - ")[1]
@@ -3059,31 +3123,51 @@ elif feature == "Update Conduct":
                 st.stop()
 
         try:
+            # Get all platoon participation data
             pt1 = SHEET_CONDUCTS.cell(row_number, 3).value
             pt2 = SHEET_CONDUCTS.cell(row_number, 4).value
             pt3 = SHEET_CONDUCTS.cell(row_number, 5).value
             pt4 = SHEET_CONDUCTS.cell(row_number, 6).value
             pt5 = SHEET_CONDUCTS.cell(row_number, 7).value
-
-            pt1_part = int(pt1.split('/')[0]) if '/' in pt1 and pt1.split('/')[0].isdigit() else 0
-            pt2_part = int(pt2.split('/')[0]) if '/' in pt2 and pt2.split('/')[0].isdigit() else 0
-            pt3_part = int(pt3.split('/')[0]) if '/' in pt3 and pt3.split('/')[0].isdigit() else 0
-            pt4_part = int(pt4.split('/')[0]) if '/' in pt4 and pt4.split('/')[0].isdigit() else 0
-            pt5_part = int(pt5.split('/')[0]) if '/' in pt5 and pt5.split('/')[0].isdigit() else 0
-
-            x_total = pt1_part + pt2_part + pt3_part + pt4_part + pt5_part
-            y_total = sum([
-                int(p.split('/')[1]) if '/' in p and p.split('/')[1].isdigit() else 0 
-                for p in [pt1, pt2, pt3, pt4, pt5]
-            ])
-
-            pt_total = f"{x_total}/{y_total}"
-
+            
+            platoon_values = [pt1, pt2, pt3, pt4, pt5]
+            
+            # Initialize counters
+            total_rec_part = 0
+            total_rec = 0
+            total_cmd_part = 0 
+            total_cmd = 0
+            
+            # Process each platoon's data
+            for pt in platoon_values:
+                lines = pt.split('\n')
+                if len(lines) >= 3:  # Check if we have the detailed format
+                    # Parse REC line
+                    rec_line = lines[0]
+                    if rec_line.startswith("REC:"):
+                        rec_parts = rec_line.replace("REC:", "").strip().split('/')
+                        if len(rec_parts) == 2 and rec_parts[0].isdigit() and rec_parts[1].isdigit():
+                            total_rec_part += int(rec_parts[0])
+                            total_rec += int(rec_parts[1])
+                    
+                    # Parse CMD line
+                    cmd_line = lines[1]
+                    if cmd_line.startswith("CMD:"):
+                        cmd_parts = cmd_line.replace("CMD:", "").strip().split('/')
+                        if len(cmd_parts) == 2 and cmd_parts[0].isdigit() and cmd_parts[1].isdigit():
+                            total_cmd_part += int(cmd_parts[0])
+                            total_cmd += int(cmd_parts[1])
+            
+            # Calculate the overall total
+            total_part = total_rec_part + total_cmd_part
+            total_strength = total_rec + total_cmd
+            
+            # Format the company-wide P/T total in the detailed format
+            pt_total = f"REC: {total_rec_part}/{total_rec}\nCMD: {total_cmd_part}/{total_cmd}\nTOTAL: {total_part}/{total_strength}"
+            
+            # Update the P/T Total cell
             SHEET_CONDUCTS.update_cell(row_number, 8, pt_total)
-            logger.info(
-                f"Updated P/T Total to {pt_total} for conduct '{selected_conduct}' in company '{selected_company}' "
-                f"by user '{st.session_state.username}'."
-            )
+            
         except Exception as e:
             st.error(f"Error calculating/updating P/T Total: {e}")
             logger.error(f"Exception while calculating/updating P/T Total for conduct '{selected_conduct}': {e}")
