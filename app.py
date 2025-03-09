@@ -2402,9 +2402,9 @@ if feature == "Add Conduct":
 
             if is_outlier:
                 if status_desc:
-                    all_outliers.append(f"{four_d} ({status_desc})" if four_d else f"{name_} ({status_desc})")
+                    all_outliers.append(f"{four_d} {name_} ({status_desc})" if four_d else f"{name_} ({status_desc})")
                 else:
-                    all_outliers.append(f"{four_d}" if four_d else f"{name_}")
+                    all_outliers.append(f"{four_d} {name_}" if four_d else f"{name_}")
 
         for (rank, nm, fd, p_) in new_people:
             final_fd = fd if fd else ""
@@ -2901,19 +2901,44 @@ elif feature == "Update Conduct":
                 }
             return outliers_dict
 
-        def reconstruct_outliers(outliers_dict):
+        def reconstruct_outliers(outliers_dict, edited_data):
             """
-            Reconstructs the outliers string from the dictionary.
+            Reconstructs the outliers string from the dictionary with names included.
             
             Returns:
-                str: Comma-separated outliers.
+                str: Comma-separated outliers with names.
             """
             outliers_list = []
+            
+            # Helper function to find a person's name by 4D number
+            def find_name_by_4d(four_d, data):
+                for row in data:
+                    if row.get("4D_Number", "").lower() == four_d.lower():
+                        return row.get("Name", "")
+                return ""
+            
             for entry in outliers_dict.values():
-                if entry['status_desc']:
-                    outliers_list.append(f"{entry['original']} ({entry['status_desc']})")
+                identifier = entry['original']
+                status_desc = entry['status_desc']
+                
+                # Check if identifier is a 4D number
+                if re.match(r'^4D\d{3,4}$', identifier, re.IGNORECASE):
+                    # Find the person's name
+                    name = find_name_by_4d(identifier, edited_data)
+                    if name:
+                        formatted_entry = f"{identifier} {name}"
+                    else:
+                        formatted_entry = identifier
                 else:
-                    outliers_list.append(f"{entry['original']}")
+                    # Identifier is already a name
+                    formatted_entry = identifier
+                
+                # Add status description if available
+                if status_desc:
+                    formatted_entry += f" ({status_desc})"
+                    
+                outliers_list.append(formatted_entry)
+                    
             return ", ".join(outliers_list) if outliers_list else "None"
 
         def update_outliers(edited_data, conduct_record, platoon):
@@ -2951,7 +2976,7 @@ elif feature == "Update Conduct":
                     if identifier_key in existing_outliers:
                         del existing_outliers[identifier_key]
             
-            updated_outliers = reconstruct_outliers(existing_outliers)
+            updated_outliers = reconstruct_outliers(existing_outliers, edited_data)
             return updated_outliers
         updated_outliers = update_outliers(edited_data, conduct_record, platoon)
 
