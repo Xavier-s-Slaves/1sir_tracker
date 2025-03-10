@@ -3912,6 +3912,7 @@ elif feature == "Generate WhatsApp Message":
     # --- 1) Existing WhatsApp Message Generation for Selected Company ---
     records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
     records_parade = get_parade_records(selected_company, SHEET_PARADE)
+    records_parade2 = get_allparade_records(selected_company, SHEET_PARADE)
     today = datetime.now(TIMEZONE)
     today_date = today.date()
     filtered_parade = []
@@ -4066,7 +4067,7 @@ elif feature == "Generate WhatsApp Message":
         target_datetime = datetime.combine(selected_date, datetime.min.time())
         # Fetch nominal and parade records for the selected company
         company_nominal = [record for record in records_nominal if record['company'] == selected_company]
-        company_parade = [record for record in records_parade if record['company'] == selected_company]
+        company_parade = [record for record in records_parade2 if record['company'] == selected_company]
 
         if not company_nominal:
             st.warning(f"No nominal records found for company '{selected_company}'.")
