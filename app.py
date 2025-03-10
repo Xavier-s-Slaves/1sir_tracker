@@ -2853,18 +2853,7 @@ elif feature == "Update Conduct":
                     existing_row["Is_Outlier"] = True
                     if status_desc:
                         existing_row["StatusDesc"] = status_desc
-                else:
-                    # If not in the table, create a brand new row
-                    new_row = {
-                        "4D_Number": identifier_original if "4d" in identifier_original.lower() else "",
-                        "Name": identifier_original if "4d" not in identifier_original.lower() else "",
-                        "Rank": "",
-                        "Platoon": platoon,
-                        "Status": "",
-                        "StatusDesc": status_desc,
-                        "Is_Outlier": True
-                    }
-                    conduct_data.append(new_row)
+
 
         st.session_state.update_conduct_table = conduct_data
         st.success(
