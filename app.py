@@ -2348,7 +2348,7 @@ if feature == "Add Conduct":
         sorted_conduct_table = sorted(st.session_state.conduct_table, 
                                  key=lambda x: "ZZZ" if x.get("Rank", "").upper() == "REC" else x.get("Rank", ""))
         edited_data = st.data_editor(
-            sorted_conduct_table,
+            st.session_state.conduct_table,
             use_container_width=True,
             num_rows="fixed",
             hide_index=True,
@@ -2869,7 +2869,7 @@ elif feature == "Update Conduct":
                                  key=lambda x: "ZZZ" if x.get("Rank", "").upper() == "REC" else x.get("Rank", ""))
         st.write("In order to update, make sure correct platoon chosen and then press load on status for the table to reflect correct platoon. Hence, whenever changing platoon make sure to press load after that to reflect accordingly.")
         edited_data = st.data_editor(
-            sorted_conduct_table,
+            st.session_state.update_conduct_table,
             num_rows="fixed",
             hide_index=True,
         )
