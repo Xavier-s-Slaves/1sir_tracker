@@ -1481,10 +1481,23 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
         if is_allowed_conduct(get_conduct_name(col))
     ]
 
+    def natural_sort_key(s):
+        """
+        Sort strings with embedded numbers in natural order.
+        So ER 1, ER 2, ER 11 instead of ER 1, ER 11, ER 2
+        """
+        # Extract the conduct name first
+        conduct_name = get_conduct_name(s)
+        
+        # Split the string into text and numeric parts
+        return [
+            int(c) if c.isdigit() else c.lower()
+            for c in re.split(r'(\d+)', conduct_name)
+        ]
     # Sort the filtered conduct columns
     conduct_cols_sorted = sorted(
         filtered_conduct_cols,
-        key=lambda h: get_conduct_name(h).upper()
+        key=natural_sort_key
     )
 
     # Map old indices for the filtered and sorted columns
