@@ -51,8 +51,12 @@ def parse_existing_outliers(existing_outliers_str):
     Also handles entries like:
     - "4D1416 MOHAMED ELFEE BIN MOHAMED IMBRAN (gay)"
     - "4D123 James (MC)"
+    - "41222 James" (without status)
+    - "James" (just name)
     - Names with spaces before status descriptions
     """
+    import re
+    
     if existing_outliers_str.strip().lower() == "none":
         return {}
     
@@ -86,18 +90,17 @@ def parse_existing_outliers(existing_outliers_str):
         
         # Look for the last parenthetical group
         if '(' in part and ')' in part:
-            # Use regular expressions to find the last parentheses group
-            import re
             match = re.search(r'(.*)\(([^()]*)\)[^()]*$', part.strip())
             if match:
                 identifier = match.group(1).strip()
-                status_desc = match.group(2).strip()  # Remove the parentheses
+                status_desc = match.group(2).strip()
         
         # Handle cases with ID and name
-        # If identifier starts with a pattern like 4D123, split the ID and name
-        id_match = re.match(r'^(\d+[A-Za-z]\d+)\s+(.*?)$', identifier)
+        # Match any format where the ID is at the beginning followed by spaces and then a name
+        # This handles both patterns like "4D123 Name" and "41222 Name"
+        id_match = re.match(r'^(\d+[A-Za-z]?\d*)\s+(.*?)$', identifier)
         if id_match:
-            # In this case, use the ID as the key
+            # Use the ID as the key
             key = id_match.group(1).lower()
             full_name = id_match.group(2)
             outliers_dict[key] = {
@@ -105,7 +108,7 @@ def parse_existing_outliers(existing_outliers_str):
                 'status_desc': status_desc
             }
         else:
-            # Use the lowercase identifier as the key
+            # For cases with just a name (no ID pattern detected)
             key = identifier.lower()
             outliers_dict[key] = {
                 'original': identifier,
