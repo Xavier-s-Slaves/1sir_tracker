@@ -2075,7 +2075,60 @@ def build_conduct_table(platoon: str, date_obj: datetime, records_nominal, recor
         else:
             person["Personnel_Type"] = "Commander"
     return data
+def build_fake_conduct_table(platoon: str, date_obj: datetime, records_nominal, records_parade):
+    """
+    Return a list of dicts for all personnel in the platoon.
+    'Is_Outlier' is True if the person has an active status on the given date.
+    """
+    parade_map = defaultdict(list)
+    for row in records_parade:
+        person_name = row.get('name', '').strip().upper()
+        parade_map[person_name].append(row)
+    
+    data = []
+    for person in records_nominal:
+        p = person.get('platoon', '')
+        if normalize_name(p) != normalize_name(platoon):
+            continue
+        name = person.get('name', '')
+        rank = person.get('rank', '')
+        four_d = person.get('4d_number', '')
+        name_key = name.strip().upper()
 
+        active_statuses = []  # List to hold all active statuses for the person
+        
+
+        for parade in parade_map.get(name_key, []):
+            try:
+                start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', ''), "%d%m%Y").date()
+                end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', ''), "%d%m%Y").date()
+                if start_dt <= date_obj.date() <= end_dt:
+                    status = parade.get('status', '').strip().upper()
+                    if status:  # Ensure status is not empty
+                        active_statuses.append(status)
+            except ValueError:
+                logger.warning(
+                    f"Invalid date format for {name_key}: "
+                    f"{parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}"
+                )
+                continue
+        active_statuses = 0
+        is_outlier = active_statuses > 0
+        status_desc = ", ".join(active_statuses) if is_outlier else ""
+        data.append({
+            'Rank': rank,
+            'Name': name,
+            '4D_Number': four_d,
+            'Is_Outlier': is_outlier,
+            'StatusDesc': status_desc
+        })
+    logger.info(f"Built conduct table with {len(data)} personnel for platoon {platoon} on {date_obj.strftime('%d%m%Y')}.")
+    for person in data:
+        if person.get("Rank", "").upper() == "REC":
+            person["Personnel_Type"] = "Recruit"
+        else:
+            person["Personnel_Type"] = "Commander"
+    return data
 def calculate_leaves_used(dates_str: str) -> int:
     """
     Calculate the number of leaves used based on the dates string (which may include ranges).
@@ -2794,13 +2847,17 @@ elif feature == "Update Conduct":
                     row_num = cell.row
             except Exception as e:
                 logger.error(f"Error finding conduct row: {e}")
-                
+             
             if row_num:
                 pt_value = SHEET_CONDUCTS.cell(row_num, pt_col).value
                 outliers_value = SHEET_CONDUCTS.cell(row_num, outlier_col).value
                 
                 # Check if P/T is 0/0 and Outliers is empty or "None"
-                is_zero_pt = pt_value == "0/0"
+                if "0/0" in pt_value:
+                    is_zero_pt = True
+                # is_zero_pt = pt_value == "0/0"
+                print(pt_value)
+                print(outliers_value)
                 is_empty_outliers = not outliers_value or outliers_value.strip().lower() == "none"
                 
                 if is_zero_pt and is_empty_outliers:
@@ -2818,7 +2875,7 @@ elif feature == "Update Conduct":
             st.info("Loading personnel from parade state since no existing data found.")
         else:
             # Load using existing data
-            conduct_data = build_conduct_table(platoon, date_obj, records_nominal, records_parade)
+            conduct_data = build_fake_conduct_table(platoon, date_obj, records_nominal, records_parade)
             
             # Determine the outlier column for this platoon
             if platoon != "Coy HQ":
