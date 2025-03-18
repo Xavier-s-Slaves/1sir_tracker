@@ -41,27 +41,19 @@ LEGEND_STATUS_PREFIXES = {
     }
 def parse_existing_outliers(existing_outliers_str):
     """
-    Parses a string of outliers from the Conduct sheet.
-    E.g. "4D123 (MC), 4D234 (Excused), John Doe" =>
-         {
-            "4d123": { "original": "4D123", "status_desc": "MC" },
-            "4d234": { "original": "4D234", "status_desc": "Excused" },
-            "john doe": { "original": "John Doe", "status_desc": "" }
-         }
-    Also handles entries like:
-    - "4D1416 MOHAMED ELFEE BIN MOHAMED IMBRAN (gay)"
-    - "4D123 James (MC)"
-    - "41222 James" (without status)
-    - "James" (just name)
-    - Names with spaces before status descriptions
+    Splits on commas (top-level), extracts parentheses as 'status_desc',
+    and treats the rest as the name (with optional leading '4Dxxx' stripped).
     """
-    import re
-    
+
+    # If the string is just "none", return an empty dict.
     if existing_outliers_str.strip().lower() == "none":
         return {}
-    
+
     def split_outliers(s):
-        """Splits the string on commas that are not inside parentheses."""
+        """
+        Splits the string on commas that are NOT inside any parentheses (including nested).
+        E.g. "ABC (1,2), DEF" => ["ABC (1,2)", "DEF"].
+        """
         parts = []
         current = []
         depth = 0
@@ -70,51 +62,93 @@ def parse_existing_outliers(existing_outliers_str):
                 depth += 1
             elif char == ')':
                 depth -= 1
-            # When encountering a comma at depth 0, finish the current part.
+
+            # A comma at depth 0 means a new entry.
             if char == ',' and depth == 0:
                 parts.append(''.join(current).strip())
                 current = []
             else:
                 current.append(char)
+
+        # Add the final piece
         if current:
             parts.append(''.join(current).strip())
+
         return parts
+
+    def extract_top_level_parentheses(chunk):
+        """
+        Extracts *all* top-level parenthetical groups from a string.
+        Returns: (text_without_parentheses, combined_status_string)
+
+        Example:
+          "ABC (STUFF (INSIDE)) (ANOTHER)" -> ("ABC", "STUFF (INSIDE), ANOTHER")
+        """
+        status_parts = []
+        result_chars = []
+        depth = 0
+        start_idx = None
+
+        i = 0
+        while i < len(chunk):
+            c = chunk[i]
+            if c == '(':
+                if depth == 0:
+                    # start of a top-level group
+                    start_idx = i
+                depth += 1
+            elif c == ')':
+                depth -= 1
+                if depth == 0 and start_idx is not None:
+                    group_text = chunk[start_idx+1 : i]
+                    status_parts.append(group_text.strip())
+                    start_idx = None
+            i += 1
+
+        # Build the "outside" text, ignoring the contents of top-level parentheses
+        depth = 0
+        i = 0
+        while i < len(chunk):
+            c = chunk[i]
+            if c == '(':
+                depth += 1
+            if depth == 0:
+                result_chars.append(c)
+            if c == ')':
+                depth -= 1
+            i += 1
+
+        remainder = ''.join(result_chars).strip()
+        combined_status = ', '.join(status_parts)
+        return remainder, combined_status
 
     parts = split_outliers(existing_outliers_str)
     outliers_dict = {}
-    
+
     for part in parts:
-        # Extract the status description if it exists
-        status_desc = ""
-        identifier = part
-        
-        # Look for the last parenthetical group
-        if '(' in part and ')' in part:
-            match = re.search(r'(.*)\(([^()]*)\)[^()]*$', part.strip())
-            if match:
-                identifier = match.group(1).strip()
-                status_desc = match.group(2).strip()
-        
-        # Handle cases with ID and name
-        # Match any format where the ID is at the beginning followed by spaces and then a name
-        # This handles both patterns like "4D123 Name" and "41222 Name"
-        id_match = re.match(r'^(\d+[A-Za-z]?\d*)\s+(.*?)$', identifier)
-        if id_match:
-            # Use the ID as the key
-            key = id_match.group(1).lower()
-            full_name = id_match.group(2)
-            outliers_dict[key] = {
-                'original': id_match.group(1) + " " + full_name,
-                'status_desc': status_desc
-            }
+        # 1) Extract parentheses => statuses
+        remainder, status_desc = extract_top_level_parentheses(part)
+
+        # 2) Optional: Strip out a leading "4Dxxxx" if present. Examples:
+        #    4D1106 NG YONG ZHENG => remainder_of_name = "NG YONG ZHENG"
+        #    We'll do a simple check: if it starts with "4D", then skip it plus any letters/digits up to a space.
+        remainder = remainder.strip()
+        # Use a regex like:  ^4D[0-9A-Za-z]+\s+(.*)
+        # If it matches, we drop that "4Dxxxx" portion from the name.
+        match_4d = re.match(r'^4D[0-9A-Za-z]+\s+(.*)$', remainder, flags=re.IGNORECASE)
+        if match_4d:
+            name_str = match_4d.group(1).strip()
         else:
-            # For cases with just a name (no ID pattern detected)
-            key = identifier.lower()
-            outliers_dict[key] = {
-                'original': identifier,
-                'status_desc': status_desc
-            }
-    
+            name_str = remainder  # no leading "4D..." found
+
+        # Convert to lowercase key
+        key = name_str.lower()
+
+        outliers_dict[key] = {
+            "original": name_str,
+            "status_desc": status_desc.strip()
+        }
+
     return outliers_dict
 def load_user_db(path: str):
     """
