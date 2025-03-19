@@ -65,7 +65,7 @@
    },
    "3SG_Elgin": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper", "Pegasus"]
    },
    "Cpt_Don": {
        "password": "pass",
