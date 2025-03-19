@@ -210,6 +210,10 @@
   "HQ_Pegasus": {
     "password": "passHQ0",
     "companies": ["Pegasus"]
+  },
+  "COS_Pegasus": {
+    "password": "passCOS00",
+    "companies": ["Pegasus"]
   }
 
 }
