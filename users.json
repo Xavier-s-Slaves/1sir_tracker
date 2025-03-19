@@ -71,13 +71,13 @@
        "password": "pass",
        "companies": ["Viper"]
    },
-   "Cpt_Joash": {
-       "password": "pass",
-       "companies": ["Viper"]
+   "OC_Pegasus": {
+       "password": "passOC9",
+       "companies": ["Pegasus"]
    },
-   "3WO_Shaun": {
-       "password": "pass",
-       "companies": ["Viper", "Pegasus", "WOSpec"]
+   "CSM_Pegasus": {
+       "password": "passCSM7",
+       "companies": ["Pegasus", "WOSpec"]
    },
    "3WO_Zhi_hong": {
        "password": "pass",
@@ -190,6 +190,26 @@
   "3SG_LUCAS": {
     "password": "pass",
     "companies": ["Viper"]
+  },
+  "P1_Pegasus": {
+    "password": "pass1!",
+    "companies": ["Pegasus"]
+  },
+  "P2_Pegasus": {
+    "password": "pass2@",
+    "companies": ["Pegasus"]
+  },
+  "P3_Pegasus": {
+    "password": "pass3#",
+    "companies": ["Pegasus"]
+  },
+  "P4_Pegasus": {
+    "password": "pass4$",
+    "companies": ["Pegasus"]
+  },
+  "HQ_Pegasus": {
+    "password": "passHQ0",
+    "companies": ["Pegasus"]
   }
 
 }
