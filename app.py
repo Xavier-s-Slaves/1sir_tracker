@@ -247,7 +247,8 @@ COMPANY_SPREADSHEETS = {
     "Viper": "Viper",
     "MSC": "MSC",
     "Pegasus": "Pegasus",
-    "Scorpion": "Scorpion",  # Added MSC
+    "Scorpion": "Scorpion",
+    "WOSpec": "WOSpec"  # Added MSC
 }
 
 from datetime import datetime, timedelta

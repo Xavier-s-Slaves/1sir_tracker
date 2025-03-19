@@ -1,7 +1,7 @@
 {
     "admin": {
         "password": "pass",
-        "companies": ["Wolf", "Bravo", "Charlie", "Viper", "MSC", "Pegasus", "Scorpion"]
+        "companies": ["Wolf", "Bravo", "Charlie", "Viper", "MSC", "Pegasus", "Scorpion", "WOSpec"]
     },
     "3sg_ishneet": {
         "password": "pass",
@@ -77,7 +77,7 @@
    },
    "3WO_Shaun": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper", "Pegasus", "WOSpec"]
    },
    "3WO_Zhi_hong": {
        "password": "pass",
