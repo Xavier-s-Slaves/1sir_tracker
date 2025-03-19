@@ -214,6 +214,10 @@
   "COS_Pegasus": {
     "password": "passCOS00",
     "companies": ["Pegasus"]
+  },
+  "2WO_Eugene": {
+    "password": "pass$$$",
+    "companies": ["WOSpec", "Viper"]
   }
 
 }
