@@ -4215,7 +4215,8 @@ elif feature == "Overall View":
             'p/t plt4': 'P/T PLT4',
             'p/t coy hq': 'P/T Coy HQ',
             'p/t total': 'P/T Total',
-            'submitted_by': 'Submitted By'
+            'submitted_by': 'Submitted By',
+            'pointers': 'Safety PAR'
         }
         df_display = df_sorted.rename(columns=display_columns)[list(display_columns.values())]
 
