@@ -1,7 +1,7 @@
 {
     "admin": {
         "password": "pass",
-        "companies": ["Wolf", "Bravo", "Charlie", "Viper", "MSC", "Pegasus", "Scorpion", "WOSpec"]
+        "companies": ["Wolf", "Charlie", "Viper", "Pegasus", "Scorpion", "WOSpec"]
     },
     "3sg_ishneet": {
         "password": "pass",
