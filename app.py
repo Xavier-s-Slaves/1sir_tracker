@@ -2368,6 +2368,15 @@ if feature == "Add Conduct":
         index=conduct_options.index(st.session_state.conduct_name) if st.session_state.conduct_name in conduct_options else 0
     )
 
+    suffix_options = ["BMT", "PTP"]
+    if 'conduct_suffix' not in st.session_state:
+        st.session_state.conduct_suffix = suffix_options[0]
+    st.session_state.conduct_suffix = st.selectbox(
+        "Phase",
+        options=suffix_options,
+        index=suffix_options.index(st.session_state.conduct_suffix) if st.session_state.conduct_suffix in suffix_options else 0
+    )
+
     if 'conduct_session' not in st.session_state:
         st.session_state.conduct_session = 1
     # Only show session number input if a conduct is selected
@@ -2382,7 +2391,7 @@ if feature == "Add Conduct":
 
     # Display Final Conduct Name
     if st.session_state.conduct_name and st.session_state.conduct_session:
-        final_conduct_name = f"{st.session_state.conduct_name} {st.session_state.conduct_session}"
+        final_conduct_name = f"{st.session_state.conduct_name} {st.session_state.conduct_suffix} {st.session_state.conduct_session}"
         st.write(f"**Final Conduct Name:** {final_conduct_name}")
     elif st.session_state.conduct_name:
         st.write(f"**Final Conduct Name:** {st.session_state.conduct_name}")
