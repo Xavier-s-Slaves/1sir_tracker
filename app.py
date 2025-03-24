@@ -243,7 +243,7 @@ creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", SCO
 COMPANY_SPREADSHEETS = {
     "Wolf": "Wolf",
     "Bravo": "Bravo",
-    "Charlie": "Charlie",
+    "Viper(bmt)": "Viper(bmt)",
     "Viper": "Viper",
     "MSC": "MSC",
     "Pegasus": "Pegasus",
