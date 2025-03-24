@@ -1,7 +1,7 @@
 {
     "admin": {
         "password": "pass",
-        "companies": ["Wolf", "Charlie", "Viper", "Pegasus", "Scorpion", "WOSpec"]
+        "companies": ["Wolf", "Viper(bmt)", "Viper", "Pegasus", "Scorpion", "WOSpec"]
     },
     "3sg_ishneet": {
         "password": "pass",
@@ -9,7 +9,7 @@
     },
     "3sg_yan_hongg": {
         "password": "passw1234!",
-        "companies": ["Viper", "Pegasus"]
+        "companies": ["Viper", "Viper(bmt)"]
     },
     "2LT_Zulhimi": {
        "password": "pass",
