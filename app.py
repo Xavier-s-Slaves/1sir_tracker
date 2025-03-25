@@ -4451,209 +4451,209 @@ elif feature == "Overall View":
         # -------------------------------------------------------------------------
         logger.info(f"Displayed overall view of all conducts in company '{selected_company}' by user '{st.session_state.username}'.")
 
-st.header("Attendance Analytics")
+    st.header("Attendance Analytics")
 
-# Get Everything sheet data (assumes you have a gspread Worksheet object `sheet_everything`)
-SHEET_EVERYTHING = worksheets["everything"]
-everything_data = SHEET_EVERYTHING.get_all_values()
-if not everything_data:
-    st.error("Everything sheet is empty!")
-else:
-    # Assuming that the first three columns are static (e.g., Rank, 4D_Number, Name),
-    # the remaining columns are conduct columns.
-    conduct_headers = everything_data[0][3:]
-    if not conduct_headers:
-        st.error("No conduct columns found!")
+    # Get Everything sheet data (assumes you have a gspread Worksheet object `sheet_everything`)
+    SHEET_EVERYTHING = worksheets["everything"]
+    everything_data = SHEET_EVERYTHING.get_all_values()
+    if not everything_data:
+        st.error("Everything sheet is empty!")
     else:
-        selected_conduct = st.selectbox("Select Conduct Column", conduct_headers)
-        
-        # Fetch the nominal records
-        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-        
-        # Compute the analytics for the selected conduct column
-        try:
-            analytics = analyze_attendance(everything_data, records_nominal, selected_conduct)
-        except ValueError as e:
-            st.error(str(e))
-            analytics = None
-        
-        if analytics:
-            # Let the user choose which level to view
-            view_options = [
-                "Overall Attendance",
-                "Platoon-Level Attendance",
-                "Section-Level Attendance",
-                "Individual-Level Attendance",
-                "Conduct Summary",
-                "Training-Wide Attendance"  # New option for combined conduct analytics
-            ]
-            selected_view = st.radio("Select View", view_options)
+        # Assuming that the first three columns are static (e.g., Rank, 4D_Number, Name),
+        # the remaining columns are conduct columns.
+        conduct_headers = everything_data[0][3:]
+        if not conduct_headers:
+            st.error("No conduct columns found!")
+        else:
+            selected_conduct = st.selectbox("Select Conduct Column", conduct_headers)
             
-            if selected_view == "Overall Attendance":
-                overall = analytics['overall']
-                st.subheader("Overall Attendance")
-                st.write(
-                    f"**Total Individuals:** {overall['total']}  |  "
-                    f"**Present:** {overall['present']}  |  "
-                    f"**Attendance:** {overall['percentage']:.2f}%"
-                )
+            # Fetch the nominal records
+            records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
             
-            elif selected_view == "Platoon-Level Attendance":
-                platoon_summary = analytics['platoon_summary']
-                st.subheader("Platoon-Level Attendance")
-                # Create a DataFrame for easy display
-                df_platoon = pd.DataFrame.from_dict(platoon_summary, orient='index') \
-                    .reset_index() \
-                    .rename(columns={'index': 'Platoon'})
-                st.dataframe(df_platoon, use_container_width=True)
+            # Compute the analytics for the selected conduct column
+            try:
+                analytics = analyze_attendance(everything_data, records_nominal, selected_conduct)
+            except ValueError as e:
+                st.error(str(e))
+                analytics = None
+            
+            if analytics:
+                # Let the user choose which level to view
+                view_options = [
+                    "Overall Attendance",
+                    "Platoon-Level Attendance",
+                    "Section-Level Attendance",
+                    "Individual-Level Attendance",
+                    "Conduct Summary",
+                    "Training-Wide Attendance"  # New option for combined conduct analytics
+                ]
+                selected_view = st.radio("Select View", view_options)
                 
-            elif selected_view == "Section-Level Attendance":
-                section_summary = analytics['section_summary']
-                st.subheader("Section-Level Attendance")
-                # Build a DataFrame from the section summary
-                df_section = pd.DataFrame([
-                    {
-                        'Platoon': key[0],
-                        'Section': key[1],
-                        'Total': val['total'],
-                        'Present': val['present']
-                    }
-                    for key, val in section_summary.items()
-                ])
-                st.dataframe(df_section, use_container_width=True)
+                if selected_view == "Overall Attendance":
+                    overall = analytics['overall']
+                    st.subheader("Overall Attendance")
+                    st.write(
+                        f"**Total Individuals:** {overall['total']}  |  "
+                        f"**Present:** {overall['present']}  |  "
+                        f"**Attendance:** {overall['percentage']:.2f}%"
+                    )
                 
-            elif selected_view == "Individual-Level Attendance":
-                individual_details = analytics['individual_details']
-                st.subheader("Individual-Level Attendance")
-                # Create a DataFrame for individual details
-                df_individual = pd.DataFrame([
-                    {
-                        'Name': name,
-                        'Platoon': details['platoon'],
-                        'Section': details['section'],
-                        'Roll': details['roll'],
-                        'Attendance': details['attendance']
-                    }
-                    for name, details in individual_details.items()
-                ])
-                st.dataframe(df_individual, use_container_width=True)
-                
-            elif selected_view == "Conduct Summary":
-                conduct_summary = analytics['conduct_summary']
-                st.subheader("Conduct Summary")
-                # Build a DataFrame from the conduct summary
-                df_conduct = pd.DataFrame([
-                    {
-                        'Conduct Column': col,
-                        'Total Nominal': summary['total'],
-                        'Present': summary['present'],
-                        'Attendance (%)': f"{summary['percentage']:.2f}"
-                    }
-                    for col, summary in conduct_summary.items()
-                ])
-                st.dataframe(df_conduct, use_container_width=True)
-                
-            elif selected_view == "Training-Wide Attendance":
-                st.subheader("Training-Wide Attendance (Combined Conducts)")
-                # Determine the number of conduct columns (all columns after the first three)
-                headers = everything_data[0]
-                num_conducts = len(headers) - 3
-                
-                # Build a mapping from name to their attendance row (for fast lookup)
-                attendance_mapping = {}
-                for row in everything_data[1:]:
-                    name = row[2].strip()
-                    attendance_mapping[name] = row
-                
-                # Initialize aggregates
-                training_overall_total = len(records_nominal) * num_conducts
-                training_overall_present = 0
-                training_platoon_summary = {}   # {platoon: {'total': X, 'present': Y}}
-                training_section_summary = {}   # {(platoon, section): {'total': X, 'present': Y}}
-                training_individual_details = {}  # {name: {platoon, section, roll, yes_count, total, percentage}}
-                
-                for record in records_nominal:
-                    name = record['name'].strip()
-                    row = attendance_mapping.get(name)
-                    yes_count = 0
-                    # Iterate over all conduct columns
-                    for idx in range(3, len(headers)):
-                        value = row[idx].strip() if row and len(row) > idx else ""
-                        if value.lower() == "yes":
-                            yes_count += 1
-                    training_overall_present += yes_count
+                elif selected_view == "Platoon-Level Attendance":
+                    platoon_summary = analytics['platoon_summary']
+                    st.subheader("Platoon-Level Attendance")
+                    # Create a DataFrame for easy display
+                    df_platoon = pd.DataFrame.from_dict(platoon_summary, orient='index') \
+                        .reset_index() \
+                        .rename(columns={'index': 'Platoon'})
+                    st.dataframe(df_platoon, use_container_width=True)
                     
-                    # Parse platoon, section, and roll using the helper function
-                    num_str = record.get('4d_number', '')
-                    platoon, section, roll = parse_4d_number(num_str)
+                elif selected_view == "Section-Level Attendance":
+                    section_summary = analytics['section_summary']
+                    st.subheader("Section-Level Attendance")
+                    # Build a DataFrame from the section summary
+                    df_section = pd.DataFrame([
+                        {
+                            'Platoon': key[0],
+                            'Section': key[1],
+                            'Total': val['total'],
+                            'Present': val['present']
+                        }
+                        for key, val in section_summary.items()
+                    ])
+                    st.dataframe(df_section, use_container_width=True)
                     
-                    # Aggregate only if both platoon and section are available
-                    if platoon and section:
-                        if platoon not in training_platoon_summary:
-                            training_platoon_summary[platoon] = {'total': 0, 'present': 0}
-                        training_platoon_summary[platoon]['total'] += num_conducts
-                        training_platoon_summary[platoon]['present'] += yes_count
+                elif selected_view == "Individual-Level Attendance":
+                    individual_details = analytics['individual_details']
+                    st.subheader("Individual-Level Attendance")
+                    # Create a DataFrame for individual details
+                    df_individual = pd.DataFrame([
+                        {
+                            'Name': name,
+                            'Platoon': details['platoon'],
+                            'Section': details['section'],
+                            'Roll': details['roll'],
+                            'Attendance': details['attendance']
+                        }
+                        for name, details in individual_details.items()
+                    ])
+                    st.dataframe(df_individual, use_container_width=True)
+                    
+                elif selected_view == "Conduct Summary":
+                    conduct_summary = analytics['conduct_summary']
+                    st.subheader("Conduct Summary")
+                    # Build a DataFrame from the conduct summary
+                    df_conduct = pd.DataFrame([
+                        {
+                            'Conduct Column': col,
+                            'Total Nominal': summary['total'],
+                            'Present': summary['present'],
+                            'Attendance (%)': f"{summary['percentage']:.2f}"
+                        }
+                        for col, summary in conduct_summary.items()
+                    ])
+                    st.dataframe(df_conduct, use_container_width=True)
+                    
+                elif selected_view == "Training-Wide Attendance":
+                    st.subheader("Training-Wide Attendance (Combined Conducts)")
+                    # Determine the number of conduct columns (all columns after the first three)
+                    headers = everything_data[0]
+                    num_conducts = len(headers) - 3
+                    
+                    # Build a mapping from name to their attendance row (for fast lookup)
+                    attendance_mapping = {}
+                    for row in everything_data[1:]:
+                        name = row[2].strip()
+                        attendance_mapping[name] = row
+                    
+                    # Initialize aggregates
+                    training_overall_total = len(records_nominal) * num_conducts
+                    training_overall_present = 0
+                    training_platoon_summary = {}   # {platoon: {'total': X, 'present': Y}}
+                    training_section_summary = {}   # {(platoon, section): {'total': X, 'present': Y}}
+                    training_individual_details = {}  # {name: {platoon, section, roll, yes_count, total, percentage}}
+                    
+                    for record in records_nominal:
+                        name = record['name'].strip()
+                        row = attendance_mapping.get(name)
+                        yes_count = 0
+                        # Iterate over all conduct columns
+                        for idx in range(3, len(headers)):
+                            value = row[idx].strip() if row and len(row) > idx else ""
+                            if value.lower() == "yes":
+                                yes_count += 1
+                        training_overall_present += yes_count
                         
-                        key = (platoon, section)
-                        if key not in training_section_summary:
-                            training_section_summary[key] = {'total': 0, 'present': 0}
-                        training_section_summary[key]['total'] += num_conducts
-                        training_section_summary[key]['present'] += yes_count
+                        # Parse platoon, section, and roll using the helper function
+                        num_str = record.get('4d_number', '')
+                        platoon, section, roll = parse_4d_number(num_str)
+                        
+                        # Aggregate only if both platoon and section are available
+                        if platoon and section:
+                            if platoon not in training_platoon_summary:
+                                training_platoon_summary[platoon] = {'total': 0, 'present': 0}
+                            training_platoon_summary[platoon]['total'] += num_conducts
+                            training_platoon_summary[platoon]['present'] += yes_count
+                            
+                            key = (platoon, section)
+                            if key not in training_section_summary:
+                                training_section_summary[key] = {'total': 0, 'present': 0}
+                            training_section_summary[key]['total'] += num_conducts
+                            training_section_summary[key]['present'] += yes_count
+                        
+                        individual_percentage = (yes_count / num_conducts * 100) if num_conducts else 0
+                        training_individual_details[name] = {
+                            'platoon': platoon,
+                            'section': section,
+                            'roll': roll,
+                            'yes_count': yes_count,
+                            'total': num_conducts,
+                            'percentage': individual_percentage
+                        }
                     
-                    individual_percentage = (yes_count / num_conducts * 100) if num_conducts else 0
-                    training_individual_details[name] = {
-                        'platoon': platoon,
-                        'section': section,
-                        'roll': roll,
-                        'yes_count': yes_count,
-                        'total': num_conducts,
-                        'percentage': individual_percentage
-                    }
-                
-                overall_percentage = (training_overall_present / training_overall_total * 100) if training_overall_total else 0
-                st.write(
-                    f"**Attendance:** {overall_percentage:.2f}%"
-                )
-                
-                st.subheader("Platoon-Level Training-Wide Attendance")
-                df_platoon_tw = pd.DataFrame([
-                    {
-                        'Platoon': platoon,
-                        'Attendance (%)': f"{(summary['present']/summary['total']*100):.2f}" if summary['total'] else "0.00"
-                    }
-                    for platoon, summary in training_platoon_summary.items()
-                ])
-                st.dataframe(df_platoon_tw, use_container_width=True)
-                
-                st.subheader("Section-Level Training-Wide Attendance")
-                df_section_tw = pd.DataFrame([
-                    {
-                        'Platoon': key[0],
-                        'Section': key[1],
-                        'Attendance (%)': f"{(val['present']/val['total']*100):.2f}" if val['total'] else "0.00"
-                    }
-                    for key, val in training_section_summary.items()
-                ])
-                st.dataframe(df_section_tw, use_container_width=True)
-                
-                st.subheader("Individual-Level Training-Wide Attendance")
-                df_individual_tw = pd.DataFrame([
-                    {
-                        'Name': name,
-                        'Platoon': details['platoon'],
-                        'Section': details['section'],
-                        'Roll': details['roll'],
-                        'Attendance (%)': f"{details['percentage']:.2f}"
-                    }
-                    for name, details in training_individual_details.items()
-                ])
-                def highlight_below_threshold(val):
-                    try:
-                        if float(val) < 75:
-                            return 'background-color: #ff9999'
-                    except Exception:
-                        pass
-                    return ''
-                
-                styled_df = df_individual_tw.style.applymap(highlight_below_threshold, subset=['Attendance (%)'])
-                st.dataframe(styled_df, use_container_width=True)
+                    overall_percentage = (training_overall_present / training_overall_total * 100) if training_overall_total else 0
+                    st.write(
+                        f"**Attendance:** {overall_percentage:.2f}%"
+                    )
+                    
+                    st.subheader("Platoon-Level Training-Wide Attendance")
+                    df_platoon_tw = pd.DataFrame([
+                        {
+                            'Platoon': platoon,
+                            'Attendance (%)': f"{(summary['present']/summary['total']*100):.2f}" if summary['total'] else "0.00"
+                        }
+                        for platoon, summary in training_platoon_summary.items()
+                    ])
+                    st.dataframe(df_platoon_tw, use_container_width=True)
+                    
+                    st.subheader("Section-Level Training-Wide Attendance")
+                    df_section_tw = pd.DataFrame([
+                        {
+                            'Platoon': key[0],
+                            'Section': key[1],
+                            'Attendance (%)': f"{(val['present']/val['total']*100):.2f}" if val['total'] else "0.00"
+                        }
+                        for key, val in training_section_summary.items()
+                    ])
+                    st.dataframe(df_section_tw, use_container_width=True)
+                    
+                    st.subheader("Individual-Level Training-Wide Attendance")
+                    df_individual_tw = pd.DataFrame([
+                        {
+                            'Name': name,
+                            'Platoon': details['platoon'],
+                            'Section': details['section'],
+                            'Roll': details['roll'],
+                            'Attendance (%)': f"{details['percentage']:.2f}"
+                        }
+                        for name, details in training_individual_details.items()
+                    ])
+                    def highlight_below_threshold(val):
+                        try:
+                            if float(val) < 75:
+                                return 'background-color: #ff9999'
+                        except Exception:
+                            pass
+                        return ''
+                    
+                    styled_df = df_individual_tw.style.applymap(highlight_below_threshold, subset=['Attendance (%)'])
+                    st.dataframe(styled_df, use_container_width=True)
