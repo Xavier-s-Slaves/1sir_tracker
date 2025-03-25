@@ -2467,6 +2467,7 @@ if feature == "Add Conduct":
         "GYM TRAINING",
         "INFANTRY SMALL ARMS DEMONSTRATION",
         "INTRO TO HEARTRATE",
+        "INTRO TO UO",
         "IPPT",
         "LEADERSHIP VALUES",
         "MO TALK",
