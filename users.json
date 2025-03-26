@@ -218,6 +218,18 @@
   "2WO_Eugene": {
     "password": "pass$$$",
     "companies": ["Wolf", "Bravo", "Charlie", "Viper", "MSC", "Pegasus", "Scorpion", "WOSpec"]
+  },
+  "2LT_UDAYA": {
+    "password": "pass",
+    "companies": ["Viper"]
+  },
+  "PC_3 ": {
+    "password": "pass",
+    "companies": ["Viper"]
+  },
+  "3SG_YaoZong": {
+    "password": "pass",
+    "companies": ["Viper"]
   }
 
 }
