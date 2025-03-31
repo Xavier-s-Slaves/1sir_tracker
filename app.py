@@ -2197,7 +2197,7 @@ if feature == "Add Conduct":
         "ROUTE MARCH(3KM)",
         "ROUTE MARCH (4KM)",
         "ROUTE MARCH (8KM)",
-        "ROUTE MARCH (12KM",
+        "ROUTE MARCH (12KM)",
         "SAFE & INCLUSIVE WORKPLACE",
         "SAFRA TALK",
         "SIT TEST",
