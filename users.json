@@ -5,71 +5,71 @@
     },
     "3sg_ishneet": {
         "password": "pass",
-        "companies": ["Viper"]
+        "companies": ["Viper(bmt)", "Viper"]
     },
     "3sg_yan_hongg": {
         "password": "passw1234!",
-        "companies": ["Viper", "Viper(bmt)"]
+        "companies": ["Viper(bmt)", "Viper"]
     },
     "2LT_Zulhimi": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "2LT_Jordan": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "2LT_Harith": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "2LT_Jed": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "1SG_Jiazhen": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "3SG_Lingesh": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "2SG_Jerrold": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "3SG_Kimi": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "3SG_Keith": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "3SG_Keefe": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "3SG_Aqiel": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "1SG_Raja": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "3SG_Wei_hong": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "3SG_Elgin": {
        "password": "pass",
-       "companies": ["Viper", "Pegasus"]
+       "companies": ["Pegasus"]
    },
    "Cpt_Don": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "OC_Pegasus": {
        "password": "passOC9",
@@ -81,7 +81,7 @@
    },
    "3WO_Zhi_hong": {
        "password": "pass",
-       "companies": ["Viper"]
+       "companies": ["Viper(bmt)", "Viper"]
    },
    "CPT_ARAVIN_JONATHAN": {
     "password": "pass",
@@ -185,11 +185,11 @@
   },
   "3SG_KAI_MING": {
     "password": "pass",
-    "companies": ["Viper"]
+    "companies": ["Viper(bmt)", "Viper"]
   },
   "3SG_LUCAS": {
     "password": "pass",
-    "companies": ["Viper"]
+    "companies": ["Viper(bmt)", "Viper"]
   },
   "P1_Pegasus": {
     "password": "pass1!",
@@ -217,19 +217,19 @@
   },
   "2WO_Eugene": {
     "password": "pass$$$",
-    "companies": ["Wolf", "Bravo", "Charlie", "Viper", "MSC", "Pegasus", "Scorpion", "WOSpec"]
+    "companies": ["Wolf", "Bravo", "Charlie", "Viper(bmt)", "MSC", "Pegasus", "Scorpion", "WOSpec"]
   },
   "2LT_UDAYA": {
     "password": "pass",
-    "companies": ["Viper"]
+    "companies": ["Viper(bmt)", "Viper"]
   },
   "PC_3": {
     "password": "pass",
-    "companies": ["Viper"]
+    "companies": ["Viper(bmt)", "Viper"]
   },
   "3SG_YaoZong": {
     "password": "pass",
-    "companies": ["Viper"]
+    "companies": ["Viper(bmt)", "Viper"]
   }
 
 }
