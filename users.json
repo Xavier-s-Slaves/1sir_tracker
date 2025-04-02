@@ -1,7 +1,7 @@
 {
     "admin": {
         "password": "pass",
-        "companies": ["Wolf", "Viper(bmt)", "Viper", "Pegasus", "Scorpion", "WOSpec"]
+        "companies": ["Wolf", "Wolf(ptp)", "Viper(bmt)", "Viper", "Pegasus", "Scorpion", "WOSpec"]
     },
     "3sg_ishneet": {
         "password": "pass",
@@ -85,103 +85,103 @@
    },
    "CPT_ARAVIN_JONATHAN": {
     "password": "pass",
-    "companies": ["Wolf"]
+    "companies": ["Wolf", "Wolf(ptp)"]
   },
   "CPT_ASYRAF_ALMUSADDIQ": {
     "password": "pass",
-    "companies": ["Wolf", "Scorpion"]
+    "companies": ["Wolf", "Wolf(ptp)","Scorpion"]
   },
   "3WO_NELSON_NG": {
     "password": "pass",
-    "companies": ["Wolf"]
+    "companies": ["Wolf","Wolf(ptp)"]
   },
   "3WO_KOUNG_JIAN_HUI": {
     "password": "pass",
-    "companies": ["Wolf", "Scorpion"]
+    "companies": ["Wolf","Wolf(ptp)", "Scorpion"]
   },
   "2LT_JAMES_HOWDEN": {
     "password": "pass",
-    "companies": ["Wolf"]
+    "companies": ["Wolf","Wolf(ptp)"]
   },
   "2LT_HENRIECO_UTTAMO": {
     "password": "pass",
-    "companies": ["Wolf"]
+    "companies": ["Wolf","Wolf(ptp)"]
   },
   "2LT_DILRAJ_SINGH": {
     "password": "pass",
-    "companies": ["Wolf", "Scorpion"]
+    "companies": ["Wolf","Wolf(ptp)", "Scorpion"]
   },
   "LTA_TAN_JIN_HAO": {
     "password": "pass",
-    "companies": ["Wolf", "Scorpion"]
+    "companies": ["Wolf","Wolf(ptp)", "Scorpion"]
   },
   "3SG_MATTHEW_LUKE_LIM_KAIJUN": {
     "password": "pass",
-    "companies": ["Wolf", "Scorpion"]
+    "companies": ["Wolf","Wolf(ptp)", "Scorpion"]
   },
   "3SG_CHRISTIAN_ONG_YUE_MING": {
     "password": "pass",
-    "companies": ["Wolf", "Scorpion"]
+    "companies": ["Wolf","Wolf(ptp)", "Scorpion"]
   },
   "3SG_MUHAMMAD_AZRI_BIN_SELAMAT": {
     "password": "pass",
-    "companies": ["Wolf", "Scorpion"]
+    "companies": ["Wolf", "Wolf(ptp)","Scorpion"]
   },
   "3SG_CHAN_KOK_JUN_CLOVIS": {
     "password": "pass",
-    "companies": ["Wolf", "Scorpion"]
+    "companies": ["Wolf", "Wolf(ptp)","Scorpion"]
   },
   "3SG_MATTHEW_YEO_SUI_LI": {
     "password": "pass",
-    "companies": ["Wolf", "Scorpion"]
+    "companies": ["Wolf", "Wolf(ptp)","Scorpion"]
   },
   "1SG_SHARANYUGJIT_SINGH_RANDHAWA": {
     "password": "pass",
-    "companies": ["Wolf", "Scorpion"]
+    "companies": ["Wolf","Wolf(ptp)", "Scorpion"]
   },
   "3SG_ATHUL_ANILKUMAR": {
     "password": "pass",
-    "companies": ["Wolf"]
+    "companies": ["Wolf","Wolf(ptp)"]
   },
   "2SG_KHAARTHIK_S/O_RATNASINGAM": {
     "password": "pass",
-    "companies": ["Wolf"]
+    "companies": ["Wolf","Wolf(ptp)"]
   },
   "3SG_VISHAL_VAITHIYANATHAN": {
     "password": "pass",
-    "companies": ["Wolf"]
+    "companies": ["Wolf","Wolf(ptp)"]
   },
   "3SG_MILLARD_ANG_WEI_ZE": {
     "password": "pass",
-    "companies": ["Wolf"]
+    "companies": ["Wolf","Wolf(ptp)"]
   },
   "3SG_NAZRI_BIN_AZMAN": {
     "password": "pass",
-    "companies": ["Wolf"]
+    "companies": ["Wolf","Wolf(ptp)"]
   },
   "3SG_PALANIAPPAN_MUTHU_KUMAR": {
     "password": "pass",
-    "companies": ["Wolf"]
+    "companies": ["Wolf","Wolf(ptp)"]
   },
   "3SG_LIANG_SHI_CHENG": {
     "password": "pass",
-    "companies": ["Wolf"]
+    "companies": ["Wolf","Wolf(ptp)"]
   },
   "3SG_LEE_CHENG_HAN": {
     "password": "pass",
-    "companies": ["Wolf", "Scorpion"]
+    "companies": ["Wolf","Wolf(ptp)", "Scorpion"]
   },
   "3SG_MIN_WAI_PHYO": {
     "password": "pass",
-    "companies": ["Wolf"]
+    "companies": ["Wolf","Wolf(ptp)"]
   },
   "3SG_WONG_WEIHENG_RAYDEN": {
     "password": "pass",
-    "companies": ["Wolf"]
+    "companies": ["Wolf","Wolf(ptp)"]
   },
   "3SG_CHONG_ZHI_JUN": {
     "password": "pass",
-    "companies": ["Wolf"]
+    "companies": ["Wolf","Wolf(ptp)"]
   },
   "3SG_KAI_MING": {
     "password": "pass",
