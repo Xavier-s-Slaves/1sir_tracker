@@ -250,6 +250,11 @@
   "2LT_DERVIN": {
     "password": "pass",
     "companies": ["Wolf", "Wolf1"]
+  },
+  "2LT_Scott": {
+    "password": "pass",
+    "companies": ["Viper(bmt)", "Viper"]
   }
+
 
 }
