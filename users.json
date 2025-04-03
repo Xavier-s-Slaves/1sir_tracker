@@ -238,6 +238,18 @@
   "2LT_KAVINESH_CHANDRASEKAR": {
     "password": "pass",
     "companies": ["Scorpion"]
+  },
+  "2LT_XUEGAI": {
+    "password": "pass",
+    "companies": ["Wolf", "Wolf1"]
+  },
+  "2LT_KARTHIK": {
+    "password": "pass",
+    "companies": ["Wolf", "Wolf1"]
+  },
+  "2LT_DERVIN": {
+    "password": "pass",
+    "companies": ["Wolf", "Wolf1"]
   }
 
 }
