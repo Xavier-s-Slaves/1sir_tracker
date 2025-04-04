@@ -3627,7 +3627,7 @@ elif feature == "Queries":
     st.subheader("Query Person Information")
     
     # Add tabs for different query types
-    tab1, tab2, tab3 = st.tabs(["Medical Statuses", "Leave Counter", "MC Counter"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Medical Statuses", "Leave Counter", "MC Counter", "Threshold Alerts"])
     
     # Common input field for all tabs
     person_input = st.text_input("Enter the 4D Number or partial Name", key="query_person_input")
@@ -3844,6 +3844,87 @@ elif feature == "Queries":
                     st.table(medical_details)
                 else:
                     st.info("No medical records found")
+    with tab4:
+        st.subheader("📋 MR & Report Sick Threshold Alerts")
+
+        # Just pull all nominal + parade records for the selected company
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        all_parade_records = get_allparade_records(selected_company, SHEET_PARADE)
+
+        nominal_lookup = {rec['4d_number'].upper(): rec for rec in records_nominal}
+
+        from collections import defaultdict
+        from datetime import timedelta
+
+        def parse_ddmmyyyy(d):
+            try:
+                return datetime.strptime(str(d), "%d%m%Y")
+            except ValueError:
+                return datetime.min
+
+        flagged_persons = []
+
+        # Group parade rows by 4D
+        persons_by_4d = defaultdict(list)
+        for row in all_parade_records:
+            four_d = is_valid_4d(row.get("4d_number", ""))
+            if four_d:
+                persons_by_4d[four_d].append(row)
+
+        # Check each person's MC/ML usage
+        for four_d, rows in persons_by_4d.items():
+            all_mc_ml_dates = []
+            weekend_sick_count = 0
+
+            for row in rows:
+                status = row.get("status", "").strip().lower()
+                if status.startswith(("mc", "ml")):
+                    start_date = parse_ddmmyyyy(row.get("start_date_ddmmyyyy", ""))
+                    end_date = parse_ddmmyyyy(row.get("end_date_ddmmyyyy", ""))
+
+                    if start_date == datetime.min or end_date == datetime.min:
+                        continue
+
+                    # Gather each day covered by MC/ML
+                    current = start_date
+                    while current <= end_date:
+                        all_mc_ml_dates.append(current)
+                        current += timedelta(days=1)
+
+                    # If MC/ML starts on Fri-Sun, track it
+                if status.startswith(("mc(rso)", "ml(rso)", "mc (rso)", "ml (rso)")):  # Fri=4, Sat=5, Sun=6
+                    weekend_sick_count += 1
+
+            all_mc_ml_dates.sort()
+
+            # Check MR threshold: 8+ MC/ML days in any rolling 30-day window
+            mr_threshold_hit = False
+            i = 0
+            for j in range(len(all_mc_ml_dates)):
+                # Slide the window until the difference is > 29 days
+                while all_mc_ml_dates[j] - all_mc_ml_dates[i] > timedelta(days=29):
+                    i += 1
+                if (j - i + 1) >= 8:
+                    mr_threshold_hit = True
+                    break
+
+            # If MR threshold is hit, also check "weekend sick" threshold
+            if mr_threshold_hit:
+                nominal = nominal_lookup.get(four_d.upper(), {})
+                flagged_persons.append({
+                    "4D Number": four_d,
+                    "Rank": nominal.get("rank", ""),
+                    "Name": nominal.get("name", ""),
+                    "MR Threshold": "✅",
+                    "Weekend Sick Count": weekend_sick_count,
+                    "Report Sick Threshold": "✅" if weekend_sick_count >= 3 else "❌"
+                })
+
+        if flagged_persons:
+            st.success(f"Found {len(flagged_persons)} personnel who hit MR threshold.")
+            st.table(flagged_persons)
+        else:
+            st.info("✅ No one hit the MR or Report Sick thresholds.")
                 
             logger.info(f"Displayed information for '{person_input}' in company '{selected_company}'.")
 # ------------------------------------------------------------------------------
