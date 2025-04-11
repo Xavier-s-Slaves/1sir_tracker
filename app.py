@@ -2165,6 +2165,7 @@ if feature == "Add Conduct":
         "BTP",
         "CBA&CPR-AED",
         "CADENCE RUN",
+        "CAREHAB ADJUSTMENT SURVEY",
         "COMBAT CIRCUIT",
         "COY FIRE DRILL",
         "CPT",
