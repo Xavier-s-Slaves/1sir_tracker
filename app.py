@@ -1921,6 +1921,7 @@ if feature == "Add Conduct":
         "CADENCE RUN",
         "CAREHAB ADJUSTMENT SURVEY",
         "COMBAT CIRCUIT",
+        "CONDUCTING BRIEF BTP",
         "COY FIRE DRILL",
         "CPT",
         "DAC",
