@@ -1374,7 +1374,7 @@ def classify_conduct(header: str) -> str:
 def get_nominal_records(selected_company: str, _sheet_nominal):
     """
     Returns all rows from Nominal_Roll as a list of dicts.
-    Handles case-insensitive and whitespace-trimmed headers.
+    Handles case-insensitive and whitespace-trimmed headers.no 
     Includes the 'company' field in each record.
     """
     records = _sheet_nominal.get_all_records()
@@ -1395,6 +1395,9 @@ def get_nominal_records(selected_company: str, _sheet_nominal):
         normalized_row['company'] = selected_company  # Add company information
         normalized_row['bmt_ptp'] = ensure_str(
             normalized_row.get('bmt_ptp', 'combined')
+        ).lower()
+        normalized_row['ration_type'] = ensure_str(
+            normalized_row.get('ration_type', '')
         ).lower()
         normalized_records.append(normalized_row)
     
@@ -3394,7 +3397,7 @@ elif feature == "Queries":
     st.subheader("Query Person Information")
     
     # Add tabs for different query types
-    tab1, tab2, tab3, tab4 = st.tabs(["Medical Statuses", "Leave Counter", "MC Counter", "Threshold Alerts"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Medical Statuses", "Leave Counter", "MC Counter", "Threshold Alerts" ,"Ration Requirements"])
     
     # Common input field for all tabs
     person_input = st.text_input("Enter the 4D Number or partial Name", key="query_person_input")
@@ -3691,6 +3694,69 @@ elif feature == "Queries":
         else:
             st.info("✅ No one hit the MR or Report Sick thresholds "
                     f"for the selected window.")
+            
+    with tab5:
+        st.subheader("🍽️  Ration Requirements")
+
+        # choose date (defaults to today)
+        target_date = st.date_input(
+            "Date to compute rations for", datetime.today().date(),
+            key="ration_date"
+        )
+
+        # pull once
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        parade_records  = get_allparade_records(selected_company, SHEET_PARADE)
+
+        # ---------------------------------------------------------------
+        # 1)  build absent‑UID set exactly like generate_company_message
+        absent_uids = set()
+        for parade in parade_records:
+            if parade.get("company", "") != selected_company:
+                continue
+
+            # active on the chosen day?
+            sdt = parse_ddmmyyyy(parade.get("start_date_ddmmyyyy", ""))
+            edt = parse_ddmmyyyy(parade.get("end_date_ddmmyyyy",   ""))
+            if sdt.date() <= target_date <= edt.date():
+
+                # conformant status?
+                status = parade.get("status", "")
+                status_prefix = status.lower().split()[0]
+                if status_prefix in LEGEND_STATUS_PREFIXES:   # **same rule**
+                    uid = (
+                        is_valid_4d(parade.get("4d_number", "")) or
+                        parade.get("name", "").strip().lower()
+                    )
+                    absent_uids.add(uid)
+
+        # ---------------------------------------------------------------
+        # 2)  count rations for everyone NOT in absent_uids
+        RATION_TYPES = ["nm", "m", "vi", "vc", "sdm", "sdnm"]
+        ration_needed = {rt: 0 for rt in RATION_TYPES}
+
+        for rec in records_nominal:
+            if rec.get("company", "") != selected_company:
+                continue
+            uid = rec["4d_number"] or rec["name"].lower()
+            if uid in absent_uids:
+                continue                          # skip absentees
+
+            rtype = rec.get("ration_type", "nm").lower()
+            if rtype not in ration_needed:
+                rtype = "nm"
+            ration_needed[rtype] += 1
+
+        # ---------------------------------------------------------------
+        # 3)  show the result
+        st.table(
+            pd.DataFrame(
+                [{"Ration Type": rt.upper(), "Count Needed": cnt}
+                for rt, cnt in ration_needed.items()]
+            ).sort_values("Ration Type").reset_index(drop=True)
+        )
+        total = sum(ration_needed.values())
+        st.success(f"Total rations required on {target_date:%d %b %Y}: **{total}**")
 # ------------------------------------------------------------------------------
 # 14) Feature F: Generate WhatsApp Message
 # ------------------------------------------------------------------------------
