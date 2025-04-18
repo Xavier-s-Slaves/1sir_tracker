@@ -12,6 +12,7 @@ import json
 import os
 from typing import List, Dict, Optional
 from zoneinfo import ZoneInfo  # type: ignore
+from datetime import timedelta
 # ------------------------------------------------------------------------------
 # Setup Logging
 # ------------------------------------------------------------------------------
@@ -3398,7 +3399,11 @@ elif feature == "Queries":
     # Common input field for all tabs
     person_input = st.text_input("Enter the 4D Number or partial Name", key="query_person_input")
     search_button = st.button("Search", key="btn_query_person")
-    
+    def parse_ddmmyyyy(d):
+        try:
+            return datetime.strptime(str(d), "%d%m%Y")
+        except ValueError:
+            return datetime.min
     if search_button:
         if not person_input:
             st.error("Please enter a 4D Number or Name.")
@@ -3612,87 +3617,80 @@ elif feature == "Queries":
                     st.info("No medical records found")
     with tab4:
         st.subheader("📋 MR & Report Sick Threshold Alerts")
+        st.write("MR (Medical Reporting) Threshold: Counts every calendar day covered by MC or ML within a rolling 30‑day window (default: the last 30 days including today).")
+        st.write("RSO Threshold: Once they hit the MR threshold and they have 3 or more MC/ML periods tagged “RSO”")
 
-        # Just pull all nominal + parade records for the selected company
+        # ── date‑range picker ─────────────────────────────────────────────
+        today = datetime.today().date()
+        default_start = today - timedelta(days=29)             # NEW
+        start_date, end_date = st.date_input(                 # NEW
+            "MR rolling‑window (inclusive)",
+            (default_start, today),
+            key="mr_window"
+        )
+        if start_date > end_date:
+            st.error("Start date must be on or before end date.")
+            st.stop()
+
+        # pull data …
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         all_parade_records = get_allparade_records(selected_company, SHEET_PARADE)
 
         nominal_lookup = {rec['4d_number'].upper(): rec for rec in records_nominal}
-
-        from collections import defaultdict
-        from datetime import timedelta
-
-        def parse_ddmmyyyy(d):
-            try:
-                return datetime.strptime(str(d), "%d%m%Y")
-            except ValueError:
-                return datetime.min
-
-        flagged_persons = []
-
-        # Group parade rows by 4D
         persons_by_4d = defaultdict(list)
         for row in all_parade_records:
             four_d = is_valid_4d(row.get("4d_number", ""))
             if four_d:
                 persons_by_4d[four_d].append(row)
 
-        # Check each person's MC/ML usage
+        flagged_persons = []
         for four_d, rows in persons_by_4d.items():
-            all_mc_ml_dates = []
+            mc_ml_days = set()                                # NEW use set to avoid dup days
             weekend_sick_count = 0
 
             for row in rows:
                 status = row.get("status", "").strip().lower()
-                if status.startswith(("mc", "ml")):
-                    start_date = parse_ddmmyyyy(row.get("start_date_ddmmyyyy", ""))
-                    end_date = parse_ddmmyyyy(row.get("end_date_ddmmyyyy", ""))
+                if not status.startswith(("mc", "ml")):
+                    continue
 
-                    if start_date == datetime.min or end_date == datetime.min:
-                        continue
+                # parse dates
+                sdt = parse_ddmmyyyy(row.get("start_date_ddmmyyyy", ""))
+                edt = parse_ddmmyyyy(row.get("end_date_ddmmyyyy", ""))
+                if sdt == datetime.min or edt == datetime.min:
+                    continue
 
-                    # Gather each day covered by MC/ML
-                    current = start_date
-                    while current <= end_date:
-                        all_mc_ml_dates.append(current)
-                        current += timedelta(days=1)
+                # iterate through covered days
+                cur = sdt.date()
+                while cur <= edt.date():
+                    if start_date <= cur <= end_date:         # NEW window filter
+                        mc_ml_days.add(cur)
+                    cur += timedelta(days=1)
 
-                    # If MC/ML starts on Fri-Sun, track it
-                if status.startswith(("mc(rso)", "ml(rso)", "mc (rso)", "ml (rso)")):  # Fri=4, Sat=5, Sun=6
-                    weekend_sick_count += 1
+                # count RSO on Fri‑Sun only inside window      # NEW
+                if status.startswith(("mc(rso)", "ml(rso)", "mc (rso)", "ml (rso)")):
+                    if start_date <= sdt.date() <= end_date:
+                        weekend_sick_count += 1
 
-            all_mc_ml_dates.sort()
-
-            # Check MR threshold: 8+ MC/ML days in any rolling 30-day window
-            mr_threshold_hit = False
-            i = 0
-            for j in range(len(all_mc_ml_dates)):
-                # Slide the window until the difference is > 29 days
-                while all_mc_ml_dates[j] - all_mc_ml_dates[i] > timedelta(days=29):
-                    i += 1
-                if (j - i + 1) >= 8:
-                    mr_threshold_hit = True
-                    break
-
-            # If MR threshold is hit, also check "weekend sick" threshold
-            if mr_threshold_hit:
-                nominal = nominal_lookup.get(four_d.upper(), {})
+            # MR threshold = 8+ days in window
+            if len(mc_ml_days) >= 8:
+                nom = nominal_lookup.get(four_d.upper(), {})
                 flagged_persons.append({
                     "4D Number": four_d,
-                    "Rank": nominal.get("rank", ""),
-                    "Name": nominal.get("name", ""),
+                    "Rank": nom.get("rank", ""),
+                    "Name": nom.get("name", ""),
                     "MR Threshold": "✅",
                     "Weekend Sick Count": weekend_sick_count,
                     "Report Sick Threshold": "✅" if weekend_sick_count >= 3 else "❌"
                 })
 
+        # ── display ─────────────────────────────────────────────────────
         if flagged_persons:
-            st.success(f"Found {len(flagged_persons)} personnel who hit MR threshold.")
+            st.success(f"Found {len(flagged_persons)} personnel who hit MR threshold "
+                    f"({start_date:%d %b %Y} → {end_date:%d %b %Y}).")
             st.table(flagged_persons)
         else:
-            st.info("✅ No one hit the MR or Report Sick thresholds.")
-                
-            logger.info(f"Displayed information for '{person_input}' in company '{selected_company}'.")
+            st.info("✅ No one hit the MR or Report Sick thresholds "
+                    f"for the selected window.")
 # ------------------------------------------------------------------------------
 # 14) Feature F: Generate WhatsApp Message
 # ------------------------------------------------------------------------------
