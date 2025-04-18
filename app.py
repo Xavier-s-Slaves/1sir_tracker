@@ -280,109 +280,106 @@ def parse_4d_number(num_str: str):
     roll = num_str[4:]
     return platoon, section, roll
 
-def analyze_attendance(everything_data: list, nominal_data: list, conduct_header: str):
+def analyze_attendance(everything_data: list,
+                       nominal_data: list,
+                       conduct_header: str):
     """
-    Aggregates attendance analytics at multiple levels.
-    
-    Parameters:
-      - everything_data: List of lists from the Everything sheet (first row is headers).
-      - nominal_data: List of dicts from get_nominal_records.
-      - conduct_header: The conduct column header to analyze in detail 
-                        (e.g., "09032025, AQUA 1").
-    
-    Returns:
-      A dictionary containing:
-        - overall: Overall attendance using total count from nominal_data.
-        - platoon_summary: Attendance broken down by platoon (skipping individuals missing platoon/section).
-        - section_summary: Attendance broken down by (platoon, section).
-        - individual_details: Per-individual record (from the given conduct column).
-        - conduct_summary: For every conduct column available (assumed to be from index 3 onward),
-                           a summary with present count, total (nominal total), and percentage.
+    Same signature as before, but all denominators now exclude
+    individuals for whom the conduct column does not apply
+    (based on their 'bmt_ptp' field).
     """
-    # Build a mapping from nominal record name to record (if needed later)
-    nominal_mapping = {record['name'].strip(): record for record in nominal_data}
-    
+    # ── setup ───────────────────────────────────────────────────────────────────
+    nominal_mapping = {r['name'].strip(): r for r in nominal_data}
     headers = everything_data[0]
     if conduct_header not in headers:
-        raise ValueError(f"Conduct column '{conduct_header}' not found in Everything sheet.")
+        raise ValueError(f"Conduct column '{conduct_header}' not found.")
     conduct_idx = headers.index(conduct_header)
-    
-    # Build a mapping from name (assumed to be in column index 2) to attendance row.
-    attendance_mapping = {}
-    for row in everything_data[1:]:
-        name = row[2].strip()  # Assuming Name is always in the third column.
-        attendance_mapping[name] = row
-    
-    overall_total = len(nominal_data)  # Overall denominator from nominal records.
-    overall_present = 0
-    platoon_summary = {}
-    section_summary = {}
-    individual_details = {}
-    
-    # Process each individual based on nominal_data to ensure everyone is counted.
-    for record in nominal_data:
-        name = record['name'].strip()
-        # Look up the individual's attendance row; if missing, assume absent.
+    conduct_type = classify_conduct(conduct_header)        # NEW
+
+    attendance_mapping = {row[2].strip(): row for row in everything_data[1:]}
+
+    overall_total = overall_present = 0
+    platoon_summary, section_summary, individual_details = {}, {}, {}
+
+    # ── main loop ───────────────────────────────────────────────────────────────
+    for rec in nominal_data:
+        name = rec['name'].strip()
+        status = rec.get('bmt_ptp', 'combined').lower()     # NEW
+
+        applies = (
+            conduct_type == 'combined'
+            or status == 'combined'
+            or status == conduct_type
+        )                                                  # NEW
+
+        # If this conduct is irrelevant to the soldier, skip all counters
+        # but still write "N/A" so the UI can display something.
+        if not applies:
+            individual_details[name] = {
+                'platoon': '', 'section': '', 'roll': '',
+                'attendance': 'N/A'
+            }
+            continue                                       # NEW
+
+        overall_total += 1                                 # CHANGED
         row = attendance_mapping.get(name)
-        attendance_value = row[conduct_idx].strip() if row and len(row) > conduct_idx else ""
-        is_present = attendance_value.lower() == "yes"
+        value = row[conduct_idx].strip() if row and len(row) > conduct_idx else ""
+        is_present = value.lower() == "yes"
         if is_present:
             overall_present += 1
-        
-        # Use the nominal record's 4d_number to get platoon, section, and roll.
-        num_str = record.get('4d_number', '')
-        platoon, section, roll = parse_4d_number(num_str)
-        
-        # Only aggregate for platoon and section if both are provided.
+
+        platoon, section, roll = parse_4d_number(rec.get('4d_number', ''))
         if platoon and section:
-            if platoon not in platoon_summary:
-                platoon_summary[platoon] = {'total': 0, 'present': 0}
+            platoon_summary.setdefault(platoon, {'total': 0, 'present': 0})
             platoon_summary[platoon]['total'] += 1
-            if is_present:
-                platoon_summary[platoon]['present'] += 1
-            
+            platoon_summary[platoon]['present'] += is_present
+
             key = (platoon, section)
-            if key not in section_summary:
-                section_summary[key] = {'total': 0, 'present': 0}
+            section_summary.setdefault(key, {'total': 0, 'present': 0})
             section_summary[key]['total'] += 1
-            if is_present:
-                section_summary[key]['present'] += 1
-        
-        # Save the individual detail (for the specified conduct column).
+            section_summary[key]['present'] += is_present
+
         individual_details[name] = {
-            'platoon': platoon,
-            'section': section,
-            'roll': roll,
-            'attendance': attendance_value
+            'platoon': platoon, 'section': section,
+            'roll': roll, 'attendance': value or "Absent"
         }
-    
-    overall_percentage = (overall_present / overall_total * 100) if overall_total else 0
-    
-    # Now, build a summary for all conduct columns available so far.
-    # Here we assume that attendance columns start at index 3.
+
+    overall_pct = (overall_present / overall_total * 100) if overall_total else 0
+
+    # ── column‑by‑column conduct summary ────────────────────────────────────────
     conduct_summary = {}
     for idx in range(3, len(headers)):
         col_header = headers[idx]
-        present_count = 0
-        for record in nominal_data:
-            name = record['name'].strip()
-            row = attendance_mapping.get(name)
-            # If no attendance record exists for this individual, count as absent.
-            value = row[idx].strip() if row and len(row) > idx else ""
-            if value.lower() == "yes":
-                present_count += 1
-        percentage = (present_count / overall_total * 100) if overall_total else 0
+        ctype = classify_conduct(col_header)               # NEW
+        total = present = 0
+
+        for rec in nominal_data:
+            status = rec.get('bmt_ptp', 'combined').lower()
+            applies = (
+                ctype == 'combined'
+                or status == 'combined'
+                or status == ctype
+            )
+            if not applies:
+                continue
+
+            total += 1
+            row = attendance_mapping.get(rec['name'].strip())
+            val = row[idx].strip() if row and len(row) > idx else ""
+            if val.lower() == "yes":
+                present += 1
+
+        pct = (present / total * 100) if total else 0
         conduct_summary[col_header] = {
-            'present': present_count,
-            'total': overall_total,
-            'percentage': percentage
+            'present': present, 'total': total, 'percentage': pct
         }
-    
+
+    # ── return payload ──────────────────────────────────────────────────────────
     return {
         'overall': {
             'total': overall_total,
             'present': overall_present,
-            'percentage': overall_percentage
+            'percentage': overall_pct
         },
         'platoon_summary': platoon_summary,
         'section_summary': section_summary,
@@ -1362,7 +1359,17 @@ def ensure_date_str(date_value) -> str:
 def normalize_name(name: str) -> str:
     """Normalize by uppercase + removing spaces and special characters."""
     return re.sub(r'\W+', '', name.upper())
-
+def classify_conduct(header: str) -> str:
+    """
+    Returns 'bmt', 'ptp', or 'combined' for a conduct column name.
+    Anything not explicitly BMT or PTP is treated as combined.
+    """
+    h = header.upper()
+    if 'BMT' in h and 'PTP' not in h:
+        return 'bmt'
+    if 'PTP' in h and 'BMT' not in h:
+        return 'ptp'
+    return 'combined'
 def get_nominal_records(selected_company: str, _sheet_nominal):
     """
     Returns all rows from Nominal_Roll as a list of dicts.
@@ -1385,6 +1392,9 @@ def get_nominal_records(selected_company: str, _sheet_nominal):
         normalized_row['number of leaves left'] = ensure_str(normalized_row.get('number of leaves left', '14'))
         normalized_row['dates taken'] = ensure_str(normalized_row.get('dates taken', ''))
         normalized_row['company'] = selected_company  # Add company information
+        normalized_row['bmt_ptp'] = ensure_str(
+            normalized_row.get('bmt_ptp', 'combined')
+        ).lower()
         normalized_records.append(normalized_row)
     
     return normalized_records
@@ -1972,7 +1982,7 @@ if feature == "Add Conduct":
         index=conduct_options.index(st.session_state.conduct_name) if st.session_state.conduct_name in conduct_options else 0
     )
 
-    suffix_options = ["BMT", "PTP"]
+    suffix_options = ["BMT", "PTP", "COMBINED"]
     if 'conduct_suffix' not in st.session_state:
         st.session_state.conduct_suffix = suffix_options[0]
     st.session_state.conduct_suffix = st.selectbox(
@@ -4114,7 +4124,7 @@ elif feature == "Overall View":
                     st.subheader("Training-Wide Attendance (Combined Conducts)")
                     # Determine the number of conduct columns (all columns after the first three)
                     headers = everything_data[0]
-                    num_conducts = len(headers) - 3
+                    conduct_types = [classify_conduct(h) for h in headers[3:]]
                     
                     # Build a mapping from name to their attendance row (for fast lookup)
                     attendance_mapping = {}
@@ -4123,7 +4133,7 @@ elif feature == "Overall View":
                         attendance_mapping[name] = row
                     
                     # Initialize aggregates
-                    training_overall_total = len(records_nominal) * num_conducts
+                    training_overall_total = 0
                     training_overall_present = 0
                     training_platoon_summary = {}   # {platoon: {'total': X, 'present': Y}}
                     training_section_summary = {}   # {(platoon, section): {'total': X, 'present': Y}}
@@ -4131,13 +4141,29 @@ elif feature == "Overall View":
                     
                     for record in records_nominal:
                         name = record['name'].strip()
+                        status = record.get('bmt_ptp', 'combined')  # NEW
                         row = attendance_mapping.get(name)
                         yes_count = 0
+                        denom = 0
                         # Iterate over all conduct columns
-                        for idx in range(3, len(headers)):
-                            value = row[idx].strip() if row and len(row) > idx else ""
-                            if value.lower() == "yes":
+                        for idx, ctype in enumerate(conduct_types, start=3):
+                            applies = (
+                                ctype == 'combined' or
+                                status == 'combined' or
+                                status == ctype
+                            )
+                            if not applies:
+                                continue
+
+                            denom += 1
+                            value = row[idx].strip().lower() if row and len(row) > idx else ""
+                            if value == "yes":
                                 yes_count += 1
+
+                        # nothing applied? skip the record entirely
+                        if denom == 0:
+                            continue
+                        training_overall_total += denom
                         training_overall_present += yes_count
                         
                         # Parse platoon, section, and roll using the helper function
@@ -4148,22 +4174,22 @@ elif feature == "Overall View":
                         if platoon and section:
                             if platoon not in training_platoon_summary:
                                 training_platoon_summary[platoon] = {'total': 0, 'present': 0}
-                            training_platoon_summary[platoon]['total'] += num_conducts
+                            training_platoon_summary[platoon]['total'] += denom
                             training_platoon_summary[platoon]['present'] += yes_count
                             
                             key = (platoon, section)
                             if key not in training_section_summary:
                                 training_section_summary[key] = {'total': 0, 'present': 0}
-                            training_section_summary[key]['total'] += num_conducts
+                            training_section_summary[key]['total'] += denom
                             training_section_summary[key]['present'] += yes_count
                         
-                        individual_percentage = (yes_count / num_conducts * 100) if num_conducts else 0
+                        individual_percentage = (yes_count / denom * 100) if denom else 0
                         training_individual_details[name] = {
                             'platoon': platoon,
                             'section': section,
                             'roll': roll,
                             'yes_count': yes_count,
-                            'total': num_conducts,
+                            'total': denom,
                             'percentage': individual_percentage
                         }
                     
