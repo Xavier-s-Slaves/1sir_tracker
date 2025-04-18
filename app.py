@@ -3397,7 +3397,7 @@ elif feature == "Queries":
     st.subheader("Query Person Information")
     
     # Add tabs for different query types
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Medical Statuses", "Leave Counter", "MC Counter", "Threshold Alerts" ,"Ration Requirements"])
+    tab1, tab2, tab3, tab4, tab5,tab6 = st.tabs(["Medical Statuses", "Leave Counter", "MC Counter", "Threshold Alerts" ,"Ration Requirements", "Daily Attendance"])
     
     # Common input field for all tabs
     person_input = st.text_input("Enter the 4D Number or partial Name", key="query_person_input")
@@ -3698,65 +3698,158 @@ elif feature == "Queries":
     with tab5:
         st.subheader("🍽️  Ration Requirements")
 
-        # choose date (defaults to today)
+        # NEW population selector
+        pop5 = st.radio(
+            "Count population:",
+            ("Only personnel with 4‑D", "All personnel"),
+            index=0, horizontal=True, key="pop_tab5"
+        )
+        only_4d = (pop5 == "Only personnel with 4‑D")          # NEW
+
         target_date = st.date_input(
             "Date to compute rations for", datetime.today().date(),
             key="ration_date"
         )
 
-        # pull once
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         parade_records  = get_allparade_records(selected_company, SHEET_PARADE)
 
-        # ---------------------------------------------------------------
-        # 1)  build absent‑UID set exactly like generate_company_message
+        # ---------- 1) absent set (same rule as message) ----------
         absent_uids = set()
         for parade in parade_records:
             if parade.get("company", "") != selected_company:
                 continue
-
-            # active on the chosen day?
             sdt = parse_ddmmyyyy(parade.get("start_date_ddmmyyyy", ""))
             edt = parse_ddmmyyyy(parade.get("end_date_ddmmyyyy",   ""))
-            if sdt.date() <= target_date <= edt.date():
+            if not (sdt.date() <= target_date <= edt.date()):
+                continue
+            status_prefix = parade.get("status", "").lower().split()[0]
+            if status_prefix not in LEGEND_STATUS_PREFIXES:
+                continue
 
-                # conformant status?
-                status = parade.get("status", "")
-                status_prefix = status.lower().split()[0]
-                if status_prefix in LEGEND_STATUS_PREFIXES:   # **same rule**
-                    uid = (
-                        is_valid_4d(parade.get("4d_number", "")) or
-                        parade.get("name", "").strip().lower()
-                    )
-                    absent_uids.add(uid)
+            four_d = is_valid_4d(parade.get("4d_number", ""))
+            if only_4d and not four_d:                          # NEW
+                continue
+            uid = four_d or parade.get("name", "").strip().lower()
+            absent_uids.add(uid)
 
-        # ---------------------------------------------------------------
-        # 2)  count rations for everyone NOT in absent_uids
+        # ---------- 2) ration count ------------------------------
         RATION_TYPES = ["nm", "m", "vi", "vc", "sdm", "sdnm"]
         ration_needed = {rt: 0 for rt in RATION_TYPES}
 
         for rec in records_nominal:
-            if rec.get("company", "") != selected_company:
+            if rec["company"] != selected_company:
+                continue
+            if only_4d and not rec["4d_number"]:                # NEW
                 continue
             uid = rec["4d_number"] or rec["name"].lower()
-            if uid in absent_uids:
-                continue                          # skip absentees
-
+            if uid in absent_uids:                              # skip absentees
+                continue
             rtype = rec.get("ration_type", "nm").lower()
             if rtype not in ration_needed:
                 rtype = "nm"
             ration_needed[rtype] += 1
 
-        # ---------------------------------------------------------------
-        # 3)  show the result
+        # ---------- 3) display ----------------------------------
         st.table(
             pd.DataFrame(
                 [{"Ration Type": rt.upper(), "Count Needed": cnt}
                 for rt, cnt in ration_needed.items()]
             ).sort_values("Ration Type").reset_index(drop=True)
         )
-        total = sum(ration_needed.values())
-        st.success(f"Total rations required on {target_date:%d %b %Y}: **{total}**")
+        st.success(
+            f"Total rations required on {target_date:%d %b %Y}: "
+            f"**{sum(ration_needed.values())}**"
+        )
+
+
+# ───────────────────────────────────────────────
+# TAB 6 – DAILY ATTENDANCE   (patched)
+# ───────────────────────────────────────────────
+    with tab6:
+        st.subheader("📊 Daily Attendance")
+
+        # NEW population selector
+        pop6 = st.radio(
+            "Count population:",
+            ("Only personnel with 4‑D", "All personnel"),
+            index=0, horizontal=True, key="pop_tab6"
+        )
+        only_4d_att = (pop6 == "Only personnel with 4‑D")       # NEW
+
+        att_date = st.date_input(
+            "Date to view attendance for", datetime.today().date(),
+            key="attendance_date"
+        )
+
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        parade_records  = get_allparade_records(selected_company, SHEET_PARADE)
+
+        # filter nominal according to selector
+        records_nominal = [
+            r for r in records_nominal
+            if r["company"] == selected_company and
+            (not only_4d_att or r["4d_number"])               # NEW
+        ]
+        total_nominal = len(records_nominal)
+
+        def absent_set(the_date):
+            ids = set()
+            for row in parade_records:
+                if row.get("company", "") != selected_company:
+                    continue
+                four_d = is_valid_4d(row.get("4d_number", ""))
+                if only_4d_att and not four_d:                   # NEW
+                    continue
+                status_prefix = row.get("status", "").lower().split()[0]
+                if status_prefix not in LEGEND_STATUS_PREFIXES:
+                    continue
+                sd = parse_ddmmyyyy(row.get("start_date_ddmmyyyy", ""))
+                ed = parse_ddmmyyyy(row.get("end_date_ddmmyyyy",   ""))
+                if sd.date() <= the_date <= ed.date():
+                    uid = four_d or row.get("name", "").lower()
+                    ids.add(uid)
+            return ids
+
+        # ------- A) single‑day ---------------------------------
+        abs_today   = absent_set(att_date)
+        present_cnt = total_nominal - len(abs_today)
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Present", f"{present_cnt:02d}")
+        with col2:
+            st.metric("Absent",  f"{len(abs_today):02d}")
+        with col3:
+            st.metric("Nominal", f"{total_nominal:02d}")
+
+        if abs_today:
+            st.write("Absent personnel:")
+            st.table(pd.DataFrame(sorted(abs_today), columns=["UID"]))
+
+        # ------- B) overall‑to‑date ----------------------------
+        st.subheader("Overall Attendance (1 Apr 2025 → today)")
+
+        start_overall = datetime(2025, 4, 1).date()
+        end_overall   = datetime.today().date()
+        first_3wk_end = start_overall + timedelta(weeks=3) - timedelta(days=1)
+
+        total_present_days = total_nominal_days = 0
+        current = start_overall
+        while current <= end_overall:
+            if current > first_3wk_end and current.weekday() >= 5:
+                current += timedelta(days=1)
+                continue
+            abs_ids = absent_set(current)
+            total_present_days += (total_nominal - len(abs_ids))
+            total_nominal_days += total_nominal
+            current += timedelta(days=1)
+
+        overall_pct = (
+            total_present_days / total_nominal_days * 100
+            if total_nominal_days else 0
+        )
+        st.metric("Attendance Rate", f"{overall_pct:.2f}%")
 # ------------------------------------------------------------------------------
 # 14) Feature F: Generate WhatsApp Message
 # ------------------------------------------------------------------------------
