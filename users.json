@@ -254,6 +254,14 @@
   "2LT_Scott": {
     "password": "pass",
     "companies": ["Viper(bmt)", "Viper"]
+  },
+  "2LT_YU_HAO": {
+    "password": "pass",
+    "companies": ["Scorpion"]
+  },
+  "2LT_RYAN_LIM_SHUEN_KAI": {
+    "password": "pass",
+    "companies": ["Scorpion"]
   }
 
 
