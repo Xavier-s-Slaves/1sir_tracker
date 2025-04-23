@@ -262,6 +262,10 @@
   "2LT_RYAN_LIM_SHUEN_KAI": {
     "password": "pass",
     "companies": ["Scorpion"]
+  },
+  "2LT_Ryan_Levitt": {
+    "password": "pass",
+    "companies": ["Scorpion"]
   }
 
 
