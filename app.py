@@ -1054,7 +1054,10 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
         "GYM ORIENTATION",
         "GYM TRAINING",
         "ENDURANCE RUN TEMPO",
-        "CPT"
+        "CPT",
+        "ROUTE MARCH",
+        "SOC",
+        "BCCT"
     }
 
     def is_allowed_conduct(conduct_name: str) -> bool:
