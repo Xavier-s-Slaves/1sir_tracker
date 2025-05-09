@@ -2031,6 +2031,16 @@ if feature == "Add Conduct":
         options=suffix_options,
         index=suffix_options.index(st.session_state.conduct_suffix) if st.session_state.conduct_suffix in suffix_options else 0
     )
+    
+    # Add a separate dropdown for MUT suffix
+    mut_options = ["", "MUT"]
+    if 'mut_suffix' not in st.session_state:
+        st.session_state.mut_suffix = mut_options[0]
+    st.session_state.mut_suffix = st.selectbox(
+        "MUT (optional)",
+        options=mut_options,
+        index=mut_options.index(st.session_state.mut_suffix) if st.session_state.mut_suffix in mut_options else 0
+    )
 
     if 'conduct_session' not in st.session_state:
         st.session_state.conduct_session = 1
@@ -2046,7 +2056,12 @@ if feature == "Add Conduct":
 
     # Display Final Conduct Name
     if st.session_state.conduct_name and st.session_state.conduct_session:
-        final_conduct_name = f"{st.session_state.conduct_name} {st.session_state.conduct_suffix} {st.session_state.conduct_session}"
+        # Combine the two suffixes with a space in between if both are present
+        combined_suffix = st.session_state.conduct_suffix
+        if st.session_state.mut_suffix:
+            combined_suffix = f"{combined_suffix} {st.session_state.mut_suffix}"
+            
+        final_conduct_name = f"{st.session_state.conduct_name} {combined_suffix} {st.session_state.conduct_session}"
         st.write(f"**Final Conduct Name:** {final_conduct_name}")
     elif st.session_state.conduct_name:
         st.write(f"**Final Conduct Name:** {st.session_state.conduct_name}")
