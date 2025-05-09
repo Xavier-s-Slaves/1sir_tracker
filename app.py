@@ -289,7 +289,7 @@ def analyze_attendance(everything_data: list,
     individuals for whom the conduct column does not apply
     (based on their 'bmt_ptp' field).
     """
-    # ── setup ───────────────────────────────────────────────────────────────────
+    # ── setup ───────────────────────────────────────────────────────────────────
     nominal_mapping = {r['name'].strip(): r for r in nominal_data}
     headers = everything_data[0]
     if conduct_header not in headers:
@@ -302,7 +302,7 @@ def analyze_attendance(everything_data: list,
     overall_total = overall_present = 0
     platoon_summary, section_summary, individual_details = {}, {}, {}
 
-    # ── main loop ───────────────────────────────────────────────────────────────
+    # ── main loop ───────────────────────────────────────────────────────────────
     for rec in nominal_data:
         name = rec['name'].strip()
         status = rec.get('bmt_ptp', 'combined').lower()     # NEW
@@ -347,7 +347,7 @@ def analyze_attendance(everything_data: list,
 
     overall_pct = (overall_present / overall_total * 100) if overall_total else 0
 
-    # ── column‑by‑column conduct summary ────────────────────────────────────────
+    # ── column‑by‑column conduct summary ────────────────────────────────────────
     conduct_summary = {}
     for idx in range(3, len(headers)):
         col_header = headers[idx]
@@ -375,7 +375,7 @@ def analyze_attendance(everything_data: list,
             'present': present, 'total': total, 'percentage': pct
         }
 
-    # ── return payload ──────────────────────────────────────────────────────────
+    # ── return payload ──────────────────────────────────────────────────────────
     return {
         'overall': {
             'total': overall_total,
@@ -461,11 +461,25 @@ def update_conduct_column_everything(sheet_everything, conduct_date: str, conduc
         # Find the column index for the conduct
         headers = all_data[0]
         try:
+            # First try exact match
             conduct_col_index = headers.index(target_col_header) + 1  # 1-based index for gspread
         except ValueError:
-            logger.error(f"Conduct column '{target_col_header}' not found in Everything sheet")
-            #st.error(f"Conduct column '{target_col_header}' not found in Everything sheet")
-            return
+            # If exact match fails, try finding by both date and conduct name separately
+            found = False
+            for i, header in enumerate(headers):
+                parts = header.split(",", 1)
+                if len(parts) == 2:
+                    header_date = parts[0].strip()
+                    header_conduct = parts[1].strip()
+                    # Check if both date and conduct name match
+                    if header_date == conduct_date and header_conduct == conduct_name:
+                        conduct_col_index = i + 1  # 1-based index
+                        found = True
+                        break
+            
+            if not found:
+                logger.error(f"Conduct column '{target_col_header}' not found in Everything sheet")
+                return
 
         # Create a mapping of names to their attendance
         attendance_map = {name: is_present for name, rank, is_present in attendance_data}
@@ -1098,6 +1112,12 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
         if len(parts) == 2:
             return parts[1].strip()
         return hdr.strip()
+        
+    def get_conduct_date(hdr: str) -> str:
+        parts = hdr.split(",", 1)
+        if len(parts) == 2:
+            return parts[0].strip()
+        return ""
 
     # Filter out conduct columns that don't match allowed conducts
     filtered_conduct_cols = [
@@ -1109,15 +1129,33 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
         """
         Sort strings with embedded numbers in natural order.
         So ER 1, ER 2, ER 11 instead of ER 1, ER 11, ER 2
+        First group by conduct name, then by date within each conduct type.
         """
         # Extract the conduct name first
         conduct_name = get_conduct_name(s)
+        conduct_date = get_conduct_date(s)
         
-        # Split the string into text and numeric parts
-        return [
+        # Primary sort by conduct name
+        name_key = [
             int(c) if c.isdigit() else c.lower()
             for c in re.split(r'(\d+)', conduct_name)
         ]
+        
+        # Secondary sort by date if available (newer dates first)
+        date_key = []
+        if conduct_date:
+            try:
+                # Convert date string to sortable format (assuming DDMMYYYY)
+                date_obj = datetime.strptime(conduct_date, "%d%m%Y")
+                # Use timestamp for sorting
+                date_key = [date_obj.timestamp()]
+            except ValueError:
+                # If date format is invalid, just use the string
+                date_key = [conduct_date]
+                
+        # Return composite key: (name_key, date_key)
+        return (name_key, date_key)
+        
     # Sort the filtered conduct columns
     conduct_cols_sorted = sorted(
         filtered_conduct_cols,
@@ -1148,7 +1186,6 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
     # Update the sheet with filtered data
     sheet_progressive.clear()
     sheet_progressive.update("A1", new_matrix)
-
 
 def generate_leopards_message(all_records_nominal, all_records_parade):
     """
@@ -3620,8 +3657,8 @@ elif feature == "Queries":
                     st.info("No medical records found")
     with tab4:
         st.subheader("📋 MR & Report Sick Threshold Alerts")
-        st.write("MR (Medical Reporting) Threshold: Counts every calendar day covered by MC or ML within a rolling 30‑day window (default: the last 30 days including today).")
-        st.write("RSO Threshold: Once they hit the MR threshold and they have 3 or more MC/ML periods tagged “RSO”")
+        st.write("MR (Medical Reporting) Threshold: Counts every calendar day covered by MC or ML within a rolling 30‑day window (default: the last 30 days including today).")
+        st.write("RSO Threshold: Once they hit the MR threshold and they have 3 or more MC/ML periods tagged \"RSO\"")
 
         # ── date‑range picker ─────────────────────────────────────────────
         today = datetime.today().date()
@@ -3689,7 +3726,7 @@ elif feature == "Queries":
         # ── display ─────────────────────────────────────────────────────
         if flagged_persons:
             st.success(f"Found {len(flagged_persons)} personnel who hit MR threshold "
-                    f"({start_date:%d %b %Y} → {end_date:%d %b %Y}).")
+                    f"({start_date:%d %b %Y} → {end_date:%d %b %Y}).")
             st.table(flagged_persons)
         else:
             st.info("✅ No one hit the MR or Report Sick thresholds "
@@ -3698,7 +3735,7 @@ elif feature == "Queries":
     with tab5:
         st.subheader("🍽️  Ration Requirements")
 
-        # NEW population selector
+        # NEW population selector
         pop5 = st.radio(
             "Count population:",
             ("Only personnel with 4‑D", "All personnel"),
@@ -3758,18 +3795,18 @@ elif feature == "Queries":
             ).sort_values("Ration Type").reset_index(drop=True)
         )
         st.success(
-            f"Total rations required on {target_date:%d %b %Y}: "
+            f"Total rations required on {target_date:%d %b %Y}: "
             f"**{sum(ration_needed.values())}**"
         )
 
 
 # ───────────────────────────────────────────────
-# TAB 6 – DAILY ATTENDANCE   (patched)
+# TAB 6 – DAILY ATTENDANCE   (patched)
 # ───────────────────────────────────────────────
     with tab6:
-        st.subheader("📊 Daily Attendance")
+        st.subheader("📊 Daily Attendance")
 
-        # NEW population selector
+        # NEW population selector
         pop6 = st.radio(
             "Count population:",
             ("Only personnel with 4‑D", "All personnel"),
@@ -3828,7 +3865,7 @@ elif feature == "Queries":
             st.table(pd.DataFrame(sorted(abs_today), columns=["UID"]))
 
         # ------- B) overall‑to‑date ----------------------------
-        st.subheader("Overall Attendance (1 Apr 2025 → today)")
+        st.subheader("Overall Attendance (1 Apr 2025 → today)")
 
         start_overall = datetime(2025, 4, 1).date()
         end_overall   = datetime.today().date()
