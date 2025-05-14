@@ -1978,6 +1978,7 @@ if feature == "Add Conduct":
         "CONDUCTING BRIEF BTP",
         "COY FIRE DRILL",
         "CPT",
+        "CQB",
         "DAC",
         "DISTANCE INTERVAL",
         "ELISS FAMILIARISATION",
