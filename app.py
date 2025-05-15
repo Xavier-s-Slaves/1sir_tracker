@@ -461,25 +461,11 @@ def update_conduct_column_everything(sheet_everything, conduct_date: str, conduc
         # Find the column index for the conduct
         headers = all_data[0]
         try:
-            # First try exact match
             conduct_col_index = headers.index(target_col_header) + 1  # 1-based index for gspread
         except ValueError:
-            # If exact match fails, try finding by both date and conduct name separately
-            found = False
-            for i, header in enumerate(headers):
-                parts = header.split(",", 1)
-                if len(parts) == 2:
-                    header_date = parts[0].strip()
-                    header_conduct = parts[1].strip()
-                    # Check if both date and conduct name match
-                    if header_date == conduct_date and header_conduct == conduct_name:
-                        conduct_col_index = i + 1  # 1-based index
-                        found = True
-                        break
-            
-            if not found:
-                logger.error(f"Conduct column '{target_col_header}' not found in Everything sheet")
-                return
+            logger.error(f"Conduct column '{target_col_header}' not found in Everything sheet")
+            #st.error(f"Conduct column '{target_col_header}' not found in Everything sheet")
+            return
 
         # Create a mapping of names to their attendance
         attendance_map = {name: is_present for name, rank, is_present in attendance_data}
@@ -1116,6 +1102,14 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
             return parts[1].strip()
         return hdr.strip()
         
+        
+    def get_conduct_date(hdr: str) -> str:
+        parts = hdr.split(",", 1)
+        if len(parts) == 2:
+            return parts[0].strip()
+        return ""
+
+
     def get_conduct_date(hdr: str) -> str:
         parts = hdr.split(",", 1)
         if len(parts) == 2:
@@ -1132,33 +1126,15 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
         """
         Sort strings with embedded numbers in natural order.
         So ER 1, ER 2, ER 11 instead of ER 1, ER 11, ER 2
-        First group by conduct name, then by date within each conduct type.
         """
         # Extract the conduct name first
         conduct_name = get_conduct_name(s)
-        conduct_date = get_conduct_date(s)
         
-        # Primary sort by conduct name
-        name_key = [
+        # Split the string into text and numeric parts
+        return [
             int(c) if c.isdigit() else c.lower()
             for c in re.split(r'(\d+)', conduct_name)
         ]
-        
-        # Secondary sort by date if available (newer dates first)
-        date_key = []
-        if conduct_date:
-            try:
-                # Convert date string to sortable format (assuming DDMMYYYY)
-                date_obj = datetime.strptime(conduct_date, "%d%m%Y")
-                # Use timestamp for sorting
-                date_key = [date_obj.timestamp()]
-            except ValueError:
-                # If date format is invalid, just use the string
-                date_key = [conduct_date]
-                
-        # Return composite key: (name_key, date_key)
-        return (name_key, date_key)
-        
     # Sort the filtered conduct columns
     conduct_cols_sorted = sorted(
         filtered_conduct_cols,
@@ -1189,6 +1165,7 @@ def add_conduct_column_progressive(sheet_progressive, conduct_date: str, conduct
     # Update the sheet with filtered data
     sheet_progressive.clear()
     sheet_progressive.update("A1", new_matrix)
+
 
 def generate_leopards_message(all_records_nominal, all_records_parade):
     """
