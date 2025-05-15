@@ -2381,14 +2381,32 @@ elif feature == "Update Conduct":
         st.error("Please select a conduct to update.")
         st.stop()
 
-    conduct_index = conduct_names.index(selected_conduct) if selected_conduct in conduct_names else -1
-    if conduct_index == -1:
-        st.error("Selected conduct not found.")
+    # Extract date and name from the selected conduct
+    try:
+        selected_parts = selected_conduct.split(" - ")
+        selected_date = selected_parts[0].strip()
+        selected_name = selected_parts[1].strip()
+        
+        # Find the exact matching record by both date and name
+        matching_records = [r for r in records_conducts 
+                          if r.get('date') == selected_date and r.get('conduct_name') == selected_name]
+        
+        if not matching_records:
+            st.error(f"No conduct found with date '{selected_date}' and name '{selected_name}'")
+            logger.error(f"Conduct matching failed for '{selected_conduct}'")
+            st.stop()
+            
+        # Use the first match (should be unique if date+name is unique)
+        conduct_record = matching_records[0]
+        
+        # Log if multiple matches found (shouldn't happen)
+        if len(matching_records) > 1:
+            logger.warning(f"Multiple matching records found for '{selected_conduct}'. Using the first match.")
+            
+    except Exception as e:
+        st.error(f"Error finding conduct record: {e}")
+        logger.error(f"Exception while finding conduct record for '{selected_conduct}': {e}")
         st.stop()
-
-
-
-    conduct_record = records_conducts[conduct_index]
 
     st.subheader("Select Platoon to Update")
     platoon_options = ["1", "2", "3", "4", "Coy HQ"]
@@ -2538,10 +2556,29 @@ elif feature == "Update Conduct":
         try:
             row_num = None
             try:
-                conduct_name = selected_conduct.split(" - ")[1]
-                cell = SHEET_CONDUCTS.find(conduct_name, in_column=2)
-                if cell:
-                    row_num = cell.row
+                # Extract both date and conduct name from the selected_conduct
+                conduct_parts = selected_conduct.split(" - ")
+                conduct_date = conduct_parts[0].strip()  # Extract the date part
+                conduct_name = conduct_parts[1].strip()  # Extract the name part
+                
+                # Find all instances of the conduct name in column 2
+                matching_cells = []
+                all_values = SHEET_CONDUCTS.get_all_values()
+                
+                # Start from row 2 (assuming row 1 is header)
+                for row_idx, row_values in enumerate(all_values[1:], start=2):
+                    if len(row_values) >= 2 and row_values[1] == conduct_name:
+                        # Also check if the date matches (assuming date is in column 1)
+                        if len(row_values) >= 1 and row_values[0] == conduct_date:
+                            matching_cells.append(row_idx)
+                
+                if matching_cells:
+                    # Use the first matching cell (should be only one if date+name combination is unique)
+                    row_num = matching_cells[0]
+                    
+                    # Log if multiple matches were found (shouldn't happen if dates are unique)
+                    if len(matching_cells) > 1:
+                        logger.warning(f"Multiple matches found for conduct '{selected_conduct}'. Using the first match.")
             except Exception as e:
                 logger.error(f"Error finding conduct row: {e}")
              
@@ -2581,7 +2618,12 @@ elif feature == "Update Conduct":
                 outlier_key = "coy hq outliers"
 
             # Get the existing outlier string from the conduct_record
-            existing_outliers_str = conduct_record.get(outlier_key, "")
+            # Normalize the keys in conduct_record to match exactly with outlier_key
+            existing_outliers_str = ""
+            for key, value in conduct_record.items():
+                if key.lower().strip() == outlier_key.lower().strip():
+                    existing_outliers_str = value
+                    break
             existing_outliers = parse_existing_outliers(existing_outliers_str)
             
             # Helper to find rows in the conduct_data
@@ -2828,13 +2870,34 @@ elif feature == "Update Conduct":
         new_pt_value = f"REC: {rec_counts}/{rec_totals}\nCMD: {cmd_counts}/{cmd_totals}\nTOTAL: {new_participating}/{new_total}"
 
         try:
-            conduct_name = selected_conduct.split(" - ")[1]
-            cell = SHEET_CONDUCTS.find(conduct_name, in_column=2)
-            if not cell:
+            # Extract both date and conduct name from the selected_conduct
+            conduct_parts = selected_conduct.split(" - ")
+            conduct_date = conduct_parts[0].strip()  # Extract the date part
+            conduct_name = conduct_parts[1].strip()  # Extract the name part
+            
+            # Find all instances of the conduct name in column 2
+            matching_cells = []
+            all_values = SHEET_CONDUCTS.get_all_values()
+            
+            # Start from row 2 (assuming row 1 is header)
+            for row_idx, row_values in enumerate(all_values[1:], start=2):
+                if len(row_values) >= 2 and row_values[1] == conduct_name:
+                    # Also check if the date matches (assuming date is in column 1)
+                    if len(row_values) >= 1 and row_values[0] == conduct_date:
+                        matching_cells.append(row_idx)
+            
+            if not matching_cells:
                 st.error("Conduct not found in the sheet.")
                 logger.error(f"Conduct '{selected_conduct}' not found in the sheet.")
                 st.stop()
-            row_number = cell.row
+                
+            # Use the first matching cell (should be only one if date+name combination is unique)
+            row_number = matching_cells[0]
+            
+            # Log if multiple matches were found (shouldn't happen if dates are unique)
+            if len(matching_cells) > 1:
+                logger.warning(f"Multiple matches found for conduct '{selected_conduct}'. Using the first match.")
+                
         except Exception as e:
             st.error(f"Error locating Conduct in the sheet: {e}")
             logger.error(f"Exception while locating Conduct '{selected_conduct}': {e}")
