@@ -1965,6 +1965,7 @@ if feature == "Add Conduct":
         "FARTLEK",
         "FIELDCAMP",
         "FOOT DRILLS",
+        "GP REHEARSAL",
         "GYM ORIENTATION",
         "GYM TRAINING",
         "HAND GRENADE",
