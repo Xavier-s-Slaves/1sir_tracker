@@ -2007,7 +2007,7 @@ if feature == "Add Conduct":
         index=conduct_options.index(st.session_state.conduct_name) if st.session_state.conduct_name in conduct_options else 0
     )
 
-    suffix_options = ["BMT", "PTP", "COMBINED"]
+    suffix_options = ["COMBINED","BMT", "PTP"]
     if 'conduct_suffix' not in st.session_state:
         st.session_state.conduct_suffix = suffix_options[0]
     st.session_state.conduct_suffix = st.selectbox(
