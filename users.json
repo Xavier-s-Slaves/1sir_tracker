@@ -266,6 +266,14 @@
   "2LT_Ryan_Levitt": {
     "password": "pass",
     "companies": ["Scorpion"]
+  },
+  "3sg_stephen": {
+    "password": "pass",
+    "companies": ["Viper(bmt)"]
+  },
+  "3sg_nasir": {
+    "password": "pass",
+    "companies": ["Viper(bmt)"]
   }
 
 
