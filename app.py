@@ -3,27 +3,18 @@ import gspread  # type: ignore
 from oauth2client.service_account import ServiceAccountCredentials  # type: ignore
 from datetime import datetime
 from collections import defaultdict
-import difflib
 import re
 import pandas as pd  # type: ignore
 import logging
-import urllib.parse
 import json
 import os
 from typing import List, Dict, Optional
 from zoneinfo import ZoneInfo  # type: ignore
 from datetime import timedelta
-# ------------------------------------------------------------------------------
-# Setup Logging
-# ------------------------------------------------------------------------------
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-TIMEZONE = ZoneInfo('Asia/Singapore')  # Replace with your desired timezone
-# ------------------------------------------------------------------------------
-# User Authentication Setup
-# ------------------------------------------------------------------------------
-# Define a simple user database
-# In a production environment, consider using a secure method to handle user credentials
+TIMEZONE = ZoneInfo('Asia/Singapore')  
 USER_DB_PATH = "users.json"
 LEGEND_STATUS_PREFIXES = {
         "ol": "[OL]",   # Overseas Leave
@@ -176,9 +167,6 @@ def load_user_db(path: str):
 USER_DB = load_user_db(USER_DB_PATH)
 
 
-# ------------------------------------------------------------------------------
-# Initialize Session State for Authentication
-# ------------------------------------------------------------------------------
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
 if 'username' not in st.session_state:
@@ -186,9 +174,6 @@ if 'username' not in st.session_state:
 if 'user_companies' not in st.session_state:
     st.session_state.user_companies = []
 
-# ------------------------------------------------------------------------------
-# Authentication Interface
-# ------------------------------------------------------------------------------
 def login():
     st.title("🔒 Training & Parade Management - Login")
     username = st.text_input("Username")
@@ -217,30 +202,18 @@ def logout_callback():
     logger.info("User logged out.")
     st.rerun()
 
-# Show login if not authenticated
 if not st.session_state.authenticated:
     login()
     st.stop()
 
-# ------------------------------------------------------------------------------
-# If authenticated, display the main app
-# ------------------------------------------------------------------------------
-
-# ------------------------------------------------------------------------------
-# 1) Must be the very first Streamlit command:
-# ------------------------------------------------------------------------------
 st.set_page_config(page_title="Training & Parade Management", layout="centered")
 
-# ------------------------------------------------------------------------------
-# 2) Google Sheets Setup (Cached)
-# ------------------------------------------------------------------------------
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive'
 ]
 creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", SCOPES)
 
-# List of available companies and their corresponding spreadsheet names
 COMPANY_SPREADSHEETS = {
     "Wolf": "Wolf",
     "Wolf1": "Wolf1",
@@ -250,7 +223,7 @@ COMPANY_SPREADSHEETS = {
     "MSC": "MSC",
     "Pegasus": "Pegasus",
     "Scorpion": "Scorpion",
-    "WOSpec": "WOSpec"  # Added MSC
+    "Support": "Support"  # Added MSC
 }
 
 
@@ -285,9 +258,7 @@ def analyze_attendance(everything_data: list,
                        nominal_data: list,
                        conduct_header: str):
     """
-    Same signature as before, but all denominators now exclude
-    individuals for whom the conduct column does not apply
-    (based on their 'bmt_ptp' field).
+    Analyzes attendance for a specific conduct.
     """
     # ── setup ───────────────────────────────────────────────────────────────────
     nominal_mapping = {r['name'].strip(): r for r in nominal_data}
@@ -295,7 +266,6 @@ def analyze_attendance(everything_data: list,
     if conduct_header not in headers:
         raise ValueError(f"Conduct column '{conduct_header}' not found.")
     conduct_idx = headers.index(conduct_header)
-    conduct_type = classify_conduct(conduct_header)        # NEW
 
     attendance_mapping = {row[2].strip(): row for row in everything_data[1:]}
 
@@ -305,24 +275,8 @@ def analyze_attendance(everything_data: list,
     # ── main loop ───────────────────────────────────────────────────────────────
     for rec in nominal_data:
         name = rec['name'].strip()
-        status = rec.get('bmt_ptp', 'combined').lower()     # NEW
 
-        applies = (
-            conduct_type == 'combined'
-            or status == 'combined'
-            or status == conduct_type
-        )                                                  # NEW
-
-        # If this conduct is irrelevant to the soldier, skip all counters
-        # but still write "N/A" so the UI can display something.
-        if not applies:
-            individual_details[name] = {
-                'platoon': '', 'section': '', 'roll': '',
-                'attendance': 'N/A'
-            }
-            continue                                       # NEW
-
-        overall_total += 1                                 # CHANGED
+        overall_total += 1
         row = attendance_mapping.get(name)
         value = row[conduct_idx].strip() if row and len(row) > conduct_idx else ""
         is_present = value.lower() == "yes"
@@ -351,19 +305,9 @@ def analyze_attendance(everything_data: list,
     conduct_summary = {}
     for idx in range(3, len(headers)):
         col_header = headers[idx]
-        ctype = classify_conduct(col_header)               # NEW
         total = present = 0
 
         for rec in nominal_data:
-            status = rec.get('bmt_ptp', 'combined').lower()
-            applies = (
-                ctype == 'combined'
-                or status == 'combined'
-                or status == ctype
-            )
-            if not applies:
-                continue
-
             total += 1
             row = attendance_mapping.get(rec['name'].strip())
             val = row[idx].strip() if row and len(row) > idx else ""
@@ -514,33 +458,7 @@ def get_sheets(selected_company: str):
         logger.error(f"Error accessing spreadsheet '{spreadsheet_name}': {e}")
         st.error(f"Error accessing spreadsheet '{spreadsheet_name}': {e}")
         return None
-def is_leave_accounted(existing_dates, new_dates_str):
-    """
-    Checks if the new_dates_str is already present in existing_dates.
-    
-    Parameters:
-        existing_dates (str): Existing "Dates Taken" string, e.g., "15012025-20012025,21012025-22012025"
-        new_dates_str (str): New leave dates to check, e.g., "15012025-20012025"
-    
-    Returns:
-        bool: True if the leave already exists, False otherwise.
-    """
-    if not existing_dates:
-        return False
-    
-    # Split existing dates by comma to get individual leave periods
-    existing_leave_periods = [period.strip() for period in existing_dates.split(',')]
-    
-    # Normalize for comparison
-    normalized_existing = set(existing_leave_periods)
-    normalized_new = new_dates_str.strip()
-    
-    return normalized_new in normalized_existing
 
-
-# ------------------------------------------------------------------------------
-# 3) Helper Functions + Caching
-# ------------------------------------------------------------------------------
 
 def generate_company_message(selected_company: str, nominal_records: List[Dict], parade_records: List[Dict], target_date: Optional[datetime] = None) -> str:
     """
@@ -854,17 +772,7 @@ def ensure_date_str(date_value) -> str:
 def normalize_name(name: str) -> str:
     """Normalize by uppercase + removing spaces and special characters."""
     return re.sub(r'\W+', '', name.upper())
-def classify_conduct(header: str) -> str:
-    """
-    Returns 'bmt', 'ptp', or 'combined' for a conduct column name.
-    Anything not explicitly BMT or PTP is treated as combined.
-    """
-    h = header.upper()
-    if 'BMT' in h and 'PTP' not in h:
-        return 'bmt'
-    if 'PTP' in h and 'BMT' not in h:
-        return 'ptp'
-    return 'combined'
+
 def get_nominal_records(selected_company: str, _sheet_nominal):
     """
     Returns all rows from Nominal_Roll as a list of dicts.
@@ -884,22 +792,12 @@ def get_nominal_records(selected_company: str, _sheet_nominal):
         normalized_row['name'] = ensure_str(normalized_row.get('name', ''))
         normalized_row['4d_number'] = is_valid_4d(normalized_row.get('4d_number', ''))
         normalized_row['platoon'] = ensure_str(normalized_row.get('platoon', ''))
-        normalized_row['number of leaves left'] = ensure_str(normalized_row.get('number of leaves left', '14'))
         normalized_row['dates taken'] = ensure_str(normalized_row.get('dates taken', ''))
         normalized_row['company'] = selected_company  # Add company information
-        normalized_row['bmt_ptp'] = ensure_str(
-            normalized_row.get('bmt_ptp', 'combined')
-        ).lower()
-        normalized_row['ration_type'] = ensure_str(
-            normalized_row.get('ration_type', '')
-        ).lower()
         normalized_records.append(normalized_row)
     
     return normalized_records
 
-#
-# Parade uses 'Name' (not 4D) for matching
-#
 def get_parade_records(selected_company: str, _sheet_parade):
     """
     Returns all rows from Parade_State as a list of dicts, including row numbers.
@@ -1028,9 +926,6 @@ def get_company_strength(platoon: str, records_nominal):
         if normalize_name(row.get('platoon', '')) == normalize_name(platoon)
     )
 
-#
-# Map parade statuses by 'name' instead of '4d_number'
-#
 def get_company_personnel(platoon: str, records_nominal, records_parade):
     """
     Returns a list of dicts for 'Update Parade' with existing parade statuses first,
@@ -1067,8 +962,6 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
                 'Status': parade.get('status', ''),
                 'Start_Date': parade.get('start_date_ddmmyyyy', ''),
                 'End_Date': parade.get('end_date_ddmmyyyy', ''),
-                'Number_of_Leaves_Left': row.get('number of leaves left', 14),
-                'Dates_Taken': row.get('dates taken', ''),
                 '_row_num': parade.get('_row_num')
             })
 
@@ -1080,8 +973,6 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
             'Status': '',
             'Start_Date': '',
             'End_Date': '',
-            'Number_of_Leaves_Left': row.get('number of leaves left', 14),
-            'Dates_Taken': row.get('dates taken', ''),
             '_row_num': None
         })
     
@@ -1260,72 +1151,10 @@ def build_fake_conduct_table(platoon: str, date_obj: datetime, records_nominal, 
         else:
             person["Personnel_Type"] = "Commander"
     return data
-def calculate_leaves_used(dates_str: str) -> int:
-    """
-    Calculate the number of leaves used based on the dates string (which may include ranges).
-    """
-    if not dates_str:
-        return 0
 
-    leaves_used = 0
-    date_entries = [entry.strip() for entry in dates_str.split(',') if entry.strip()]
-    for entry in date_entries:
-        if '-' in entry:
-            start_str, end_str = entry.split('-')
-            start_str = ensure_date_str(start_str)
-            end_str = ensure_date_str(end_str)
-            try:
-                start_dt = datetime.strptime(start_str, "%d%m%Y")
-                end_dt = datetime.strptime(end_str, "%d%m%Y")
-                delta = (end_dt - start_dt).days + 1
-                if delta > 0:
-                    leaves_used += delta
-            except ValueError:
-                logger.warning(f"Invalid date range format: {entry}")
-                continue
-        else:
-            single_str = ensure_date_str(entry)
-            try:
-                datetime.strptime(single_str, "%d%m%Y")
-                leaves_used += 1
-            except ValueError:
-                logger.warning(f"Invalid single date format: {entry}")
-                continue
-    logger.info(f"Calculated leaves used: {leaves_used} from dates: {dates_str}")
-    return leaves_used
 
-def has_overlapping_status(four_d: str, new_start: datetime, new_end: datetime, records_parade):
-    """
-    Check if the new status dates overlap with existing statuses for the given 4D_Number (for leave).
-    """
-    four_d = is_valid_4d(four_d)
-    if not four_d:
-        return False
-    
-    for row in records_parade:
-        if is_valid_4d(row.get("4d_number", "")) == four_d:
-            start_date = row.get("start_date_ddmmyyyy", "")
-            end_date = row.get("end_date_ddmmyyyy", "")
-            
-            try:
-                existing_start = datetime.strptime(start_date, "%d%m%Y")
-                existing_end = datetime.strptime(end_date, "%d%m%Y")
-                if (new_start <= existing_end) and (new_end >= existing_start):
-                    return True
-            except ValueError:
-                logger.warning(f"Invalid date format in Parade_State for {four_d}: {start_date} - {end_date}")
-                continue
-    return False
-
-# ------------------------------------------------------------------------------
-# 4) Streamlit Layout
-# ------------------------------------------------------------------------------
 
 st.title("Training & Parade Management App")
-
-# ------------------------------------------------------------------------------
-# 5) Sidebar: Configuration and Logout
-# ------------------------------------------------------------------------------
 
 st.sidebar.header("Configuration")
 logout()
@@ -1344,9 +1173,6 @@ SHEET_NOMINAL = worksheets["nominal"]
 SHEET_PARADE = worksheets["parade"]
 SHEET_CONDUCTS = worksheets["conducts"]
 
-# ------------------------------------------------------------------------------
-# 6) Session State
-# ------------------------------------------------------------------------------
 if "conduct_date" not in st.session_state:
     st.session_state.conduct_date = ""
 if "conduct_platoon" not in st.session_state:
@@ -1380,28 +1206,20 @@ if "update_conduct_pointers_recommendation" not in st.session_state:
 if "update_conduct_table" not in st.session_state:
     st.session_state.update_conduct_table = []
 
-# ------------------------------------------------------------------------------
-# 7) Feature Selection
-# ------------------------------------------------------------------------------
 feature = st.sidebar.selectbox(
     "Select Feature",
-    ["Add Conduct", "Update Conduct", "Update Parade", "Queries", "Overall View", "Generate WhatsApp Message", "Safety Sharing"]
+    ["Add Conduct", "Update Conduct", "Update Parade", "Queries", "Overall View", "Generate WhatsApp Message"]
 )
 
 def add_pointer():
     st.session_state.conduct_pointers.append(
         {"observation": "", "reflection": "", "recommendation": ""}
     )
-    #Sst.rerun()
 def add_update_pointer():
     st.session_state.update_conduct_pointers.append(
         {"observation": "", "reflection": "", "recommendation": ""}
     )
-    #st.rerun()
 
-# ------------------------------------------------------------------------------
-# 8) Feature A: Add Conduct
-# ------------------------------------------------------------------------------
 if feature == "Add Conduct":
     st.header("Add Conduct - Table-Based On-Status")
 
@@ -1484,25 +1302,6 @@ if feature == "Add Conduct":
         index=conduct_options.index(st.session_state.conduct_name) if st.session_state.conduct_name in conduct_options else 0
     )
 
-    suffix_options = ["COMBINED","BMT", "PTP"]
-    if 'conduct_suffix' not in st.session_state:
-        st.session_state.conduct_suffix = suffix_options[0]
-    st.session_state.conduct_suffix = st.selectbox(
-        "Phase",
-        options=suffix_options,
-        index=suffix_options.index(st.session_state.conduct_suffix) if st.session_state.conduct_suffix in suffix_options else 0
-    )
-    
-    # Add a separate dropdown for MUT suffix
-    mut_options = ["", "MUT"]
-    if 'mut_suffix' not in st.session_state:
-        st.session_state.mut_suffix = mut_options[0]
-    st.session_state.mut_suffix = st.selectbox(
-        "MUT (optional)",
-        options=mut_options,
-        index=mut_options.index(st.session_state.mut_suffix) if st.session_state.mut_suffix in mut_options else 0
-    )
-
     if 'conduct_session' not in st.session_state:
         st.session_state.conduct_session = 1
     # Only show session number input if a conduct is selected
@@ -1517,12 +1316,7 @@ if feature == "Add Conduct":
 
     # Display Final Conduct Name
     if st.session_state.conduct_name and st.session_state.conduct_session:
-        # Combine the two suffixes with a space in between if both are present
-        combined_suffix = st.session_state.conduct_suffix
-        if st.session_state.mut_suffix:
-            combined_suffix = f"{combined_suffix} {st.session_state.mut_suffix}"
-            
-        final_conduct_name = f"{st.session_state.conduct_name} {combined_suffix} {st.session_state.conduct_session}"
+        final_conduct_name = f"{st.session_state.conduct_name} {st.session_state.conduct_session}"
         st.write(f"**Final Conduct Name:** {final_conduct_name}")
     elif st.session_state.conduct_name:
         st.write(f"**Final Conduct Name:** {st.session_state.conduct_name}")
@@ -1833,9 +1627,6 @@ if feature == "Add Conduct":
             {"observation": "", "reflection": "", "recommendation": ""}
         ]
 
-# ------------------------------------------------------------------------------
-# 9) Feature B: Update Conduct
-# ------------------------------------------------------------------------------
 elif feature == "Update Conduct":
     st.header("Update Conduct")
 
@@ -2555,8 +2346,6 @@ elif feature == "Update Parade":
                 "Name": st.column_config.TextColumn("Name", disabled=True),
                 "4D_Number": st.column_config.TextColumn("4D_Number", disabled=True),
                 "Rank": st.column_config.TextColumn("Rank", disabled=True),
-                "Number_of_Leaves_Left": st.column_config.TextColumn("Number_of_Leaves_Left", disabled=True),
-                "Dates_Taken": st.column_config.TextColumn("Dates_Taken", disabled=True),
                 "_row_num": st.column_config.TextColumn("_row_num", disabled=True),
 
             }
@@ -2676,123 +2465,6 @@ elif feature == "Update Parade":
                     )
                     continue
 
-            # 5) If the status indicates leave, schedule the Nominal_Roll updates.
-            leave_pattern = re.compile(r'\b(?:leave|ll|ol)\b', re.IGNORECASE)
-            if leave_pattern.search(status_val):
-                half_day = "(am)" in status_val.lower() or "(pm)" in status_val.lower()
-                dates_str = (
-                    f"{formatted_start_val}-{formatted_end_val}" 
-                    if (formatted_start_val and formatted_end_val and formatted_start_val != formatted_end_val) 
-                    else formatted_start_val
-                )
-                logger.debug(f"Constructed dates_str for {name_val}: {dates_str}")
-
-                # Attempt to find a matching Nominal Record
-                try:
-                    nominal_record = SHEET_NOMINAL.find(name_val, in_column=2)
-                except Exception as e:
-                    st.error(f"Error finding {name_val} in Nominal_Roll: {e}. Skipping.")
-                    logger.error(f"Exception while finding {name_val} in Nominal_Roll: {e}.")
-                    continue
-
-                if not nominal_record:
-                    st.error(f"{name_val}/{four_d} not found in Nominal_Roll. Skipping.")
-                    logger.error(f"{name_val}/{four_d} not found in Nominal_Roll in company '{selected_company}'.")
-                    continue
-
-                existing_dates = SHEET_NOMINAL.cell(nominal_record.row, 6).value
-                if is_leave_accounted(existing_dates, dates_str):
-                    logger.info(
-                        f"Leave on {dates_str} for {name_val}/{four_d} already accounted for in company '{selected_company}'. Skipping."
-                    )
-                    continue
-
-                leaves_used = 0.5 if half_day else calculate_leaves_used(dates_str)
-                if leaves_used <= 0:
-                    st.error(f"Invalid leave duration for {name_val}, skipping.")
-                    logger.error(f"Invalid leave duration for {name_val}: {dates_str} in company '{selected_company}'.")
-                    continue
-
-                if has_overlapping_status(four_d, start_dt, end_dt, records_parade):
-                    st.error(f"Leave dates overlap with existing record for {name_val}. Skipping.")
-                    logger.error(f"Leave dates overlap for {name_val}: {dates_str} in company '{selected_company}'.")
-                    continue
-
-                # Update Leaves
-                try:
-                    current_leaves_left = SHEET_NOMINAL.cell(nominal_record.row, 5).value
-                    try:
-                        current_leaves_left = float(current_leaves_left)
-                    except ValueError:
-                        current_leaves_left = 14
-                        logger.warning(f"Invalid 'Number of Leaves Left' for {name_val}/{four_d}. Resetting to 14.")
-
-                    if leaves_used > current_leaves_left:
-                        st.error(
-                            f"{name_val}/{four_d} does not have enough leaves left. "
-                            f"Available: {current_leaves_left}, Requested: {leaves_used}. Skipping."
-                        )
-                        logger.error(
-                            f"{name_val}/{four_d} insufficient leaves. Available: {current_leaves_left}, Requested: {leaves_used}."
-                        )
-                        continue
-
-                    new_leaves_left = current_leaves_left - leaves_used
-                    # Nominal_Roll 'Number of Leaves Left' update
-                    nominal_requests.append({
-                        'updateCells': {
-                            'range': {
-                                'sheetId': SHEET_NOMINAL.id,
-                                'startRowIndex': nominal_record.row - 1,
-                                'endRowIndex': nominal_record.row,
-                                'startColumnIndex': 4,  # Column E (0-indexed)
-                                'endColumnIndex': 5,
-                            },
-                            'rows': [{
-                                'values': [{
-                                    'userEnteredValue': {'numberValue': new_leaves_left}
-                                }]
-                            }],
-                            'fields': 'userEnteredValue'
-                        }
-                    })
-
-                    # Nominal_Roll 'Dates Taken' update
-                    new_dates_entry = dates_str
-                    if existing_dates:
-                        existing_dates = existing_dates.strip()
-                        if existing_dates and not existing_dates.endswith(','):
-                            updated_dates = f"{existing_dates},{new_dates_entry}"
-                        else:
-                            updated_dates = f"{existing_dates}{new_dates_entry}"
-                    else:
-                        updated_dates = new_dates_entry
-
-                    nominal_requests.append({
-                        'updateCells': {
-                            'range': {
-                                'sheetId': SHEET_NOMINAL.id,
-                                'startRowIndex': nominal_record.row - 1,
-                                'endRowIndex': nominal_record.row,
-                                'startColumnIndex': 5,  # Column F (0-indexed)
-                                'endColumnIndex': 6,
-                            },
-                            'rows': [{
-                                'values': [{
-                                    'userEnteredValue': {'stringValue': updated_dates}
-                                }]
-                            }],
-                            'fields': 'userEnteredValue'
-                        }
-                    })
-                    logger.info(
-                        f"Scheduled updates for Nominal_Roll for {name_val}/{four_d}: "
-                        f"New leaves left = {new_leaves_left}, Dates = {updated_dates}."
-                    )
-                except Exception as e:
-                    st.error(f"Error updating leaves for {name_val}/{four_d}: {e}. Skipping.")
-                    logger.error(f"Exception while updating leaves for {name_val}/{four_d}: {e}.")
-                    continue
 
             # 6) Build the batch update requests for the Parade_State if this row is existing:
             if row_num:
@@ -3625,7 +3297,7 @@ elif feature == "Overall View":
                     st.subheader("Training-Wide Attendance (Combined Conducts)")
                     # Determine the number of conduct columns (all columns after the first three)
                     headers = everything_data[0]
-                    conduct_types = [classify_conduct(h) for h in headers[3:]]
+                    conduct_headers = headers[3:]
                     
                     # Build a mapping from name to their attendance row (for fast lookup)
                     attendance_mapping = {}
@@ -3642,20 +3314,11 @@ elif feature == "Overall View":
                     
                     for record in records_nominal:
                         name = record['name'].strip()
-                        status = record.get('bmt_ptp', 'combined')  # NEW
                         row = attendance_mapping.get(name)
                         yes_count = 0
                         denom = 0
                         # Iterate over all conduct columns
-                        for idx, ctype in enumerate(conduct_types, start=3):
-                            applies = (
-                                ctype == 'combined' or
-                                status == 'combined' or
-                                status == ctype
-                            )
-                            if not applies:
-                                continue
-
+                        for idx, header in enumerate(conduct_headers, start=3):
                             denom += 1
                             value = row[idx].strip().lower() if row and len(row) > idx else ""
                             if value == "yes":
