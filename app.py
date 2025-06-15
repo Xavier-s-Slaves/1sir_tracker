@@ -207,7 +207,7 @@ if not st.session_state.authenticated:
     login()
     st.stop()
 
-st.set_page_config(page_title="Training & Parade Management", layout="centered")
+st.set_page_config(page_title="1SIRTracker", layout="centered")
 
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
@@ -216,15 +216,12 @@ SCOPES = [
 creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", SCOPES)
 
 COMPANY_SPREADSHEETS = {
-    "Wolf": "Wolf",
-    "Wolf1": "Wolf1",
+    "Alpha": "Alpha",
     "Bravo": "Bravo",
-    "Viper(bmt)": "Viper(bmt)",
-    "Viper": "Viper",
+    "Charlie": "Charlie",
+    "Support": "Support",
     "MSC": "MSC",
-    "Pegasus": "Pegasus",
-    "Scorpion": "Scorpion",
-    "Support": "Support"  # Added MSC
+    "HQ": "HQ",
 }
 
 
@@ -2569,21 +2566,36 @@ elif feature == "Analytics":
         # 1. Get all personnel from nominal roll for the multiselect
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         personnel_names = sorted([p['name'] for p in records_nominal if p['name']])
+        commanders = sorted([p['name'] for p in records_nominal if p['name'] and p['rank'].upper() not in NON_CMD_RANKS])
+        non_commanders = sorted([p['name'] for p in records_nominal if p['name'] and p['rank'].upper() in NON_CMD_RANKS])
 
         # 2. Selection UI
         all_personnel_option = "ALL PERSONNEL"
+        commanders_option = "ALL COMMANDERS"
+        non_commanders_option = "ALL NON-COMMANDERS"
+        special_options = [all_personnel_option, commanders_option, non_commanders_option]
+
         selected_options = st.multiselect(
-            "Select personnel to query. You can select one or more.",
-            options=[all_personnel_option] + personnel_names,
+            "Select groups or individuals to query.",
+            options=special_options + personnel_names,
             default=[]
         )
 
         # Determine the list of people to query
-        names_to_query = []
+        names_to_query_set = set()
         if all_personnel_option in selected_options:
-            names_to_query = personnel_names
-        else:
-            names_to_query = selected_options
+            names_to_query_set.update(personnel_names)
+        if commanders_option in selected_options:
+            names_to_query_set.update(commanders)
+        if non_commanders_option in selected_options:
+            names_to_query_set.update(non_commanders)
+        
+        # Add any individually selected people
+        for option in selected_options:
+            if option not in special_options:
+                names_to_query_set.add(option)
+        
+        names_to_query = sorted(list(names_to_query_set))
 
         if not names_to_query:
             st.info("Please select personnel from the list above to see their information.")
@@ -2613,50 +2625,77 @@ elif feature == "Analytics":
             display_prefixes = ("ex", "rib", "ld", "mc", "ml")
 
             all_medical_summary = []
+            group_totals = defaultdict(int)
+
             for name in names_to_query:
                 person_parade_records = [
                     r for r in records_parade 
                     if r.get('name', '').strip().lower() == name.strip().lower()
                 ]
                 
-                total_mc_days = 0
-                total_ml_days = 0
+                person_totals = defaultdict(int)
                 medical_details = []
 
                 for record in person_parade_records:
                     status = record.get("status", "").lower()
-                    if any(status.startswith(p) for p in display_prefixes):
-                        start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
-                        end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
-                        
-                        duration = "Unknown"
-                        if start_date and end_date and end_date >= start_date:
-                            days = (end_date - start_date).days + 1
-                            duration = f"{days} day(s)"
-                            if status.startswith("mc"):
-                                total_mc_days += days
-                            elif status.startswith("ml"):
-                                total_ml_days += days
+                    for prefix in display_prefixes:
+                        if status.startswith(prefix):
+                            start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
+                            end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
+                            
+                            duration = "Unknown"
+                            if start_date and end_date and end_date >= start_date:
+                                days = (end_date - start_date).days + 1
+                                duration = f"{days} day(s)"
+                                person_totals[prefix] += days
 
-                        medical_details.append({
-                            "Status": record.get("status", ""),
-                            "Start Date": record.get("start_date_ddmmyyyy", ""),
-                            "End Date": record.get("end_date_ddmmyyyy", ""),
-                            "Duration": duration
-                        })
+                            medical_details.append({
+                                "Status": record.get("status", ""),
+                                "Start Date": record.get("start_date_ddmmyyyy", ""),
+                                "End Date": record.get("end_date_ddmmyyyy", ""),
+                                "Duration": duration
+                            })
+                            break # Move to next record
                 
+                for prefix, total in person_totals.items():
+                    group_totals[prefix] += total
+
                 nominal_info = nominal_map.get(name.lower(), {})
                 all_medical_summary.append({
                     "Rank": nominal_info.get('rank', 'N/A'),
                     "Name": name,
-                    "Total MC Days": total_mc_days,
-                    "Total ML Days": total_ml_days,
+                    "EX Days": person_totals['ex'],
+                    "RIB Days": person_totals['rib'],
+                    "LD Days": person_totals['ld'],
+                    "MC Days": person_totals['mc'],
+                    "ML Days": person_totals['ml'],
                 })
 
                 if medical_details:
                     with st.expander(f"View medical history for {name}"):
                         st.table(medical_details)
             
+            if any(opt in selected_options for opt in special_options) and names_to_query:
+                st.subheader("Group Summary (Medical)")
+                num_people = len(names_to_query)
+                st.metric("Selected Personnel", f"{num_people}")
+                st.markdown("---")
+                
+                prefix_map = {
+                    "ex": "Excuse", "rib": "RIB", "ld": "Light Duty", "mc": "MC", "ml": "Med Leave"
+                }
+                cols = st.columns(len(display_prefixes))
+
+                for i, prefix in enumerate(display_prefixes):
+                    total_days = group_totals.get(prefix, 0)
+                    avg_days = total_days / num_people if num_people > 0 else 0
+                    label = prefix_map.get(prefix, prefix.upper())
+                    with cols[i]:
+                        st.metric(f"Total {label} Days", total_days)
+                        st.metric(f"Avg {label} Days", f"{avg_days:.2f}")
+                st.markdown("---")
+
+
             if all_medical_summary:
                 df_medical_summary = pd.DataFrame(all_medical_summary)
                 st.dataframe(df_medical_summary, use_container_width=True, hide_index=True)
@@ -2669,6 +2708,8 @@ elif feature == "Analytics":
             leave_prefixes = ("ll", "ol", "leave")
             
             all_leave_records = []
+            group_total_leaves = 0
+
             for name in names_to_query:
                 person_parade_records = [
                     r for r in records_parade 
@@ -2697,6 +2738,7 @@ elif feature == "Analytics":
                             "Duration": duration
                         })
                 
+                group_total_leaves += total_leave_days
                 nominal_info = nominal_map.get(name.lower(), {})
                 remaining_leaves = 14 - total_leave_days
                 
@@ -2711,6 +2753,19 @@ elif feature == "Analytics":
                     with st.expander(f"View leave history for {name}"):
                         st.table(leave_details)
             
+            if any(opt in selected_options for opt in special_options) and names_to_query:
+                st.subheader("Group Summary (Leave)")
+                num_people = len(names_to_query)
+                avg_leaves = group_total_leaves / num_people if num_people > 0 else 0
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Selected Personnel", num_people)
+                with col2:
+                    st.metric("Total Leave Days Taken", group_total_leaves)
+                with col3:
+                    st.metric("Avg Leave / Person", f"{avg_leaves:.2f}")
+
             if all_leave_records:
                 df_leave_summary = pd.DataFrame(all_leave_records)
                 st.dataframe(df_leave_summary, use_container_width=True, hide_index=True)
@@ -2723,6 +2778,9 @@ elif feature == "Analytics":
             rsi_rso_prefixes = ("rsi", "rso")
             
             all_rsi_rso_summary = []
+            group_total_rsi = 0
+            group_total_rso = 0
+
             for name in names_to_query:
                 person_parade_records = [
                     r for r in records_parade 
@@ -2760,6 +2818,8 @@ elif feature == "Analytics":
                             "Duration": duration
                         })
                 
+                group_total_rsi += total_rsi
+                group_total_rso += total_rso
                 nominal_info = nominal_map.get(name.lower(), {})
                 all_rsi_rso_summary.append({
                     "Rank": nominal_info.get('rank', 'N/A'),
@@ -2772,6 +2832,24 @@ elif feature == "Analytics":
                     with st.expander(f"View RSI/RSO history for {name}"):
                         st.table(rsi_rso_details)
             
+            if any(opt in selected_options for opt in special_options) and names_to_query:
+                st.subheader("Group Summary (RSI/RSO)")
+                num_people = len(names_to_query)
+                avg_rsi = group_total_rsi / num_people if num_people > 0 else 0
+                avg_rso = group_total_rso / num_people if num_people > 0 else 0
+
+                col1, col2, col3, col4, col5 = st.columns(5)
+                with col1:
+                    st.metric("Selected Personnel", num_people)
+                with col2:
+                    st.metric("Total RSIs", group_total_rsi)
+                with col3:
+                    st.metric("Avg RSI / Person", f"{avg_rsi:.2f}")
+                with col4:
+                    st.metric("Total RSOs", group_total_rso)
+                with col5:
+                    st.metric("Avg RSO / Person", f"{avg_rso:.2f}")
+
             if all_rsi_rso_summary:
                 df_summary = pd.DataFrame(all_rsi_rso_summary)
                 st.dataframe(df_summary, use_container_width=True, hide_index=True)
@@ -2834,6 +2912,18 @@ elif feature == "Analytics":
                             "Percentage": "N/A"
                         })
 
+
+                if any(opt in selected_options for opt in special_options) and names_to_query:
+                    st.subheader("Group Summary (Training Attendance)")
+                    group_attended_count = sum(int(record["Attendance"].split("/")[0]) for record in all_attendance_records)
+                    group_total_conducts = sum(int(record["Attendance"].split("/")[1]) for record in all_attendance_records)
+                    group_attendance_percentage = (group_attended_count / group_total_conducts * 100) if group_total_conducts > 0 else 0
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Selected Personnel", len(names_to_query))
+                    with col2:
+                        st.metric("Overall Group Attendance", f"{group_attendance_percentage:.2f}%")
 
                 if all_attendance_records:
                     df_attendance = pd.DataFrame(all_attendance_records)
@@ -2926,6 +3016,7 @@ elif feature == "Analytics":
                 st.stop()
 
             all_attendance_summary = []
+            group_attendance_percentages = []
             total_days_in_range = (end_date - start_date).days + 1
 
             for name in names_to_query:
@@ -2957,6 +3048,7 @@ elif feature == "Analytics":
                 num_absent_days = len(absent_dates)
                 present_days = total_days_in_range - num_absent_days
                 attendance_percentage = (present_days / total_days_in_range * 100) if total_days_in_range > 0 else 0
+                group_attendance_percentages.append(attendance_percentage)
                 
                 nominal_info = nominal_map.get(name.lower(), {})
                 all_attendance_summary.append({
@@ -2965,6 +3057,16 @@ elif feature == "Analytics":
                     "Attendance (%)": f"{attendance_percentage:.2f}%"
                 })
 
+            if any(opt in selected_options for opt in special_options) and names_to_query:
+                st.subheader("Group Summary (Daily Attendance)")
+                avg_group_percentage = sum(group_attendance_percentages) / len(group_attendance_percentages) if group_attendance_percentages else 0
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Selected Personnel", len(names_to_query))
+                with col2:
+                    st.metric("Average Daily Attendance", f"{avg_group_percentage:.2f}%")
+                
             if all_attendance_summary:
                 df_summary = pd.DataFrame(all_attendance_summary)
                 st.dataframe(df_summary, use_container_width=True, hide_index=True)
