@@ -1245,7 +1245,7 @@ Examples:
         "Date (DDMMYYYY)",
         value=st.session_state.conduct_date
     )
-    platoon_options = ["1", "2", "3", "4", "Coy HQ"]
+    platoon_options = ["1", "2", "3", "4", "5", "Coy HQ"]
     st.session_state.conduct_platoon = st.selectbox(
         "Your Platoon",
         options=platoon_options,
@@ -1444,10 +1444,10 @@ Examples:
             print(total_strength_platoons[plt])
 
         # Initialize non-cmd and cmd counts for each platoon
-        non_cmd_counts = {"1": 0, "2": 0, "3": 0, "4": 0, "Coy HQ": 0}
-        cmd_counts = {"1": 0, "2": 0, "3": 0, "4": 0, "Coy HQ": 0}
-        non_cmd_totals = {"1": 0, "2": 0, "3": 0, "4": 0, "Coy HQ": 0}
-        cmd_totals = {"1": 0, "2": 0, "3": 0, "4": 0, "Coy HQ": 0}
+        non_cmd_counts = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "Coy HQ": 0}
+        cmd_counts = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "Coy HQ": 0}
+        non_cmd_totals = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "Coy HQ": 0}
+        cmd_totals = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "Coy HQ": 0}
 
         # Calculate total non-cmd and cmd for each platoon
         for person in records_nominal:
@@ -1469,14 +1469,11 @@ Examples:
                         cmd_counts[plt] += 1
 
         # Initialize pt_plts with detailed format for all platoons
-        pt_plts = ['0/0\n0/0\n0/0', '0/0\n0/0\n0/0', '0/0\n0/0\n0/0', '0/0\n0/0\n0/0', '0/0\n0/0\n0/0']
+        pt_plts = ['0/0\n0/0\n0/0'] * 6
 
         # Update the platoon that's participating in this conduct
         if platoon in platoon_options:
-            if platoon != "Coy HQ":
-                index = int(platoon) - 1  # Platoons 1-4 map to indices 0-3
-            else:
-                index = 4  # 'Coy HQ' maps to index 4
+            index = platoon_options.index(platoon)
             
             non_cmd_ratio = f"{non_cmd_counts[platoon]}/{non_cmd_totals[platoon]}"
             cmd_ratio = f"{cmd_counts[platoon]}/{cmd_totals[platoon]}"
@@ -1496,34 +1493,36 @@ Examples:
         pt_total = f"non-cmd: {total_non_cmd_part}/{total_non_cmd}\ncmd: {total_cmd_part}/{total_cmd}\nTOTAL: {total_part}/{total_strength}"
 
         formatted_date_str = ensure_date_str(date_str)
-        # Prepare outliers per platoon – order: PLT1, PLT2, PLT3, PLT4, Coy HQ
-        outliers_list = ["None"] * 5
+        # Prepare outliers per platoon – order: PLT1, PLT2, PLT3, PLT4, PLT5, Coy HQ
+        outliers_list = ["None"] * 6
         if platoon in platoon_options:
-            index = int(platoon) - 1 if platoon != "Coy HQ" else 4
+            index = platoon_options.index(platoon)
             outliers_list[index] = ", ".join(all_outliers) if all_outliers else "None"
 
         SHEET_CONDUCTS.append_row([
             formatted_date_str,  # Column 1: Date
             cname,               # Column 2: Conduct_Name
-            pt_plts[0],          # Column 3: P/T PLT1 (detailed format)
-            pt_plts[1],          # Column 4: P/T PLT2 (detailed format)
-            pt_plts[2],          # Column 5: P/T PLT3 (detailed format)
-            pt_plts[3],          # Column 6: P/T PLT4 (detailed format)
-            pt_plts[4],          # Column 7: P/T Coy HQ (detailed format)
-            pt_total,            # Column 8: P/T Total (detailed format)
-            outliers_list[0],    # Column 9: PLT1 Outliers
-            outliers_list[1],    # Column 10: PLT2 Outliers
-            outliers_list[2],    # Column 11: PLT3 Outliers
-            outliers_list[3],    # Column 12: PLT4 Outliers
-            outliers_list[4],    # Column 13: Coy HQ Outliers
-            pointers,            # Column 14: Pointers
-            submitted_by         # Column 15: Submitted_By
+            pt_plts[0],          # Column 3: P/T PLT1
+            pt_plts[1],          # Column 4: P/T PLT2
+            pt_plts[2],          # Column 5: P/T PLT3
+            pt_plts[3],          # Column 6: P/T PLT4
+            pt_plts[4],          # Column 7: P/T PLT5
+            pt_plts[5],          # Column 8: P/T Coy HQ
+            pt_total,            # Column 9: P/T Total
+            outliers_list[0],    # Column 10: PLT1 Outliers
+            outliers_list[1],    # Column 11: PLT2 Outliers
+            outliers_list[2],    # Column 12: PLT3 Outliers
+            outliers_list[3],    # Column 13: PLT4 Outliers
+            outliers_list[4],    # Column 14: PLT5 Outliers
+            outliers_list[5],    # Column 15: Coy HQ Outliers
+            pointers,            # Column 16: Pointers
+            submitted_by         # Column 17: Submitted_By
         ])
 
         logger.info(
             f"Appended Conduct: {formatted_date_str}, {cname}, "
             f"P/T PLT1: {pt_plts[0]}, P/T PLT2: {pt_plts[1]}, P/T PLT3: {pt_plts[2]}, "
-            f"P/T PLT4: {pt_plts[3]}, P/T Coy HQ: {pt_plts[4]}, P/T Total: {pt_total}, Outliers: {', '.join(all_outliers) if all_outliers else 'None'}, "
+            f"P/T PLT4: {pt_plts[3]}, P/T PLT5: {pt_plts[4]}, P/T Coy HQ: {pt_plts[5]}, P/T Total: {pt_total}, Outliers: {', '.join(all_outliers) if all_outliers else 'None'}, "
             f"Pointers: {pointers}, Submitted_By: {submitted_by} in company '{selected_company}'."
         )
 
@@ -1551,7 +1550,7 @@ Examples:
             st.stop()
 
         try:
-            SHEET_CONDUCTS.update_cell(conduct_row, 8, pt_total)
+            SHEET_CONDUCTS.update_cell(conduct_row, 9, pt_total)
             logger.info(f"Updated P/T Total to {pt_total} for conduct '{cname}' in company '{selected_company}'.")
         except Exception as e:
             st.error(f"Error updating P/T Total: {e}")
@@ -1566,7 +1565,8 @@ Examples:
             f"P/T PLT2: {pt_plts[1]}\n"
             f"P/T PLT3: {pt_plts[2]}\n"
             f"P/T PLT4: {pt_plts[3]}\n"
-            f"P/T Coy HQ: {pt_plts[4]}\n"
+            f"P/T PLT5: {pt_plts[4]}\n"
+            f"P/T Coy HQ: {pt_plts[5]}\n"
             f"P/T Total: {pt_total}\n"
             f"Outliers: {', '.join(all_outliers) if all_outliers else 'None'}\n"
             f"Pointers:\n{pointers if pointers else 'None'}\n"
@@ -1719,13 +1719,13 @@ elif feature == "Add Ad-Hoc Conduct":
                 status = f" ({person['StatusDesc']})" if person['StatusDesc'] else ""
                 outliers_by_platoon[platoon].append(f"{person.get('4D_Number', '')} {person['Name']}{status}".strip())
         
-        platoon_options = ["1", "2", "3", "4", "Coy HQ"]
+        platoon_options = ["1", "2", "3", "4", "5", "Coy HQ"]
         outliers_list = [", ".join(outliers_by_platoon.get(p, [])) or "None" for p in platoon_options]
         
         SHEET_CONDUCTS.append_row([
-            formatted_date, conduct_name, "N/A", "N/A", "N/A", "N/A", "N/A", pt_total_str,
+            formatted_date, conduct_name, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", pt_total_str,
             outliers_list[0], outliers_list[1], outliers_list[2], outliers_list[3], outliers_list[4],
-            "", st.session_state.username
+            outliers_list[5], "", st.session_state.username
         ])
 
         st.success(f"Ad-Hoc Conduct '{conduct_name}' on {formatted_date} has been finalized.")
@@ -1789,7 +1789,7 @@ elif feature == "Update Conduct":
         platoon_display_options = ["Not Applicable"]
         platoon_disabled = True
     else:
-        platoon_display_options = ["1", "2", "3", "4", "Coy HQ"]
+        platoon_display_options = ["1", "2", "3", "4", "5", "Coy HQ"]
         platoon_disabled = False
 
     st.subheader("Select Platoon to Update")
@@ -1942,7 +1942,7 @@ elif feature == "Update Conduct":
                     col_idx = headers.index(target_col_header)
                     
                     # Consolidate all outlier strings to parse their status descriptions
-                    outlier_keys = [f"plt{i} outliers" for i in range(1, 5)] + ["coy hq outliers"]
+                    outlier_keys = [f"plt{i} outliers" for i in range(1, 6)] + ["coy hq outliers"]
                     all_outliers_str = ", ".join(
                         [conduct_record.get(key, '') for key in outlier_keys if conduct_record.get(key, '').lower().strip() not in ('none', '')]
                     )
@@ -2075,7 +2075,7 @@ elif feature == "Update Conduct":
             if rec: pointer_str += f"Recommendation {idx}:\n{rec}\n"
             pointers_list.append(pointer_str.strip())
         new_pointers = "\n\n".join(pointers_list)
-        SHEET_CONDUCTS.update_cell(row_number, 14, new_pointers)
+        SHEET_CONDUCTS.update_cell(row_number, 16, new_pointers)
 
         # --- LOGIC SPLIT: AD-HOC vs. REGULAR ---
         is_adhoc = conduct_record.get('p/t plt1', '').strip() == "N/A"
@@ -2090,7 +2090,7 @@ elif feature == "Update Conduct":
             non_cmd_total_group = sum(1 for p in edited_data if p["Rank"].upper() in NON_CMD_RANKS)
             cmd_total_group = sum(1 for p in edited_data if p["Rank"].upper() not in NON_CMD_RANKS)
             new_pt_total_value = f"non-cmd: {non_cmd_participating}/{non_cmd_total_group}\ncmd: {cmd_participating}/{cmd_total_group}\nTOTAL: {non_cmd_participating + cmd_participating}/{len(edited_data)}"
-            SHEET_CONDUCTS.update_cell(row_number, 8, new_pt_total_value)
+            SHEET_CONDUCTS.update_cell(row_number, 9, new_pt_total_value)
 
             # 2. Calculate and update outliers for all relevant platoons
             records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
@@ -2102,9 +2102,9 @@ elif feature == "Update Conduct":
                     status = f" ({person['StatusDesc']})" if person['StatusDesc'] else ""
                     outliers_by_platoon[platoon_of_person].append(f"{person.get('4D_Number', '')} {person['Name']}{status}".strip())
             
-            platoon_options = ["1", "2", "3", "4", "Coy HQ"]
+            platoon_options = ["1", "2", "3", "4", "5", "Coy HQ"]
             for i, p_opt in enumerate(platoon_options):
-                outlier_col_idx = 9 + i
+                outlier_col_idx = 10 + i
                 outliers_str = ", ".join(outliers_by_platoon.get(p_opt, [])) or "None"
                 SHEET_CONDUCTS.update_cell(row_number, outlier_col_idx, outliers_str)
             
@@ -2125,12 +2125,14 @@ elif feature == "Update Conduct":
             
             new_pt_value = f"non-cmd: {non_cmd_counts}/{non_cmd_totals_platoon}\ncmd: {cmd_counts}/{cmd_totals_platoon}\nTOTAL: {new_participating}/{new_total_platoon}"
             
-            if platoon != "Coy HQ":
-                pt_column_index = 2 + int(platoon)
-                outlier_column_index = 8 + int(platoon)
-            else:
-                pt_column_index = 7
-                outlier_column_index = 13
+            platoon_options = ["1", "2", "3", "4", "5", "Coy HQ"]
+            if platoon in platoon_options:
+                platoon_idx = platoon_options.index(platoon)
+                pt_column_index = 3 + platoon_idx
+                outlier_column_index = 10 + platoon_idx
+            else: # Should not happen if UI is correct
+                st.error("Invalid platoon selected.")
+                st.stop()
             SHEET_CONDUCTS.update_cell(row_number, pt_column_index, new_pt_value)
 
             # 2. Calculate and update the specific platoon's outliers
@@ -2141,13 +2143,13 @@ elif feature == "Update Conduct":
             ]
             SHEET_CONDUCTS.update_cell(row_number, outlier_column_index, ", ".join(outliers_for_platoon) or "None")
 
-            # 3. Recalculate and update the overall P/T Total in column 8
+            # 3. Recalculate and update the overall P/T Total in column 9
             all_conduct_values_updated = SHEET_CONDUCTS.get_all_values()
             current_row_values = all_conduct_values_updated[row_number - 1]
             
             total_non_cmd_part, total_non_cmd, total_cmd_part, total_cmd = 0, 0, 0, 0
-            # Columns 3 to 7 (P/T PLT1 to P/T Coy HQ)
-            for pt_cell in current_row_values[2:7]:
+            # Columns 3 to 8 (P/T PLT1 to P/T Coy HQ)
+            for pt_cell in current_row_values[2:8]:
                 if pt_cell and pt_cell != "N/A":
                     lines = pt_cell.split('\n')
                     try:
@@ -2168,7 +2170,7 @@ elif feature == "Update Conduct":
             total_part = total_non_cmd_part + total_cmd_part
             total_strength = total_non_cmd + total_cmd
             pt_total = f"non-cmd: {total_non_cmd_part}/{total_non_cmd}\ncmd: {total_cmd_part}/{total_cmd}\nTOTAL: {total_part}/{total_strength}"
-            SHEET_CONDUCTS.update_cell(row_number, 8, pt_total)
+            SHEET_CONDUCTS.update_cell(row_number, 9, pt_total)
 
         st.success(f"Conduct '{selected_conduct}' updated successfully.")
         logger.info(
@@ -2213,7 +2215,7 @@ elif feature == "Update Parade":
 
     st.session_state.parade_platoon = st.selectbox(
         "Platoon for Parade Update:",
-        options=[1, 2, 3, 4, "Coy HQ"],
+        options=[1, 2, 3, 4, 5, "Coy HQ"],
         format_func=lambda x: str(x)
     )
 
