@@ -2,5 +2,57 @@
     "admin": {
         "password": "pass",
         "companies": ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ"]
+    },
+    "don": {
+        "password": "donP@ss1",
+        "companies": ["Support"]
+    },
+    "asraf": {
+        "password": "asrafP@ss2",
+        "companies": ["Support"]
+    },
+    "zul": {
+        "password": "zulP@ss3",
+        "companies": ["Support"]
+    },
+    "yanhongg": {
+        "password": "yanhonggP@ss4",
+        "companies": ["Support"]
+    },
+    "jiazhen": {
+        "password": "jiazhenP@ss5",
+        "companies": ["Support"]
+    },
+    "lingesh": {
+        "password": "lingeshP@ss6",
+        "companies": ["Support"]
+    },
+    "kimi": {
+        "password": "kimiP@ss7",
+        "companies": ["Support"]
+    },
+    "ziyang": {
+        "password": "ziyangP@ss8",
+        "companies": ["Support"]
+    },
+    "yaozong": {
+        "password": "yaozongP@ss9",
+        "companies": ["Support"]
+    },
+    "kianyeng": {
+        "password": "kianyengP@ss10",
+        "companies": ["Support"]
+    },
+    "yongze": {
+        "password": "yongzeP@ss11",
+        "companies": ["Support"]
+    },
+    "lionel": {
+        "password": "lionelP@ss12",
+        "companies": ["Support"]
+    },
+    "kevan": {
+        "password": "kevanP@ss13",
+        "companies": ["Support"]
     }
 }
