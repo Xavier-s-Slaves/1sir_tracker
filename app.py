@@ -523,19 +523,19 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     platoon_details = []
 
     # Sort platoons so that Coy HQ appears first
-    sorted_platoons = sorted(all_platoons, key=lambda x: (0, x) if x.lower() == 'coy hq' else (1, x))
+    sorted_platoons = sorted(all_platoons, key=lambda x: (x.lower() not in ('coy hq', 'hq'), x))
     for platoon in sorted_platoons:
         records = active_parade_by_platoon.get(platoon, [])
 
         # Determine platoon label
-        if platoon.lower() == 'coy hq':
+        if platoon.lower() in ('coy hq', 'hq'):
             platoon_label = "Coy HQ"
         elif selected_company == "Support":
             support_platoon_map = {
-                "1": "Signal",
-                "2": "Scout",
-                "3": "Pioneer",
-                "4": "Opfor"
+                "1": "SIGNAL PL",
+                "2": "SCOUT PL",
+                "3": "PIONEER PL",
+                "4": "OPFOR PL"
             }
             platoon_label = support_platoon_map.get(platoon, f"Platoon {platoon}")
         else:
@@ -613,7 +613,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             key = (absentee['4d'].strip(), absentee['rank'].strip(), absentee['name'].strip())
             non_cmd_group[key].append(f"{absentee['status']} {absentee['details']}")
 
-        if platoon.lower() != 'coy hq':
+        if platoon.lower() not in ('coy hq', 'hq'):
             platoon_absent = len(commander_group) + len(non_cmd_group)
         else:
             # For Coy HQ, combine both groups
@@ -625,7 +625,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
         total_absent += platoon_absent
 
         # For platoons (other than Coy HQ), calculate nominal breakdown based on rank
-        if platoon.lower() != 'coy hq':
+        if platoon.lower() not in ('coy hq', 'hq'):
             platoon_nominal_records = [
                 r for r in company_nominal_records
                 if r.get('platoon', 'Coy HQ') == platoon
@@ -2135,7 +2135,8 @@ elif feature == "Update Conduct":
 
             # 2. Calculate and update the specific platoon's outliers
             outliers_for_platoon = [
-                f"{row.get('4D_Number', '')} {row['Name']}{f' ({row['StatusDesc']})' if row['StatusDesc'] else ''}".strip()
+                (f"{row.get('4D_Number', '')} {row['Name']}" + 
+                 (f" ({row.get('StatusDesc', '')})" if row.get('StatusDesc') else "")).strip()
                 for row in edited_data if row.get('Is_Outlier', False)
             ]
             SHEET_CONDUCTS.update_cell(row_number, outlier_column_index, ", ".join(outliers_for_platoon) or "None")
