@@ -102,5 +102,41 @@
     "3sg_clifford": {
         "password": "cliffordP@ss25",
         "companies": ["Bravo"]
+    },
+    "OC_Alpha": {
+        "password": "passOC9",
+        "companies": ["Alpha"]
+    },
+    "CSM_Alpha": {
+        "password": "passCSM7",
+        "companies": ["Alpha"]
+    },
+    "COS_Alpha": {
+        "password": "passCOS00",
+        "companies": ["Alpha"]
+    },
+    "HQ_Alpha": {
+        "password": "passHQ0",
+        "companies": ["Alpha"]
+    },
+    "P1_Alpha": {
+        "password": "pass1!",
+        "companies": ["Alpha"]
+    },
+    "P2_Alpha": {
+        "password": "pass2@",
+        "companies": ["Alpha"]
+    },
+    "P3_Alpha": {
+        "password": "pass3#",
+        "companies": ["Alpha"]
+    },
+    "P4_Alpha": {
+        "password": "pass4$",
+        "companies": ["Alpha"]
+    },
+    "P5_Alpha": {
+        "password": "pass5$",
+        "companies": ["Alpha"]
     }
 }
