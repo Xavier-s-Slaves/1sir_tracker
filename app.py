@@ -1233,73 +1233,9 @@ if feature == "Add Conduct":
         options=platoon_options,
         index=platoon_options.index(st.session_state.conduct_platoon) if st.session_state.conduct_platoon in platoon_options else 0
     )
-    conduct_options = [
-        "",
-        "2.4KM CONDITIONING RUN",
-        "AQUA",
-        "ARM DRILLS",
-        "BALANCING, FLEXIBILITY, MOBILITY",
-        "BCCT",
-        "BIC",
-        "BPK",
-        "BSK",
-        "BTP",
-        "CBA&CPR-AED",
-        "CADENCE RUN",
-        "CAREHAB ADJUSTMENT SURVEY",
-        "COMBAT CIRCUIT",
-        "CONDUCTING BRIEF BTP",
-        "COY FIRE DRILL",
-        "CPT",
-        "CQB",
-        "DAC",
-        "DISTANCE INTERVAL",
-        "ELISS FAMILIARISATION",
-        "ENDURANCE RUN",
-        "ENDURANCE RUN TEMPO",
-        "FARTLEK",
-        "FIELDCAMP",
-        "FOOT DRILLS",
-        "GP REHEARSAL",
-        "GYM ORIENTATION",
-        "GYM TRAINING",
-        "HAND GRENADE",
-        "IFC",
-        "IMT",
-        "INFANTRY SMALL ARMS DEMONSTRATION",
-        "INTRO TO HEARTRATE",
-        "INTRO TO UO",
-        "IPPT",
-        "JS3",
-        "JUDGEMENTAL SHOOT",
-        "LEADERSHIP VALUES",
-        "MO TALK",
-        "METABOLIC CIRCUIT",
-        "NATIONAL EDUCATION",
-        "OO ENGAGEMENT",
-        "ORIENTATION RUN",
-        "PHYSICAL TRAINING LECTURE",
-        "RAMADHAN BRIEF",
-        "RESILIENCE LEARNING",
-        "ROUTE MARCH(3KM)",
-        "ROUTE MARCH (4KM)",
-        "ROUTE MARCH (8KM)",
-        "ROUTE MARCH (12KM)",
-        "SAFE & INCLUSIVE WORKPLACE",
-        "SAFRA TALK",
-        "SIT TEST",
-        "SOC",
-        "SPEED AGILITY QUICKNESS",
-        "SPORTS AND GAMES",
-        "STRENGTH TRAINING",
-        "TECHNICAL HANDLING",
-        "WEAPON PRESENTATION PREPARATION"
-    ]
-
-    st.session_state.conduct_name = st.selectbox(
+    st.session_state.conduct_name = st.text_input(
         "Conduct Name",
-        options=conduct_options,
-        index=conduct_options.index(st.session_state.conduct_name) if st.session_state.conduct_name in conduct_options else 0
+        value=st.session_state.conduct_name
     )
 
     if 'conduct_session' not in st.session_state:
@@ -1621,7 +1557,7 @@ if feature == "Add Conduct":
 
         st.session_state.conduct_date = ""
         st.session_state.conduct_platoon = platoon_options[0]
-        st.session_state.conduct_name = conduct_options[0]
+        st.session_state.conduct_name = ""
         st.session_state.conduct_table = []
         st.session_state.conduct_pointers = [
             {"observation": "", "reflection": "", "recommendation": ""}
@@ -2632,394 +2568,280 @@ elif feature == "Update Parade":
 # ------------------------------------------------------------------------------
 elif feature == "Queries":
     st.subheader("Query Person Information")
+
+    # 1. Get all personnel from nominal roll for the multiselect
+    records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+    personnel_names = sorted([p['name'] for p in records_nominal if p['name']])
+
+    # 2. Selection UI
+    all_personnel_option = "ALL PERSONNEL"
+    selected_options = st.multiselect(
+        "Select personnel to query. You can select one or more.",
+        options=[all_personnel_option] + personnel_names,
+        default=[]
+    )
+
+    # Determine the list of people to query
+    names_to_query = []
+    if all_personnel_option in selected_options:
+        names_to_query = personnel_names
+    else:
+        names_to_query = selected_options
+
+    if not names_to_query:
+        st.info("Please select personnel from the list above to see their information.")
+        st.stop()
+
+    # Data fetching for all tabs
+    records_parade = get_allparade_records(selected_company, SHEET_PARADE)
+    sheet_everything = worksheets.get("everything")
+    everything_data = sheet_everything.get_all_values() if sheet_everything else []
+
+    # Create a mapping from name to nominal record for easy lookup
+    nominal_map = {p['name'].lower(): p for p in records_nominal}
     
-    # Add tabs for different query types
-    tab1, tab2, tab3, tab4, tab5,tab6 = st.tabs(["Medical Statuses", "Leave Counter", "MC Counter", "Threshold Alerts" ,"Ration Requirements", "Daily Attendance"])
-    
-    # Common input field for all tabs
-    person_input = st.text_input("Enter the 4D Number or partial Name", key="query_person_input")
-    search_button = st.button("Search", key="btn_query_person")
+    # Create tabs
+    tab1, tab2, tab3, tab4 = st.tabs(["Medical Statuses", "Leaves", "Training Attendance", "Daily Attendance"])
+
+    # Helper function to parse dates
     def parse_ddmmyyyy(d):
         try:
             return datetime.strptime(str(d), "%d%m%Y")
-        except ValueError:
-            return datetime.min
-    if search_button:
-        if not person_input:
-            st.error("Please enter a 4D Number or Name.")
-            st.stop()
-            
-        # Common data fetching for all tabs
-        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-        records_parade = get_allparade_records(selected_company, SHEET_PARADE)
-        parade_data = records_parade
+        except (ValueError, TypeError):
+            return None
 
-        # Check if input is a valid 4D
-        four_d_input_clean = is_valid_4d(person_input)
-        person_rows = []
+    # TAB 1: MEDICAL STATUSES
+    with tab1:
+        st.subheader("Medical Statuses")
+        display_prefixes = ("ex", "rib", "ld", "mc", "ml")
 
-        if four_d_input_clean:
-            # Search by 4D
-            person_rows = [
-                row for row in parade_data
-                if is_valid_4d(row.get("4d_number", "")) == four_d_input_clean
+        all_medical_summary = []
+        for name in names_to_query:
+            person_parade_records = [
+                r for r in records_parade 
+                if r.get('name', '').strip().lower() == name.strip().lower()
             ]
-        else:
-            # Otherwise, partial match by name (case-insensitive)
-            person_input_lower = person_input.strip().lower()
-            person_rows = [
-                row for row in parade_data
-                if person_input_lower in row.get("name", "").strip().lower()
-            ]
-
-        if not person_rows:
-            st.warning(f"No Parade_State records found for '{person_input}'")
-            logger.info(f"No Parade_State records found for '{person_input}' in company '{selected_company}'.")
-        else:
-            def parse_ddmmyyyy(d):
-                try:
-                    return datetime.strptime(str(d), "%d%m%Y")
-                except ValueError:
-                    return datetime.min
-                    
-            # Get person details for display in all tabs
-            four_d_val = ""
-            name_val = ""
-            rank_val = ""
             
-            if person_rows:
-                first_row = person_rows[0]
-                four_d_val = is_valid_4d(first_row.get("4d_number", "")) or ""
-                
-                # Try to get more details from nominal roll
-                if four_d_val:
-                    for nominal in records_nominal:
-                        if nominal['4d_number'].upper() == four_d_val.upper():
-                            name_val = nominal['name']
-                            rank_val = nominal['rank']
-                            break
-                
-                # If we don't have a name yet, use the one from parade state
-                if not name_val:
-                    name_val = first_row.get("name", "")
-            
-            # TAB 1: MEDICAL STATUSES (Original Functionality)
-            with tab1:
-                st.subheader(f"Medical Statuses for {rank_val} {name_val} ({four_d_val})")
-                
-                valid_status_prefixes = ("ex", "rib", "ld", "mc", "ml")
-                filtered_person_rows = [
-                    row for row in person_rows if row.get("status", "").lower().startswith(valid_status_prefixes)
-                ]
-                filtered_person_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
+            total_mc_days = 0
+            total_ml_days = 0
+            medical_details = []
 
-                enhanced_rows = []
-                for row in filtered_person_rows:
-                    # Grab 4D or empty
-                    row_four_d = is_valid_4d(row.get("4d_number", "")) or ""
-                    # Grab rank from nominal if possible
-                    row_rank = ""
-                    row_name = ""
+            for record in person_parade_records:
+                status = record.get("status", "").lower()
+                if any(status.startswith(p) for p in display_prefixes):
+                    start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
+                    end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
                     
-                    # We can look up 4D if it exists, or match by name if not
-                    if row_four_d:
-                        # If 4D is valid, match by 4D
-                        for nominal in records_nominal:
-                            if nominal['4d_number'].upper() == row_four_d.upper():
-                                row_rank = nominal['rank']
-                                break
-                        row_name = find_name_by_4d(row.get("4d_number", ""), records_nominal)
-                    else:
-                        # If no 4D, match by name partially
-                        name_from_parade = ensure_str(row.get("name", ""))
-                        for nominal in records_nominal:
-                            # For partial match, ensure the parade name is quite specific
-                            # but here we'll just do a direct equality ignoring case
-                            if nominal['name'].strip().lower() == name_from_parade.strip().lower():
-                                row_four_d = nominal['4d_number']
-                                row_rank = nominal['rank']
-                                break
-                        row_name = name_from_parade
+                    duration = "Unknown"
+                    if start_date and end_date and end_date >= start_date:
+                        days = (end_date - start_date).days + 1
+                        duration = f"{days} day(s)"
+                        if status.startswith("mc"):
+                            total_mc_days += days
+                        elif status.startswith("ml"):
+                            total_ml_days += days
 
-                    enhanced_rows.append({
-                        "Rank": row_rank,
-                        "Name": row_name,
-                        "4D_Number": row_four_d,
-                        "Status": row.get("status", ""),
-                        "Start_Date": row.get("start_date_ddmmyyyy", ""),
-                        "End_Date": row.get("end_date_ddmmyyyy", "")
+                    medical_details.append({
+                        "Status": record.get("status", ""),
+                        "Start Date": record.get("start_date_ddmmyyyy", ""),
+                        "End Date": record.get("end_date_ddmmyyyy", ""),
+                        "Duration": duration
                     })
+            
+            nominal_info = nominal_map.get(name.lower(), {})
+            all_medical_summary.append({
+                "Rank": nominal_info.get('rank', 'N/A'),
+                "Name": name,
+                "Total MC Days": total_mc_days,
+                "Total ML Days": total_ml_days,
+            })
 
-                if enhanced_rows:
-                    st.table(enhanced_rows)
-                else:
-                    st.info("No medical status records found")
+            if medical_details:
+                with st.expander(f"View medical history for {name}"):
+                    st.table(medical_details)
+        
+        if all_medical_summary:
+            df_medical_summary = pd.DataFrame(all_medical_summary)
+            st.dataframe(df_medical_summary, use_container_width=True, hide_index=True)
+        else:
+            st.info("No medical status records found for the selected personnel.")
 
-            # TAB 2: LEAVE COUNTER
-            with tab2:
-                st.subheader(f"Leave Status for {rank_val} {name_val} ({four_d_val})")
-                
-                # Filter for leave-related statuses
-                leave_prefixes = ("ll", "ol", "leave")
-                leave_rows = [
-                    row for row in person_rows if any(row.get("status", "").lower().startswith(prefix) for prefix in leave_prefixes)
-                ]
-                leave_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
-
-                # Calculate total leaves taken and remaining
-                total_leave_days = 0
-                leave_details = []
-                
-                for row in leave_rows:
-                    start_date = parse_ddmmyyyy(row.get("start_date_ddmmyyyy", ""))
-                    end_date = parse_ddmmyyyy(row.get("end_date_ddmmyyyy", ""))
+    # TAB 2: LEAVE COUNTER
+    with tab2:
+        st.subheader("Leaves")
+        leave_prefixes = ("ll", "ol", "leave")
+        
+        all_leave_records = []
+        for name in names_to_query:
+            person_parade_records = [
+                r for r in records_parade 
+                if r.get('name', '').strip().lower() == name.strip().lower()
+            ]
+            
+            total_leave_days = 0
+            leave_details = []
+            
+            for record in person_parade_records:
+                status = record.get("status", "").lower()
+                if any(status.startswith(p) for p in leave_prefixes):
+                    start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
+                    end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
                     
-                    # If end_date is valid, calculate duration
-                    if end_date != datetime.min and start_date != datetime.min:
-                        duration = (end_date - start_date).days + 1  # inclusive of both start and end dates
-                        total_leave_days += duration
-                    else:
-                        duration = "Unknown"  # Handle case where dates are missing
+                    duration = "Unknown"
+                    if start_date and end_date and end_date >= start_date:
+                        days = (end_date - start_date).days + 1
+                        total_leave_days += days
+                        duration = f"{days} day(s)"
                     
                     leave_details.append({
-                        "Status": row.get("status", ""),
-                        "Start_Date": row.get("start_date_ddmmyyyy", ""),
-                        "End_Date": row.get("end_date_ddmmyyyy", ""),
-                        "Duration": duration if isinstance(duration, str) else f"{duration} days"
+                        "Status": record.get("status", ""),
+                        "Start Date": record.get("start_date_ddmmyyyy", ""),
+                        "End Date": record.get("end_date_ddmmyyyy", ""),
+                        "Duration": duration
                     })
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total Leaves Taken", f"{total_leave_days} days")
-                with col2:
-                    st.metric("Annual Leave Entitled", "14 days")
-                with col3:
-                    remaining_leaves = 14 - total_leave_days
-                    st.metric("Remaining Leaves", f"{max(0, remaining_leaves)} days", 
-                              delta=f"{'-' if remaining_leaves < 0 else ''}{abs(remaining_leaves)}" if remaining_leaves != 14 else None)
-                
-                # Display leave history
-                if leave_details:
-                    st.subheader("Leave History")
+            
+            nominal_info = nominal_map.get(name.lower(), {})
+            remaining_leaves = 14 - total_leave_days
+            
+            all_leave_records.append({
+                "Rank": nominal_info.get('rank', 'N/A'),
+                "Name": name,
+                "Leaves Taken (days)": total_leave_days,
+                "Leaves Remaining (days)": max(0, remaining_leaves)
+            })
+
+            if leave_details:
+                with st.expander(f"View leave history for {name}"):
                     st.table(leave_details)
-                else:
-                    st.info("No leave records found")
+        
+        if all_leave_records:
+            df_leave_summary = pd.DataFrame(all_leave_records)
+            st.dataframe(df_leave_summary, use_container_width=True, hide_index=True)
+        else:
+            st.info("No leave records found for the selected personnel.")
 
-            # TAB 3: MC COUNTER
-            with tab3:
-                st.subheader(f"Medical Status for {rank_val} {name_val} ({four_d_val})")
-                
-                # Filter for medical-related statuses
-                medical_prefixes = ("mc", "ml")
-                medical_rows = [
-                    row for row in person_rows if any(row.get("status", "").lower().startswith(prefix) for prefix in medical_prefixes)
-                ]
-                medical_rows.sort(key=lambda r: parse_ddmmyyyy(r.get("start_date_ddmmyyyy", "")))
+    # TAB 3: ATTENDANCE HISTORY
+    with tab3:
+        st.subheader("Training Attendance")
+        
+        if not everything_data or len(everything_data) < 2:
+            st.warning("The 'Everything' sheet is empty or has no data, so attendance history cannot be displayed.")
+        else:
+            headers = everything_data[0]
+            conduct_headers = headers[3:]
+            
+            attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
 
-                # Calculate total medical leave days
-                total_mc_days = 0
-                total_ml_days = 0
-                medical_details = []
+            all_attendance_records = []
+            
+            for name in names_to_query:
+                person_row = attendance_map.get(name.lower())
                 
-                for row in medical_rows:
-                    start_date = parse_ddmmyyyy(row.get("start_date_ddmmyyyy", ""))
-                    end_date = parse_ddmmyyyy(row.get("end_date_ddmmyyyy", ""))
-                    status = row.get("status", "").lower()
+                nominal_info = nominal_map.get(name.lower(), {})
+                rank = nominal_info.get('rank', 'N/A')
+
+                if person_row:
+                    attended_count = 0
+                    total_conducts = 0
+                    missed_conducts_list = []
                     
-                    # If end_date is valid, calculate duration
-                    if end_date != datetime.min and start_date != datetime.min:
-                        duration = (end_date - start_date).days + 1  # inclusive of both start and end dates
+                    for i, conduct_name in enumerate(conduct_headers):
+                        col_idx = i + 3
+                        total_conducts += 1
+                        attendance_status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else "no"
                         
-                        # Count by type
-                        if status.startswith("mc"):
-                            total_mc_days += duration
-                        elif status.startswith("ml"):
-                            total_ml_days += duration
-                    else:
-                        duration = "Unknown"  # Handle case where dates are missing
+                        if attendance_status == 'yes':
+                            attended_count += 1
+                        else:
+                            missed_conducts_list.append(conduct_name)
                     
-                    medical_details.append({
-                        "Status": row.get("status", ""),
-                        "Start_Date": row.get("start_date_ddmmyyyy", ""),
-                        "End_Date": row.get("end_date_ddmmyyyy", ""),
-                        "Duration": duration if isinstance(duration, str) else f"{duration} days"
+                    attendance_percentage = (attended_count / total_conducts * 100) if total_conducts > 0 else 0
+                    
+                    all_attendance_records.append({
+                        "Rank": rank,
+                        "Name": name,
+                        "Attendance": f"{attended_count}/{total_conducts}",
+                        "Percentage": f"{attendance_percentage:.2f}%"
                     })
 
-                
-                total_medical = total_mc_days + total_ml_days
-                st.metric("Total MC/ML", f"{total_medical} days")
-                
-                # Display medical history
-                if medical_details:
-                    st.subheader("Medical History")
-                    st.table(medical_details)
+                    if missed_conducts_list:
+                         with st.expander(f"View missed conducts for {name}"):
+                            st.write(", ".join(missed_conducts_list))
                 else:
-                    st.info("No medical records found")
-    with tab4:
-        st.subheader("📋 MR & Report Sick Threshold Alerts")
-        st.write("MR (Medical Reporting) Threshold: Counts every calendar day covered by MC or ML within a rolling 30‑day window (default: the last 30 days including today).")
-        st.write("RSO Threshold: Once they hit the MR threshold and they have 3 or more MC/ML periods tagged \"RSO\"")
+                    all_attendance_records.append({
+                        "Rank": rank,
+                        "Name": name,
+                        "Attendance": "N/A",
+                        "Percentage": "N/A"
+                    })
 
-        # ── date‑range picker ─────────────────────────────────────────────
+
+            if all_attendance_records:
+                df_attendance = pd.DataFrame(all_attendance_records)
+                st.dataframe(df_attendance, use_container_width=True, hide_index=True)
+            else:
+                st.info("No attendance records found for the selected personnel in the 'Everything' sheet.")
+    
+    # TAB 4: DAILY ATTENDANCE
+    with tab4:
+        st.subheader("Daily Attendance")
+
+        # Date range is fixed from June 14 of the current year to today.
         today = datetime.today().date()
-        default_start = today - timedelta(days=29)             # NEW
-        start_date, end_date = st.date_input(                 # NEW
-            "MR rolling‑window (inclusive)",
-            (default_start, today),
-            key="mr_window"
-        )
+        start_date = datetime(today.year, 6, 14).date()
+        end_date = today
+        
+        st.write(f"Displaying attendance percentage from {start_date.strftime('%d %b %Y')} to {end_date.strftime('%d %b %Y')}.")
+
         if start_date > end_date:
-            st.error("Start date must be on or before end date.")
+            st.warning(f"The fixed start date ({start_date.strftime('%d %b %Y')}) is in the future. No data to display.")
             st.stop()
 
-        # pull data …
-        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-        all_parade_records = get_allparade_records(selected_company, SHEET_PARADE)
+        all_attendance_summary = []
+        total_days_in_range = (end_date - start_date).days + 1
 
-        nominal_lookup = {rec['4d_number'].upper(): rec for rec in records_nominal}
-        persons_by_4d = defaultdict(list)
-        for row in all_parade_records:
-            four_d = is_valid_4d(row.get("4d_number", ""))
-            if four_d:
-                persons_by_4d[four_d].append(row)
+        for name in names_to_query:
+            # Get all parade records for the person
+            person_parade_records = [
+                r for r in records_parade 
+                if r.get('name', '').strip().lower() == name.strip().lower()
+            ]
 
-        flagged_persons = []
-        for four_d, rows in persons_by_4d.items():
-            mc_ml_days = set()                                # NEW use set to avoid dup days
-            weekend_sick_count = 0
+            absent_dates = set()
+            for record in person_parade_records:
+                status_prefix = record.get("status", "").lower().split(' ')[0]
+                if status_prefix in LEGEND_STATUS_PREFIXES:
+                    record_start = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
+                    record_end = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
 
-            for row in rows:
-                status = row.get("status", "").strip().lower()
-                if not status.startswith(("mc", "ml")):
-                    continue
+                    if record_start and record_end:
+                        # Find the intersection of the record's date range and the overall query range
+                        overlap_start = max(start_date, record_start.date())
+                        overlap_end = min(end_date, record_end.date())
 
-                # parse dates
-                sdt = parse_ddmmyyyy(row.get("start_date_ddmmyyyy", ""))
-                edt = parse_ddmmyyyy(row.get("end_date_ddmmyyyy", ""))
-                if sdt == datetime.min or edt == datetime.min:
-                    continue
+                        # If they overlap, add all dates in the overlap period to the set
+                        if overlap_start <= overlap_end:
+                            current_date = overlap_start
+                            while current_date <= overlap_end:
+                                absent_dates.add(current_date)
+                                current_date += timedelta(days=1)
+            
+            num_absent_days = len(absent_dates)
+            present_days = total_days_in_range - num_absent_days
+            attendance_percentage = (present_days / total_days_in_range * 100) if total_days_in_range > 0 else 0
+            
+            nominal_info = nominal_map.get(name.lower(), {})
+            all_attendance_summary.append({
+                "Rank": nominal_info.get('rank', 'N/A'),
+                "Name": name,
+                "Attendance (%)": f"{attendance_percentage:.2f}%"
+            })
 
-                # iterate through covered days
-                cur = sdt.date()
-                while cur <= edt.date():
-                    if start_date <= cur <= end_date:         # NEW window filter
-                        mc_ml_days.add(cur)
-                    cur += timedelta(days=1)
+        if all_attendance_summary:
+            df_summary = pd.DataFrame(all_attendance_summary)
+            st.dataframe(df_summary, use_container_width=True, hide_index=True)
 
-                # count RSO on Fri‑Sun only inside window      # NEW
-                if status.startswith(("mc(rso)", "ml(rso)", "mc (rso)", "ml (rso)")):
-                    if start_date <= sdt.date() <= end_date:
-                        weekend_sick_count += 1
-
-            # MR threshold = 8+ days in window
-            if len(mc_ml_days) >= 8:
-                nom = nominal_lookup.get(four_d.upper(), {})
-                flagged_persons.append({
-                    "4D Number": four_d,
-                    "Rank": nom.get("rank", ""),
-                    "Name": nom.get("name", ""),
-                    "MR Threshold": "✅",
-                    "Weekend Sick Count": weekend_sick_count,
-                    "Report Sick Threshold": "✅" if weekend_sick_count >= 3 else "❌"
-                })
-
-        # ── display ─────────────────────────────────────────────────────
-        if flagged_persons:
-            st.success(f"Found {len(flagged_persons)} personnel who hit MR threshold "
-                    f"({start_date:%d %b %Y} → {end_date:%d %b %Y}).")
-            st.table(flagged_persons)
-        else:
-            st.info("✅ No one hit the MR or Report Sick thresholds "
-                    f"for the selected window.")
-
-
-# ───────────────────────────────────────────────
-# TAB 6 – DAILY ATTENDANCE   (patched)
-# ───────────────────────────────────────────────
-    with tab6:
-        st.subheader("📊 Daily Attendance")
-
-        # NEW population selector
-        pop6 = st.radio(
-            "Count population:",
-            ("Only personnel with 4‑D", "All personnel"),
-            index=0, horizontal=True, key="pop_tab6"
-        )
-        only_4d_att = (pop6 == "Only personnel with 4‑D")       # NEW
-
-        att_date = st.date_input(
-            "Date to view attendance for", datetime.today().date(),
-            key="attendance_date"
-        )
-
-        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-        parade_records  = get_allparade_records(selected_company, SHEET_PARADE)
-
-        # filter nominal according to selector
-        records_nominal = [
-            r for r in records_nominal
-            if r["company"] == selected_company and
-            (not only_4d_att or r["4d_number"])               # NEW
-        ]
-        total_nominal = len(records_nominal)
-
-        def absent_set(the_date):
-            ids = set()
-            for row in parade_records:
-                if row.get("company", "") != selected_company:
-                    continue
-                four_d = is_valid_4d(row.get("4d_number", ""))
-                if only_4d_att and not four_d:                   # NEW
-                    continue
-                status_prefix = row.get("status", "").lower().split()[0]
-                if status_prefix not in LEGEND_STATUS_PREFIXES:
-                    continue
-                sd = parse_ddmmyyyy(row.get("start_date_ddmmyyyy", ""))
-                ed = parse_ddmmyyyy(row.get("end_date_ddmmyyyy",   ""))
-                if sd.date() <= the_date <= ed.date():
-                    uid = four_d or row.get("name", "").lower()
-                    ids.add(uid)
-            return ids
-
-        # ------- A) single‑day ---------------------------------
-        abs_today   = absent_set(att_date)
-        present_cnt = total_nominal - len(abs_today)
-
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Present", f"{present_cnt:02d}")
-        with col2:
-            st.metric("Absent",  f"{len(abs_today):02d}")
-        with col3:
-            st.metric("Nominal", f"{total_nominal:02d}")
-
-        if abs_today:
-            st.write("Absent personnel:")
-            st.table(pd.DataFrame(sorted(abs_today), columns=["UID"]))
-
-        # ------- B) overall‑to‑date ----------------------------
-        st.subheader("Overall Attendance (1 Apr 2025 → today)")
-
-        start_overall = datetime(2025, 4, 1).date()
-        end_overall   = datetime.today().date()
-        first_3wk_end = start_overall + timedelta(weeks=3) - timedelta(days=1)
-
-        total_present_days = total_nominal_days = 0
-        current = start_overall
-        while current <= end_overall:
-            if current > first_3wk_end and current.weekday() >= 5:
-                current += timedelta(days=1)
-                continue
-            abs_ids = absent_set(current)
-            total_present_days += (total_nominal - len(abs_ids))
-            total_nominal_days += total_nominal
-            current += timedelta(days=1)
-
-        overall_pct = (
-            total_present_days / total_nominal_days * 100
-            if total_nominal_days else 0
-        )
-        st.metric("Attendance Rate", f"{overall_pct:.2f}%")
+    
 # ------------------------------------------------------------------------------
 # 14) Feature F: Generate WhatsApp Message
 # ------------------------------------------------------------------------------
