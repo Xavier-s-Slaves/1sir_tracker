@@ -16,6 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 TIMEZONE = ZoneInfo('Asia/Singapore')  
 USER_DB_PATH = "users.json"
+NON_CMD_RANKS = ["PTE", "LCP", "CPL", "CFC", "REC"]
 LEGEND_STATUS_PREFIXES = {
         "ol": "[OL]",   # Overseas Leave
         "ll": "[LL]",   # Local Leave
@@ -532,6 +533,14 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
         # Determine platoon label
         if platoon.lower() == 'coy hq':
             platoon_label = "Coy HQ"
+        elif selected_company == "Support":
+            support_platoon_map = {
+                "1": "Signal",
+                "2": "Scout",
+                "3": "Pioneer",
+                "4": "Opfor"
+            }
+            platoon_label = support_platoon_map.get(platoon, f"Platoon {platoon}")
         else:
             platoon_label = f"Platoon {platoon}"
 
@@ -541,10 +550,10 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             if record.get('platoon', 'Coy HQ') == platoon
         ])
 
-        # Initialize lists for conformant absentees split into commander and REC,
+        # Initialize lists for conformant absentees split into commander and non-cmd,
         # plus non-conformant parade records (to be shown under "Pl Statuses")
         commander_absentees = []
-        rec_absentees = []
+        non_cmd_absentees = []
         non_conformant_absentees = []
 
         for parade in records:
@@ -570,9 +579,9 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             rank = name_to_rank.get(name_key, "N/A")
             status_prefix = status.lower().split()[0]
             if status_prefix in LEGEND_STATUS_PREFIXES:
-                # Split conformant absentees by whether their rank indicates a REC
-                if "rec" in rank.lower():
-                    rec_absentees.append({
+                # Split conformant absentees by whether their rank indicates a non-cmd
+                if rank.upper() in NON_CMD_RANKS:
+                    non_cmd_absentees.append({
                         'rank': rank,
                         '4d': d,
                         'name': name,
@@ -602,17 +611,17 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             key = (absentee['4d'].strip(), absentee['rank'].strip(), absentee['name'].strip())
             commander_group[key].append(f"{absentee['status']} {absentee['details']}")
 
-        rec_group = defaultdict(list)
-        for absentee in rec_absentees:
+        non_cmd_group = defaultdict(list)
+        for absentee in non_cmd_absentees:
             key = (absentee['4d'].strip(), absentee['rank'].strip(), absentee['name'].strip())
-            rec_group[key].append(f"{absentee['status']} {absentee['details']}")
+            non_cmd_group[key].append(f"{absentee['status']} {absentee['details']}")
 
         if platoon.lower() != 'coy hq':
-            platoon_absent = len(commander_group) + len(rec_group)
+            platoon_absent = len(commander_group) + len(non_cmd_group)
         else:
             # For Coy HQ, combine both groups
             combined_group = defaultdict(list)
-            for absentee in (commander_absentees + rec_absentees):
+            for absentee in (commander_absentees + non_cmd_absentees):
                 key = (absentee['4d'].strip(), absentee['rank'].strip(), absentee['name'].strip())
                 combined_group[key].append(f"{absentee['status']} {absentee['details']}")
             platoon_absent = len(combined_group)
@@ -625,14 +634,14 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                 if r.get('platoon', 'Coy HQ') == platoon
             ]
             commander_nominal = sum(
-                1 for r in platoon_nominal_records if "rec" not in r.get('rank', '').lower()
+                1 for r in platoon_nominal_records if r.get('rank', '').upper() not in NON_CMD_RANKS
             )
-            rec_nominal = sum(
-                1 for r in platoon_nominal_records if "rec" in r.get('rank', '').lower()
+            non_cmd_nominal = sum(
+                1 for r in platoon_nominal_records if r.get('rank', '').upper() in NON_CMD_RANKS
             )
         else:
             commander_nominal = None
-            rec_nominal = None
+            non_cmd_nominal = None
 
         platoon_details.append({
             'label': platoon_label,
@@ -640,10 +649,10 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             'unique_absent': platoon_absent,  # use the grouped count here
             'present': platoon_nominal - platoon_absent,
             'commander_group': commander_group,
-            'rec_group': rec_group,
+            'non_cmd_group': non_cmd_group,
             'non_conformant': non_conformant_absentees,
             'commander_nominal': commander_nominal,
-            'rec_nominal': rec_nominal
+            'non_cmd_nominal': non_cmd_nominal
         })
 
     # Calculate overall present strength
@@ -663,7 +672,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
         message_lines.append(f"Pl Present Strength: {detail['present']:02d}/{detail['nominal']:02d}")
         message_lines.append(f"Pl Absent Strength: {detail['unique_absent']:02d}/{detail['nominal']:02d}")
 
-        # For platoons other than Coy HQ, show commander/REC breakdown
+        # For platoons other than Coy HQ, show commander/non-cmd breakdown
         if detail['label'] != "Coy HQ":
             message_lines.append(
                 f"Commander Absent Strength: {len(detail['commander_group']):02d}/{detail['commander_nominal']:02d}"
@@ -676,20 +685,20 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                     message_lines.append(f"> {rank} {name} ({details_str})")
 
             message_lines.append(
-                f"REC Absent Strength: {len(detail['rec_group']):02d}/{detail['rec_nominal']:02d}"
+                f"Non-Commander Absent Strength: {len(detail['non_cmd_group']):02d}/{detail['non_cmd_nominal']:02d}"
             )
-            for (d, rank, name), details_list in detail['rec_group'].items():
+            for (d, rank, name), details_list in detail['non_cmd_group'].items():
                 details_str = ", ".join(details_list)
                 if d:
                     message_lines.append(f"> {d} {rank} {name} ({details_str})")
                 else:
                     message_lines.append(f"> {rank} {name} ({details_str})")
         else:
-            # For Coy HQ, combine commander and REC into one list
+            # For Coy HQ, combine commander and non-cmd into one list
             combined_group = defaultdict(list)
             for key, details_list in detail['commander_group'].items():
                 combined_group[key].extend(details_list)
-            for key, details_list in detail['rec_group'].items():
+            for key, details_list in detail['non_cmd_group'].items():
                 combined_group[key].extend(details_list)
             for (d, rank, name), details_list in combined_group.items():
                 details_str = ", ".join(details_list)
@@ -1092,10 +1101,10 @@ def build_conduct_table(platoon: str, date_obj: datetime, records_nominal, recor
         })
     logger.info(f"Built conduct table with {len(data)} personnel for platoon {platoon} on {date_obj.strftime('%d%m%Y')}.")
     for person in data:
-        if person.get("Rank", "").upper() == "REC":
-            person["Personnel_Type"] = "Recruit"
+        if person.get("Rank", "").upper() in NON_CMD_RANKS:
+            person["Personnel_Type"] = "non-cmd"
         else:
-            person["Personnel_Type"] = "Commander"
+            person["Personnel_Type"] = "cmd"
     return data
 def build_fake_conduct_table(platoon: str, date_obj: datetime, records_nominal, records_parade):
     """
@@ -1146,10 +1155,10 @@ def build_fake_conduct_table(platoon: str, date_obj: datetime, records_nominal, 
         })
     logger.info(f"Built conduct table with {len(data)} personnel for platoon {platoon} on {date_obj.strftime('%d%m%Y')}.")
     for person in data:
-        if person.get("Rank", "").upper() == "REC":
-            person["Personnel_Type"] = "Recruit"
+        if person.get("Rank", "").upper() in NON_CMD_RANKS:
+            person["Personnel_Type"] = "non-cmd"
         else:
-            person["Personnel_Type"] = "Commander"
+            person["Personnel_Type"] = "cmd"
     return data
 
 
@@ -1206,9 +1215,16 @@ if "update_conduct_pointers_recommendation" not in st.session_state:
 if "update_conduct_table" not in st.session_state:
     st.session_state.update_conduct_table = []
 
+if "adhoc_personnel" not in st.session_state:
+    st.session_state.adhoc_personnel = []
+if "adhoc_conduct_name" not in st.session_state:
+    st.session_state.adhoc_conduct_name = ""
+if "adhoc_conduct_date" not in st.session_state:
+    st.session_state.adhoc_conduct_date = ""
+
 feature = st.sidebar.selectbox(
     "Select Feature",
-    ["Add Conduct", "Update Conduct", "Update Parade", "Queries", "Overall View", "Generate WhatsApp Message"]
+    ["Add Conduct", "Add Ad-Hoc Conduct", "Update Conduct", "Update Parade", "Queries", "Overall View", "Generate WhatsApp Message"]
 )
 
 def add_pointer():
@@ -1322,7 +1338,7 @@ if feature == "Add Conduct":
     if st.session_state.conduct_table:
         st.write("Toggle 'Is_Outlier' if not participating, or add new rows for extra people.")
         sorted_conduct_table = sorted(st.session_state.conduct_table, 
-                                 key=lambda x: "ZZZ" if x.get("Rank", "").upper() == "REC" else x.get("Rank", ""))
+                                 key=lambda x: "ZZZ" if x.get("Rank", "").upper() in NON_CMD_RANKS else x.get("Rank", ""))
         edited_data = st.data_editor(
             st.session_state.conduct_table,
             use_container_width=True,
@@ -1425,28 +1441,28 @@ if feature == "Add Conduct":
             total_strength_platoons[plt] = strength
             print(total_strength_platoons[plt])
 
-        # Initialize recruit and commander counts for each platoon
-        rec_counts = {"1": 0, "2": 0, "3": 0, "4": 0, "Coy HQ": 0}
+        # Initialize non-cmd and cmd counts for each platoon
+        non_cmd_counts = {"1": 0, "2": 0, "3": 0, "4": 0, "Coy HQ": 0}
         cmd_counts = {"1": 0, "2": 0, "3": 0, "4": 0, "Coy HQ": 0}
-        rec_totals = {"1": 0, "2": 0, "3": 0, "4": 0, "Coy HQ": 0}
+        non_cmd_totals = {"1": 0, "2": 0, "3": 0, "4": 0, "Coy HQ": 0}
         cmd_totals = {"1": 0, "2": 0, "3": 0, "4": 0, "Coy HQ": 0}
 
-        # Calculate total rec and cmd for each platoon
+        # Calculate total non-cmd and cmd for each platoon
         for person in records_nominal:
             plt = person.get("platoon", "")
             if plt in platoon_options:
-                if person.get("rank", "").upper() == "REC":
-                    rec_totals[plt] += 1
+                if person.get("rank", "").upper() in NON_CMD_RANKS:
+                    non_cmd_totals[plt] += 1
                 else:
                     cmd_totals[plt] += 1
 
-        # Count participating recruits and commanders
+        # Count participating non-cmd and cmd
         for row in edited_data:
             if not row.get('Is_Outlier', False):
-                plt = row.get('Platoon', platoon)
+                plt = platoon
                 if plt in platoon_options:
-                    if row.get('Rank', '').upper() == 'REC':
-                        rec_counts[plt] += 1
+                    if row.get('Rank', '').upper() in NON_CMD_RANKS:
+                        non_cmd_counts[plt] += 1
                     else:
                         cmd_counts[plt] += 1
 
@@ -1460,22 +1476,22 @@ if feature == "Add Conduct":
             else:
                 index = 4  # 'Coy HQ' maps to index 4
             
-            rec_ratio = f"{rec_counts[platoon]}/{rec_totals[platoon]}"
+            non_cmd_ratio = f"{non_cmd_counts[platoon]}/{non_cmd_totals[platoon]}"
             cmd_ratio = f"{cmd_counts[platoon]}/{cmd_totals[platoon]}"
-            total_ratio = f"{rec_counts[platoon] + cmd_counts[platoon]}/{total_strength_platoons[platoon]}"
+            total_ratio = f"{non_cmd_counts[platoon] + cmd_counts[platoon]}/{total_strength_platoons[platoon]}"
             
-            pt_plts[index] = f"REC: {rec_ratio}\nCMD: {cmd_ratio}\nTOTAL: {total_ratio}"
+            pt_plts[index] = f"non-cmd: {non_cmd_ratio}\ncmd: {cmd_ratio}\nTOTAL: {total_ratio}"
 
         # Calculate total participants and total strength
-        total_rec_part = sum(rec_counts.values())
-        total_rec = sum(rec_totals.values())
+        total_non_cmd_part = sum(non_cmd_counts.values())
+        total_non_cmd = sum(non_cmd_totals.values())
         total_cmd_part = sum(cmd_counts.values())
         total_cmd = sum(cmd_totals.values())
-        total_part = total_rec_part + total_cmd_part
+        total_part = total_non_cmd_part + total_cmd_part
         total_strength = sum(total_strength_platoons.values())
 
         # Format the totals
-        pt_total = f"REC: {total_rec_part}/{total_rec}\nCMD: {total_cmd_part}/{total_cmd}\nTOTAL: {total_part}/{total_strength}"
+        pt_total = f"non-cmd: {total_non_cmd_part}/{total_non_cmd}\ncmd: {total_cmd_part}/{total_cmd}\nTOTAL: {total_part}/{total_strength}"
 
         formatted_date_str = ensure_date_str(date_str)
         # Prepare outliers per platoon – order: PLT1, PLT2, PLT3, PLT4, Coy HQ
@@ -1563,6 +1579,159 @@ if feature == "Add Conduct":
             {"observation": "", "reflection": "", "recommendation": ""}
         ]
 
+elif feature == "Add Ad-Hoc Conduct":
+    st.header("Add Ad-Hoc Conduct")
+    st.info("Select a group of personnel to record a conduct. Their current on-status information for the selected date will be pre-loaded.")
+
+    st.session_state.adhoc_conduct_name = st.text_input(
+        "Ad-Hoc Conduct Name",
+        value=st.session_state.adhoc_conduct_name
+    )
+    st.session_state.adhoc_conduct_date = st.text_input(
+        "Date (DDMMYYYY)",
+        value=st.session_state.adhoc_conduct_date
+    )
+
+    records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+    personnel_options = sorted([p['name'] for p in records_nominal if p.get('name')])
+    
+    selected_personnel_names = st.multiselect(
+        "Select Personnel for this Conduct",
+        options=personnel_options
+    )
+
+    if st.button("Load Personnel & Status"):
+        date_str = st.session_state.adhoc_conduct_date.strip()
+        if not selected_personnel_names:
+            st.warning("Please select at least one person.")
+            st.stop()
+        if not date_str:
+            st.error("Please enter a Date.")
+            st.stop()
+        try:
+            date_obj = datetime.strptime(date_str, "%d%m%Y")
+        except ValueError:
+            st.error("Invalid date format (use DDMMYYYY).")
+            st.stop()
+
+        records_parade = get_allparade_records(selected_company, SHEET_PARADE)
+        
+        # Build conduct table for the selected personnel
+        parade_map = defaultdict(list)
+        for row in records_parade:
+            person_name = row.get('name', '').strip().upper()
+            parade_map[person_name].append(row)
+        
+        adhoc_data = []
+        nominal_map = {p['name']: p for p in records_nominal}
+
+        for name in selected_personnel_names:
+            person = nominal_map.get(name)
+            if not person: continue
+
+            active_statuses = []
+            for parade in parade_map.get(name.strip().upper(), []):
+                try:
+                    start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', ''), "%d%m%Y").date()
+                    end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', ''), "%d%m%Y").date()
+                    if start_dt <= date_obj.date() <= end_dt:
+                        status = parade.get('status', '').strip().upper()
+                        if status: active_statuses.append(status)
+                except ValueError:
+                    continue
+            
+            is_outlier = len(active_statuses) > 0
+            status_desc = ", ".join(active_statuses) if is_outlier else ""
+            adhoc_data.append({
+                'Rank': person.get('rank', ''), 'Name': name, '4D_Number': person.get('4d_number', ''),
+                'Is_Outlier': is_outlier, 'StatusDesc': status_desc
+            })
+
+        st.session_state.adhoc_personnel = adhoc_data
+        logger.info(f"Loaded {len(adhoc_data)} personnel for ad-hoc conduct by user '{st.session_state.username}'.")
+
+    if st.session_state.adhoc_personnel:
+        st.write("Review outlier status. Uncheck 'Is_Outlier' if the person participated.")
+        edited_data = st.data_editor(
+            st.session_state.adhoc_personnel,
+            use_container_width=True, num_rows="fixed", hide_index=True,
+            column_config={
+                "Name": st.column_config.TextColumn("Name", disabled=True),
+                "4D_Number": st.column_config.TextColumn("4D_Number", disabled=True),
+                "Rank": st.column_config.TextColumn("Rank", disabled=True),
+            }
+        )
+    else:
+        edited_data = None
+
+    if st.button("Finalize Ad-Hoc Conduct"):
+        conduct_name = st.session_state.adhoc_conduct_name.strip()
+        conduct_date = st.session_state.adhoc_conduct_date.strip()
+
+        if not conduct_name or not conduct_date or not edited_data:
+            st.error("Please fill all fields and load personnel before finalizing.")
+            st.stop()
+        
+        try:
+            formatted_date = datetime.strptime(conduct_date, "%d%m%Y").strftime("%d%m%Y")
+        except ValueError:
+            st.error("Invalid date format. Please use DDMMYYYY.")
+            st.stop()
+
+        # Update 'Everything' sheet
+        SHEET_EVERYTHING = worksheets["everything"]
+        all_everything_data = SHEET_EVERYTHING.get_all_values()
+        new_col_header = f"{formatted_date}, {conduct_name}"
+
+        if new_col_header in all_everything_data[0]:
+            st.error(f"A conduct with the name '{new_col_header}' already exists.")
+            st.stop()
+
+        new_col_index = len(all_everything_data[0]) + 1
+        SHEET_EVERYTHING.update_cell(1, new_col_index, new_col_header)
+
+        participation_map = {row["Name"]: "No" if row["Is_Outlier"] else "Yes" for row in edited_data}
+        
+        updates = []
+        for row_idx, row in enumerate(all_everything_data[1:], start=2):
+            name = row[2].strip()
+            value = participation_map.get(name, "")
+            cell = gspread.utils.rowcol_to_a1(row_idx, new_col_index)
+            updates.append({'range': cell, 'values': [[value]]})
+
+        if updates:
+            SHEET_EVERYTHING.batch_update(updates)
+
+        # Update 'Conducts' sheet
+        non_cmd_part = sum(1 for p in edited_data if not p["Is_Outlier"] and p["Rank"].upper() in NON_CMD_RANKS)
+        cmd_part = sum(1 for p in edited_data if not p["Is_Outlier"] and p["Rank"].upper() not in NON_CMD_RANKS)
+        non_cmd_total = sum(1 for p in edited_data if p["Rank"].upper() in NON_CMD_RANKS)
+        cmd_total = sum(1 for p in edited_data if p["Rank"].upper() not in NON_CMD_RANKS)
+        pt_total_str = f"non-cmd: {non_cmd_part}/{non_cmd_total}\ncmd: {cmd_part}/{cmd_total}\nTOTAL: {non_cmd_part + cmd_part}/{len(edited_data)}"
+
+        outliers_by_platoon = defaultdict(list)
+        name_to_platoon_map = {p['name']: p['platoon'] for p in records_nominal}
+        for person in edited_data:
+            if person["Is_Outlier"]:
+                platoon = name_to_platoon_map.get(person["Name"], "Coy HQ")
+                status = f" ({person['StatusDesc']})" if person['StatusDesc'] else ""
+                outliers_by_platoon[platoon].append(f"{person.get('4D_Number', '')} {person['Name']}{status}".strip())
+        
+        platoon_options = ["1", "2", "3", "4", "Coy HQ"]
+        outliers_list = [", ".join(outliers_by_platoon.get(p, [])) or "None" for p in platoon_options]
+        
+        SHEET_CONDUCTS.append_row([
+            formatted_date, conduct_name, "N/A", "N/A", "N/A", "N/A", "N/A", pt_total_str,
+            outliers_list[0], outliers_list[1], outliers_list[2], outliers_list[3], outliers_list[4],
+            "", st.session_state.username
+        ])
+
+        st.success(f"Ad-Hoc Conduct '{conduct_name}' on {formatted_date} has been finalized.")
+        logger.info(f"Ad-Hoc Conduct '{conduct_name}' added by user '{st.session_state.username}'.")
+        
+        st.session_state.adhoc_personnel, st.session_state.adhoc_conduct_name, st.session_state.adhoc_conduct_date = [], "", ""
+
+
 elif feature == "Update Conduct":
     st.header("Update Conduct")
 
@@ -1610,12 +1779,23 @@ elif feature == "Update Conduct":
         logger.error(f"Exception while finding conduct record for '{selected_conduct}': {e}")
         st.stop()
 
+    # Disable platoon selection for ad-hoc conducts
+    is_adhoc_conduct = conduct_record.get('p/t plt1', '').strip() == "N/A"
+    if is_adhoc_conduct:
+        st.info("Ad-hoc conduct detected. Platoon selection is not applicable.")
+        st.session_state.conduct_platoon = "Ad-Hoc"
+        platoon_display_options = ["Not Applicable"]
+        platoon_disabled = True
+    else:
+        platoon_display_options = ["1", "2", "3", "4", "Coy HQ"]
+        platoon_disabled = False
+
     st.subheader("Select Platoon to Update")
-    platoon_options = ["1", "2", "3", "4", "Coy HQ"]
     st.session_state.conduct_platoon = st.selectbox( 
         "Select Platoon",
-        options=platoon_options,
-        index=platoon_options.index(str(st.session_state.conduct_platoon)) if str(st.session_state.conduct_platoon) in platoon_options else 0,
+        options=platoon_display_options,
+        index=platoon_display_options.index(str(st.session_state.conduct_platoon)) if not platoon_disabled and str(st.session_state.conduct_platoon) in platoon_display_options else 0,
+        disabled=platoon_disabled,
         key="update_conduct_platoon_select"
     )
 
@@ -1744,124 +1924,98 @@ elif feature == "Update Conduct":
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         records_parade = get_allparade_records(selected_company, SHEET_PARADE)
 
-        # Check if we should load from parade state instead of using existing data
-        load_from_parade_state = False
+        # Check again if it's an ad-hoc conduct to decide the loading logic
+        is_adhoc_conduct_check = conduct_record.get('p/t plt1', '').strip() == "N/A"
         
-        # Get the P/T and Outliers values for the selected platoon
-        if platoon != "Coy HQ":
-            pt_col = int(platoon) + 2  # Column index for P/T PLT1, PLT2, etc.
-            outlier_col = int(platoon) + 8  # Column index for PLT1 Outliers, etc.
-        else:
-            pt_col = 7  # Column for P/T Coy HQ
-            outlier_col = 13  # Column for Coy HQ Outliers
-        
-        try:
-            row_num = None
-            try:
-                # Extract both date and conduct name from the selected_conduct
-                conduct_parts = selected_conduct.split(" - ")
-                conduct_date = conduct_parts[0].strip()  # Extract the date part
-                conduct_name = conduct_parts[1].strip()  # Extract the name part
-                
-                # Find all instances of the conduct name in column 2
-                matching_cells = []
-                all_values = SHEET_CONDUCTS.get_all_values()
-                
-                # Start from row 2 (assuming row 1 is header)
-                for row_idx, row_values in enumerate(all_values[1:], start=2):
-                    if len(row_values) >= 2 and row_values[1] == conduct_name:
-                        # Also check if the date matches (assuming date is in column 1)
-                        if len(row_values) >= 1 and row_values[0] == conduct_date:
-                            matching_cells.append(row_idx)
-                
-                if matching_cells:
-                    # Use the first matching cell (should be only one if date+name combination is unique)
-                    row_num = matching_cells[0]
+        if is_adhoc_conduct_check:
+            # Logic for loading Ad-Hoc conducts from the 'Everything' sheet
+            st.info("Loading only the personnel involved in this ad-hoc conduct.")
+            everything_data = worksheets["everything"].get_all_values()
+            target_col_header = f"{conduct_record.get('date')}, {conduct_record.get('conduct_name')}"
+            conduct_data = []
+
+            if everything_data and len(everything_data) > 1:
+                headers = everything_data[0]
+                try:
+                    col_idx = headers.index(target_col_header)
                     
-                    # Log if multiple matches were found (shouldn't happen if dates are unique)
-                    if len(matching_cells) > 1:
-                        logger.warning(f"Multiple matches found for conduct '{selected_conduct}'. Using the first match.")
-            except Exception as e:
-                logger.error(f"Error finding conduct row: {e}")
-             
-            if row_num:
-                pt_value = SHEET_CONDUCTS.cell(row_num, pt_col).value
-                outliers_value = SHEET_CONDUCTS.cell(row_num, outlier_col).value
-                
-                # Check if P/T is 0/0 and Outliers is empty or "None"
-                if "0/0" in pt_value:
-                    is_zero_pt = True
-                # is_zero_pt = pt_value == "0/0"
-                print(pt_value)
-                print(outliers_value)
-                is_empty_outliers = not outliers_value or outliers_value.strip().lower() == "none"
-                
-                if is_zero_pt and is_empty_outliers:
-                    load_from_parade_state = True
-                    logger.info(f"P/T is {pt_value} and Outliers is '{outliers_value}', loading from parade state.")
-        except Exception as e:
-            logger.error(f"Error checking P/T and Outliers: {e}")
-            # Default to loading from conducts if there's an error
-            load_from_parade_state = False
+                    # Consolidate all outlier strings to parse their status descriptions
+                    outlier_keys = [f"plt{i} outliers" for i in range(1, 5)] + ["coy hq outliers"]
+                    all_outliers_str = ", ".join(
+                        [conduct_record.get(key, '') for key in outlier_keys if conduct_record.get(key, '').lower().strip() not in ('none', '')]
+                    )
+                    parsed_outliers = parse_existing_outliers(all_outliers_str)
+                    nominal_map = {p['name'].lower(): p for p in records_nominal}
 
-        # Now build the conduct table based on the decision
-        if load_from_parade_state:
-            # Load data from parade state
-            conduct_data = build_conduct_table(platoon, date_obj, records_nominal, records_parade)
-            st.info("Loading personnel from parade state since no existing data found.")
+                    # Iterate through 'Everything' sheet to find participants
+                    for row_data in everything_data[1:]:
+                        if len(row_data) > col_idx:
+                            name = row_data[2].strip()
+                            attendance_status = row_data[col_idx].strip().lower()
+
+                            if attendance_status in ("yes", "no"):
+                                person_nominal = nominal_map.get(name.lower())
+                                if person_nominal:
+                                    is_outlier = attendance_status == "no"
+                                    # Look up status description from parsed outliers
+                                    status_desc = parsed_outliers.get(name.lower(), {}).get('status_desc', '')
+                                    
+                                    conduct_data.append({
+                                        'Rank': person_nominal.get('rank', ''),
+                                        'Name': name,
+                                        '4D_Number': person_nominal.get('4d_number', ''),
+                                        'Is_Outlier': is_outlier,
+                                        'StatusDesc': status_desc
+                                    })
+                except ValueError:
+                    st.error(f"Could not find conduct column '{target_col_header}' in Everything sheet.")
+                    logger.error(f"Could not find conduct column '{target_col_header}'.")
+            
         else:
-            # Load using existing data
-            conduct_data = build_fake_conduct_table(platoon, date_obj, records_nominal, records_parade)
-            
-            # Determine the outlier column for this platoon
+            # Logic for loading regular, platoon-based conducts
+            if platoon == "Ad-Hoc":
+                st.error("A platoon must be selected to update this conduct.")
+                st.stop()
+                
+            load_from_parade_state = False
             if platoon != "Coy HQ":
-                outlier_key = f"plt{platoon} outliers"  # all lower
+                pt_col_key = f'p/t plt{platoon}'
+                outlier_col_key = f'plt{platoon} outliers'
             else:
-                outlier_key = "coy hq outliers"
+                pt_col_key = 'p/t coy hq'
+                outlier_col_key = 'coy hq outliers'
 
-            # Get the existing outlier string from the conduct_record
-            # Normalize the keys in conduct_record to match exactly with outlier_key
-            existing_outliers_str = ""
-            for key, value in conduct_record.items():
-                if key.lower().strip() == outlier_key.lower().strip():
-                    existing_outliers_str = value
-                    break
-            existing_outliers = parse_existing_outliers(existing_outliers_str)
-            
-            # Helper to find rows in the conduct_data
-            def find_in_table(data_list, identifier):
-                """
-                Returns the row (a dict) if the row's 4D_Number or Name matches `identifier`.
-                Otherwise returns None.
-                """
-                for row in data_list:
-                    if row.get("4D_Number", "").lower() == identifier.lower():
-                        return row
-                    if row.get("Name", "").lower() == identifier.lower():
-                        return row
-                return None
+            pt_value = conduct_record.get(pt_col_key, '0/0')
+            outliers_value = conduct_record.get(outlier_col_key, '')
 
-            # Merge existing outliers into the table
-            for _, outlier_info in existing_outliers.items():
-                identifier_original = outlier_info["original"]  # e.g. "4D123" or "John Doe"
-                status_desc = outlier_info["status_desc"]       # e.g. "MC", "Excused", or ""
+            if "0/0" in pt_value and (not outliers_value or outliers_value.strip().lower() == "none"):
+                load_from_parade_state = True
 
-                # Check if they already exist in the table
-                existing_row = find_in_table(conduct_data, identifier_original)
-
-                if existing_row:
-                    # Mark them outlier = True and update status_desc
-                    existing_row["Is_Outlier"] = True
-                    if status_desc:
-                        existing_row["StatusDesc"] = status_desc
-
+            if load_from_parade_state:
+                conduct_data = build_conduct_table(platoon, date_obj, records_nominal, records_parade)
+                st.info("Loading personnel from parade state since no existing data found for this platoon.")
+            else:
+                conduct_data = build_fake_conduct_table(platoon, date_obj, records_nominal, records_parade)
+                existing_outliers_str = conduct_record.get(outlier_col_key, "")
+                existing_outliers = parse_existing_outliers(existing_outliers_str)
+                
+                # Merge existing outliers into the table
+                for _, outlier_info in existing_outliers.items():
+                    name_to_find = outlier_info["original"]
+                    status_desc = outlier_info["status_desc"]
+                    
+                    for row in conduct_data:
+                        # Match by name (case-insensitive) as the primary identifier
+                        if row.get("Name", "").strip().lower() == name_to_find.strip().lower():
+                            row["Is_Outlier"] = True
+                            if status_desc:
+                                row["StatusDesc"] = status_desc
+                            break
 
         st.session_state.update_conduct_table = conduct_data
-        st.success(
-            f"Loaded {len(conduct_data)} personnel for Platoon {platoon} from Conduct '{selected_conduct}'."
-        )
+        st.success(f"Loaded {len(conduct_data)} personnel for the selected conduct.")
         logger.info(
-            f"Loaded conduct personnel for Platoon {platoon} from Conduct '{selected_conduct}' "
+            f"Loaded conduct personnel for '{selected_conduct}' "
             f"in company '{selected_company}' by user '{st.session_state.username}'."
         )
 
@@ -1869,7 +2023,7 @@ elif feature == "Update Conduct":
         #st.subheader(f"Edit Conduct Data for Platoon {st.session_state.conduct_platoon}")
         #st.write("Toggle 'Is_Outlier' if not participating, or add new rows for extra people.")
         sorted_conduct_table = sorted(st.session_state.update_conduct_table, 
-                                 key=lambda x: "ZZZ" if x.get("Rank", "").upper() == "REC" else x.get("Rank", ""))
+                                 key=lambda x: "ZZZ" if x.get("Rank", "").upper() in NON_CMD_RANKS else x.get("Rank", ""))
         st.write("In order to update, make sure correct platoon chosen and then press load on status for the table to reflect correct platoon. Hence, whenever changing platoon make sure to press load after that to reflect accordingly.")
         edited_data = st.data_editor(
             st.session_state.update_conduct_table,
@@ -1880,338 +2034,138 @@ elif feature == "Update Conduct":
         edited_data = None
 
     if st.button("Update Conduct Data") and edited_data is not None:
-        rows_updated = 0
-        platoon = str(st.session_state.conduct_platoon).strip()
-        pt_field = f"P/T PLT{platoon}"
-        new_participating = sum([1 for row in edited_data if not row.get('Is_Outlier', False)])
-        new_total = len(edited_data)
-        new_outliers = []
-        pointers_list = []
+        # --- COMMON SETUP ---
+        # Get the conduct record to determine its type and find its row number
+        try:
+            conduct_parts = selected_conduct.split(" - ")
+            conduct_date, conduct_name = conduct_parts[0].strip(), conduct_parts[1].strip()
+            
+            all_conduct_values = SHEET_CONDUCTS.get_all_values()
+            row_number = -1
+            for i, row in enumerate(all_conduct_values):
+                if row[0] == conduct_date and row[1] == conduct_name:
+                    row_number = i + 1
+                    break
+            if row_number == -1:
+                st.error("Could not find the conduct to update. It may have been moved or deleted.")
+                st.stop()
+        except Exception as e:
+            st.error(f"Error finding conduct row: {e}")
+            st.stop()
 
+        # Update the 'Everything' sheet (common to both ad-hoc and regular)
         SHEET_EVERYTHING = worksheets["everything"]
-        # Extract the updated attendance data
-
-        # Ensure the date is in DDMMYYYY format
         formatted_date_str = ensure_date_str(conduct_record['date'])
-
         attendance_data = extract_attendance_data(edited_data)
         update_conduct_column_everything(
-            SHEET_EVERYTHING,
-            formatted_date_str,
-            conduct_record['conduct_name'],
-            attendance_data
+            SHEET_EVERYTHING, formatted_date_str, conduct_record['conduct_name'], attendance_data
         )
 
-
-
+        # Update pointers (common to both)
+        pointers_list = []
         for idx, pointer in enumerate(st.session_state.update_conduct_pointers, start=1):
-            observation = pointer.get("observation", "").strip()
-            reflection = pointer.get("reflection", "").strip()
-            recommendation = pointer.get("recommendation", "").strip()
-
+            obs = pointer.get("observation", "").strip()
+            refl = pointer.get("reflection", "").strip()
+            rec = pointer.get("recommendation", "").strip()
             pointer_str = ""
-            if observation:
-                pointer_str += f"Observation {idx}:\n{observation}\n"
-            if reflection:
-                pointer_str += f"Reflection {idx}:\n{reflection}\n"
-            if recommendation:
-                pointer_str += f"Recommendation {idx}:\n{recommendation}\n"
+            if obs: pointer_str += f"Observation {idx}:\n{obs}\n"
+            if refl: pointer_str += f"Reflection {idx}:\n{refl}\n"
+            if rec: pointer_str += f"Recommendation {idx}:\n{rec}\n"
             pointers_list.append(pointer_str.strip())
-
         new_pointers = "\n\n".join(pointers_list)
+        SHEET_CONDUCTS.update_cell(row_number, 14, new_pointers)
 
-        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-        records_parade = get_allparade_records(selected_company, SHEET_PARADE)
+        # --- LOGIC SPLIT: AD-HOC vs. REGULAR ---
+        is_adhoc = conduct_record.get('p/t plt1', '').strip() == "N/A"
 
-        def is_valid_4d(four_d_number):
-            """
-            Validates the 4D number format.
-            Adjust the regex pattern as per your specific requirements.
-            """
-            pattern = re.compile(r'^4D\d{3,4}$', re.IGNORECASE)
-            return four_d_number if pattern.match(four_d_number) else ''
-
-        def ensure_str(value):
-            """Ensures the value is a string."""
-            return str(value) if value is not None else ''
-
-        def parse_existing_outliers(existing_outliers):
-            """
-            Parses the existing_outliers string into a dictionary.
+        if is_adhoc:
+            # --- Ad-Hoc Conduct Update Logic ---
+            st.info("Updating Ad-Hoc Conduct...")
             
-            Returns:
-                dict: Mapping from identifier (4D_Number or Name) to status_desc.
-            """
-            pattern = re.compile(
-                r'(4D\d{3,4}|[A-Za-z]+(?:\s[A-Za-z]+)*)\s*(?:\(([^)]+)\))?',
-                re.IGNORECASE
-            )
-            outliers_dict = {}
-            for match in pattern.finditer(existing_outliers):
-                identifier = match.group(1).strip()
-                status_desc = match.group(2).strip() if match.group(2) else ''
-                outliers_dict[identifier.lower()] = {
-                    'original': identifier,
-                    'status_desc': status_desc
-                }
-            return outliers_dict
+            # 1. Calculate P/T Total for the ad-hoc group
+            non_cmd_participating = sum(1 for p in edited_data if not p["Is_Outlier"] and p["Rank"].upper() in NON_CMD_RANKS)
+            cmd_participating = sum(1 for p in edited_data if not p["Is_Outlier"] and p["Rank"].upper() not in NON_CMD_RANKS)
+            non_cmd_total_group = sum(1 for p in edited_data if p["Rank"].upper() in NON_CMD_RANKS)
+            cmd_total_group = sum(1 for p in edited_data if p["Rank"].upper() not in NON_CMD_RANKS)
+            new_pt_total_value = f"non-cmd: {non_cmd_participating}/{non_cmd_total_group}\ncmd: {cmd_participating}/{cmd_total_group}\nTOTAL: {non_cmd_participating + cmd_participating}/{len(edited_data)}"
+            SHEET_CONDUCTS.update_cell(row_number, 8, new_pt_total_value)
 
-        def reconstruct_outliers(outliers_dict, edited_data):
-            """
-            Reconstructs the outliers string from the dictionary with names included.
+            # 2. Calculate and update outliers for all relevant platoons
+            records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+            outliers_by_platoon = defaultdict(list)
+            name_to_platoon_map = {p['name']: p['platoon'] for p in records_nominal}
+            for person in edited_data:
+                if person["Is_Outlier"]:
+                    platoon_of_person = name_to_platoon_map.get(person["Name"], "Coy HQ")
+                    status = f" ({person['StatusDesc']})" if person['StatusDesc'] else ""
+                    outliers_by_platoon[platoon_of_person].append(f"{person.get('4D_Number', '')} {person['Name']}{status}".strip())
             
-            Returns:
-                str: Comma-separated outliers with names.
-            """
-            outliers_list = []
+            platoon_options = ["1", "2", "3", "4", "Coy HQ"]
+            for i, p_opt in enumerate(platoon_options):
+                outlier_col_idx = 9 + i
+                outliers_str = ", ".join(outliers_by_platoon.get(p_opt, [])) or "None"
+                SHEET_CONDUCTS.update_cell(row_number, outlier_col_idx, outliers_str)
             
-            # Helper function to find a person's name by 4D number
-            def find_name_by_4d(four_d, data):
-                for row in data:
-                    if row.get("4D_Number", "").lower() == four_d.lower():
-                        return row.get("Name", "")
-                return ""
+        else:
+            # --- Regular Platoon Conduct Update Logic ---
+            st.info("Updating Platoon Conduct...")
+            platoon = str(st.session_state.conduct_platoon).strip()
             
-            for entry in outliers_dict.values():
-                identifier = entry['original']
-                status_desc = entry['status_desc']
-                
-                # Check if identifier is a 4D number
-                if re.match(r'^4D\d{3,4}$', identifier, re.IGNORECASE):
-                    # Find the person's name
-                    name = find_name_by_4d(identifier, edited_data)
-                    if name:
-                        formatted_entry = f"{identifier} {name}"
-                    else:
-                        formatted_entry = identifier
-                else:
-                    # Identifier is already a name
-                    formatted_entry = identifier
-                
-                # Add status description if available
-                if status_desc:
-                    formatted_entry += f" ({status_desc})"
-                    
-                outliers_list.append(formatted_entry)
-                    
-            return ", ".join(outliers_list) if outliers_list else "None"
-
-        def update_outliers(edited_data, conduct_record, platoon):
-            # Determine which outlier column key to use based on platoon
+            # 1. Calculate and update the specific platoon's P/T value
+            records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+            non_cmd_counts = sum(1 for row in edited_data if not row.get('Is_Outlier', False) and row.get('Rank', '').upper() in NON_CMD_RANKS)
+            cmd_counts = sum(1 for row in edited_data if not row.get('Is_Outlier', False) and row.get('Rank', '').upper() not in NON_CMD_RANKS)
+            
+            non_cmd_totals_platoon = sum(1 for p in records_nominal if p.get("platoon", "") == platoon and p.get("rank", "").upper() in NON_CMD_RANKS)
+            cmd_totals_platoon = sum(1 for p in records_nominal if p.get("platoon", "") == platoon and p.get("rank", "").upper() not in NON_CMD_RANKS)
+            new_participating = len([r for r in edited_data if not r['Is_Outlier']])
+            new_total_platoon = len(edited_data)
+            
+            new_pt_value = f"non-cmd: {non_cmd_counts}/{non_cmd_totals_platoon}\ncmd: {cmd_counts}/{cmd_totals_platoon}\nTOTAL: {new_participating}/{new_total_platoon}"
+            
             if platoon != "Coy HQ":
-                outlier_key = f"PLT{platoon} Outliers"
+                pt_column_index = 2 + int(platoon)
+                outlier_column_index = 8 + int(platoon)
             else:
-                outlier_key = "Coy HQ Outliers"
-                
-            existing_outliers_str = ensure_str(conduct_record.get(outlier_key, ''))
-            existing_outliers = parse_existing_outliers(existing_outliers_str)
-            
-            processed_identifiers = set()
-            
-            for row in edited_data:
-                four_d = is_valid_4d(row.get("4D_Number", ""))
-                name = ensure_str(row.get("Name", ""))
-                status_desc = ensure_str(row.get("StatusDesc", ""))
-                is_outlier = row.get("Is_Outlier", False)
-                
-                identifier = four_d if four_d else name
-                identifier_key = identifier.lower()
-                
-                if is_outlier:
-                    processed_identifiers.add(identifier_key)
-                    if identifier_key in existing_outliers:
-                        if existing_outliers[identifier_key]['status_desc'] != status_desc:
-                            existing_outliers[identifier_key]['status_desc'] = status_desc
-                    else:
-                        existing_outliers[identifier_key] = {
-                            'original': identifier,
-                            'status_desc': status_desc
-                        }
-                else:
-                    if identifier_key in existing_outliers:
-                        del existing_outliers[identifier_key]
-            
-            updated_outliers = reconstruct_outliers(existing_outliers, edited_data)
-            return updated_outliers
-        updated_outliers = update_outliers(edited_data, conduct_record, platoon)
+                pt_column_index = 7
+                outlier_column_index = 13
+            SHEET_CONDUCTS.update_cell(row_number, pt_column_index, new_pt_value)
 
-        new_pt_value = f"{new_participating}/{new_total}"
-        # Add after the attendance_data extraction but before the sheet updates
-# Initialize recruit and commander counts
-        rec_counts = 0
-        cmd_counts = 0
+            # 2. Calculate and update the specific platoon's outliers
+            outliers_for_platoon = [
+                f"{row.get('4D_Number', '')} {row['Name']}{f' ({row['StatusDesc']})' if row['StatusDesc'] else ''}".strip()
+                for row in edited_data if row.get('Is_Outlier', False)
+            ]
+            SHEET_CONDUCTS.update_cell(row_number, outlier_column_index, ", ".join(outliers_for_platoon) or "None")
 
-        # Count participating recruits and commanders
-        for row in edited_data:
-            if not row.get('Is_Outlier', False):
-                if row.get('Rank', '').upper() == 'REC':
-                    rec_counts += 1
-                else:
-                    cmd_counts += 1
-
-        # Get total counts from nominal roll for this platoon
-        #records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-        rec_totals = 0
-        cmd_totals = 0
-
-        for person in records_nominal:
-            plt = person.get("platoon", "")
-            if plt == platoon:  # Only count for the selected platoon
-                if person.get("rank", "").upper() == "REC":
-                    rec_totals += 1
-                else:
-                    cmd_totals += 1
-
-        # Format the detailed P/T value
-        new_pt_value = f"REC: {rec_counts}/{rec_totals}\nCMD: {cmd_counts}/{cmd_totals}\nTOTAL: {new_participating}/{new_total}"
-
-        try:
-            # Extract both date and conduct name from the selected_conduct
-            conduct_parts = selected_conduct.split(" - ")
-            conduct_date = conduct_parts[0].strip()  # Extract the date part
-            conduct_name = conduct_parts[1].strip()  # Extract the name part
+            # 3. Recalculate and update the overall P/T Total in column 8
+            all_conduct_values_updated = SHEET_CONDUCTS.get_all_values()
+            current_row_values = all_conduct_values_updated[row_number - 1]
             
-            # Find all instances of the conduct name in column 2
-            matching_cells = []
-            all_values = SHEET_CONDUCTS.get_all_values()
-            
-            # Start from row 2 (assuming row 1 is header)
-            for row_idx, row_values in enumerate(all_values[1:], start=2):
-                if len(row_values) >= 2 and row_values[1] == conduct_name:
-                    # Also check if the date matches (assuming date is in column 1)
-                    if len(row_values) >= 1 and row_values[0] == conduct_date:
-                        matching_cells.append(row_idx)
-            
-            if not matching_cells:
-                st.error("Conduct not found in the sheet.")
-                logger.error(f"Conduct '{selected_conduct}' not found in the sheet.")
-                st.stop()
-                
-            # Use the first matching cell (should be only one if date+name combination is unique)
-            row_number = matching_cells[0]
-            
-            # Log if multiple matches were found (shouldn't happen if dates are unique)
-            if len(matching_cells) > 1:
-                logger.warning(f"Multiple matches found for conduct '{selected_conduct}'. Using the first match.")
-                
-        except Exception as e:
-            st.error(f"Error locating Conduct in the sheet: {e}")
-            logger.error(f"Exception while locating Conduct '{selected_conduct}': {e}")
-            st.stop()
-        try:
-            # Determine the column index based on the selected platoon
-            if platoon != "Coy HQ":
-                # For Platoons 1-4, map to columns 3-6 respectively
-                platoon_num = int(platoon)  # Convert platoon to integer
-                column_index = 2 + platoon_num  # Platoon 1 -> Column 3, Platoon 2 -> Column 4, etc.
-                pt_field = f"P/T PLT{platoon_num}"
-            else:
-                # For 'Coy HQ', assume it maps to Column 7
-                column_index = 7
-                pt_field = "P/T Coy HQ"
-            
-            # Update the specified cell in the Google Sheet
-            SHEET_CONDUCTS.update_cell(row_number, column_index, new_pt_value)
-            
-            # Log the update action
-            logger.info(
-                f"Updated {pt_field} to {new_pt_value} for conduct '{selected_conduct}' "
-                f"in company '{selected_company}' by user '{st.session_state.username}'."
-            )
-            
-        except ValueError:
-            # Handle the case where platoon is not an integer and not 'Coy HQ'
-            st.error(f"Invalid platoon selection: '{platoon}'. Please select a valid platoon.")
-            logger.error(f"Invalid platoon selection: '{platoon}'. Update aborted.")
-            st.stop()
-            
-        except Exception as e:
-            # Handle other potential exceptions
-            st.error(f"An error occurred while updating the conduct: {e}")
-            logger.error(f"Exception while updating conduct '{selected_conduct}': {e}")
-            st.stop()
-
-        try:
-            if platoon != "Coy HQ":
-                # For platoon "1" through "4"
-                outlier_column_index = 8 + int(platoon)  # e.g., platoon "1": 8+1 = 9
-            else:
-                outlier_column_index = 13  # Coy HQ
-
-            SHEET_CONDUCTS.update_cell(row_number, outlier_column_index, updated_outliers if updated_outliers else "None")
-
-            #SHEET_CONDUCTS.update_cell(row_number, 9, updated_outliers if updated_outliers else "None")
-            logger.info(
-                f"Updated Outliers to '{updated_outliers}' for conduct '{selected_conduct}' "
-                f"in company '{selected_company}' by user '{st.session_state.username}'."
-            )
-        except Exception as e:
-            st.error(f"Error updating Outliers: {e}")
-            logger.error(f"Exception while updating Outliers: {e}")
-            st.stop()
-
-        if new_pointers:
-            try:
-                SHEET_CONDUCTS.update_cell(row_number, 14, new_pointers)
-                logger.info(
-                    f"Updated Pointers to '{new_pointers}' for conduct '{selected_conduct}' "
-                    f"in company '{selected_company}' by user '{st.session_state.username}'."
-                )
-            except Exception as e:
-                st.error(f"Error updating Pointers: {e}")
-                logger.error(f"Exception while updating Pointers for conduct '{selected_conduct}': {e}")
-                st.stop()
-
-        try:
-            # Get all platoon participation data
-            pt1 = SHEET_CONDUCTS.cell(row_number, 3).value
-            pt2 = SHEET_CONDUCTS.cell(row_number, 4).value
-            pt3 = SHEET_CONDUCTS.cell(row_number, 5).value
-            pt4 = SHEET_CONDUCTS.cell(row_number, 6).value
-            pt5 = SHEET_CONDUCTS.cell(row_number, 7).value
-            
-            platoon_values = [pt1, pt2, pt3, pt4, pt5]
-            
-            # Initialize counters
-            total_rec_part = 0
-            total_rec = 0
-            total_cmd_part = 0 
-            total_cmd = 0
-            
-            # Process each platoon's data
-            for pt in platoon_values:
-                lines = pt.split('\n')
-                if len(lines) >= 3:  # Check if we have the detailed format
-                    # Parse REC line
-                    rec_line = lines[0]
-                    if rec_line.startswith("REC:"):
-                        rec_parts = rec_line.replace("REC:", "").strip().split('/')
-                        if len(rec_parts) == 2 and rec_parts[0].isdigit() and rec_parts[1].isdigit():
-                            total_rec_part += int(rec_parts[0])
-                            total_rec += int(rec_parts[1])
-                    
-                    # Parse CMD line
-                    cmd_line = lines[1]
-                    if cmd_line.startswith("CMD:"):
-                        cmd_parts = cmd_line.replace("CMD:", "").strip().split('/')
-                        if len(cmd_parts) == 2 and cmd_parts[0].isdigit() and cmd_parts[1].isdigit():
+            total_non_cmd_part, total_non_cmd, total_cmd_part, total_cmd = 0, 0, 0, 0
+            # Columns 3 to 7 (P/T PLT1 to P/T Coy HQ)
+            for pt_cell in current_row_values[2:7]:
+                if pt_cell and pt_cell != "N/A":
+                    lines = pt_cell.split('\n')
+                    try:
+                        non_cmd_line = lines[0]
+                        if non_cmd_line.startswith("non-cmd:"):
+                            non_cmd_parts = non_cmd_line.replace("non-cmd:", "").strip().split('/')
+                            total_non_cmd_part += int(non_cmd_parts[0])
+                            total_non_cmd += int(non_cmd_parts[1])
+                        
+                        cmd_line = lines[1]
+                        if cmd_line.startswith("cmd:"):
+                            cmd_parts = cmd_line.replace("cmd:", "").strip().split('/')
                             total_cmd_part += int(cmd_parts[0])
                             total_cmd += int(cmd_parts[1])
+                    except (IndexError, ValueError):
+                        continue # Ignore malformed cells
             
-            # Calculate the overall total
-            total_part = total_rec_part + total_cmd_part
-            total_strength = total_rec + total_cmd
-            
-            # Format the company-wide P/T total in the detailed format
-            pt_total = f"REC: {total_rec_part}/{total_rec}\nCMD: {total_cmd_part}/{total_cmd}\nTOTAL: {total_part}/{total_strength}"
-            
-            # Update the P/T Total cell
+            total_part = total_non_cmd_part + total_cmd_part
+            total_strength = total_non_cmd + total_cmd
+            pt_total = f"non-cmd: {total_non_cmd_part}/{total_non_cmd}\ncmd: {total_cmd_part}/{total_cmd}\nTOTAL: {total_part}/{total_strength}"
             SHEET_CONDUCTS.update_cell(row_number, 8, pt_total)
-            
-        except Exception as e:
-            st.error(f"Error calculating/updating P/T Total: {e}")
-            logger.error(f"Exception while calculating/updating P/T Total for conduct '{selected_conduct}': {e}")
-            st.stop()
 
         st.success(f"Conduct '{selected_conduct}' updated successfully.")
         logger.info(
@@ -2272,7 +2226,7 @@ elif feature == "Update Parade":
         st.write("Fill in 'Status', 'Start_Date (DDMMYYYY)', 'End_Date (DDMMYYYY)'")
         st.write("To delete an existing status, please delete the values in 'Status', 'Start_Date (DDMMYYYY)', 'End_Date (DDMMYYYY)' only.")
         sorted_conduct_table = sorted(st.session_state.parade_table, 
-                                 key=lambda x: "ZZZ" if x.get("Rank", "").upper() == "REC" else x.get("Rank", ""))
+                                 key=lambda x: "ZZZ" if x.get("Rank", "").upper() in NON_CMD_RANKS else x.get("Rank", ""))
         edited_data = st.data_editor(
             st.session_state.parade_table,
             num_rows="fixed",
@@ -2747,13 +2701,14 @@ elif feature == "Queries":
                     
                     for i, conduct_name in enumerate(conduct_headers):
                         col_idx = i + 3
-                        total_conducts += 1
-                        attendance_status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else "no"
+                        attendance_status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
                         
-                        if attendance_status == 'yes':
-                            attended_count += 1
-                        else:
-                            missed_conducts_list.append(conduct_name)
+                        if attendance_status in ("yes", "no"):
+                            total_conducts += 1
+                            if attendance_status == 'yes':
+                                attended_count += 1
+                            else:
+                                missed_conducts_list.append(conduct_name)
                     
                     attendance_percentage = (attended_count / total_conducts * 100) if total_conducts > 0 else 0
                     
@@ -3124,7 +3079,7 @@ elif feature == "Overall View":
                     # Build a mapping from name to their attendance row (for fast lookup)
                     attendance_mapping = {}
                     for row in everything_data[1:]:
-                        name = row[2].strip()
+                        name = row[2].strip().lower()
                         attendance_mapping[name] = row
                     
                     # Initialize aggregates
@@ -3135,16 +3090,17 @@ elif feature == "Overall View":
                     training_individual_details = {}  # {name: {platoon, section, roll, yes_count, total, percentage}}
                     
                     for record in records_nominal:
-                        name = record['name'].strip()
+                        name = record['name'].strip().lower()
                         row = attendance_mapping.get(name)
                         yes_count = 0
                         denom = 0
                         # Iterate over all conduct columns
                         for idx, header in enumerate(conduct_headers, start=3):
-                            denom += 1
                             value = row[idx].strip().lower() if row and len(row) > idx else ""
-                            if value == "yes":
-                                yes_count += 1
+                            if value in ("yes", "no"):
+                                denom += 1
+                                if value == "yes":
+                                    yes_count += 1
 
                         # nothing applied? skip the record entirely
                         if denom == 0:
