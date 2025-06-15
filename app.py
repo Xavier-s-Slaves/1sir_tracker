@@ -176,7 +176,7 @@ if 'user_companies' not in st.session_state:
     st.session_state.user_companies = []
 
 def login():
-    st.title("🔒 Training & Parade Management - Login")
+    st.title("🔒 1SIRTracker")
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
     if st.button("Login"):
@@ -1163,7 +1163,7 @@ def build_fake_conduct_table(platoon: str, date_obj: datetime, records_nominal, 
 
 
 
-st.title("Training & Parade Management App")
+st.title("1SIRTracker")
 
 st.sidebar.header("Configuration")
 logout()
@@ -1224,7 +1224,7 @@ if "adhoc_conduct_date" not in st.session_state:
 
 feature = st.sidebar.selectbox(
     "Select Feature",
-    ["Add Conduct", "Add Ad-Hoc Conduct", "Update Conduct", "Update Parade", "Queries", "Overall View", "Generate WhatsApp Message"]
+    ["Add Conduct", "Add Ad-Hoc Conduct", "Update Conduct", "Update Parade", "Analytics", "Message"]
 )
 
 def add_pointer():
@@ -1237,7 +1237,12 @@ def add_update_pointer():
     )
 
 if feature == "Add Conduct":
-    st.header("Add Conduct - Table-Based On-Status")
+    st.header("Add Conduct")
+    st.info("""Please key in name of conduct in all caps and properly with reference to training programme and choose the session number accurately!!
+            
+Examples:
+- ENDURANCE RUN
+- GPMG LF""")
 
     st.session_state.conduct_date = st.text_input(
         "Date (DDMMYYYY)",
@@ -2178,6 +2183,36 @@ elif feature == "Update Conduct":
 elif feature == "Update Parade":
     st.header("Update Parade State")
 
+    st.markdown(
+        """
+        **Please use one of the following standard prefixes for the status.** 
+        **Please make sure to update the RSI/RSO status in the Parade State sheet.** 
+        
+        You can add any additional details in parentheses `()` after the prefix. For `RSI` and `RSO`, please write it like `MC (RSI)`.
+
+        **Examples:**
+        - `MC (RSO)`
+        - `ML (RSI)`
+        
+        ---
+        
+        **Standard Prefixes:**
+        - `OL` - Overseas Leave
+        - `LL` - Local Leave
+        - `ML` - Medical Leave
+        - `MC` - Medical Certificate
+        - `AO` - Attached Out
+        - `OIL` - Off in Lieu
+        - `MA` - Medical Appointment
+        - `SO` - Stay Out
+        - `CL` - Compassionate Leave
+        - `I/A` - Interview / Appointment
+        - `AWOL` - AWOL
+        - `HL` - Hospitalisation Leave
+        - `Others` - Others
+        """
+    )
+
     st.session_state.parade_platoon = st.selectbox(
         "Platoon for Parade Update:",
         options=[1, 2, 3, 4, "Coy HQ"],
@@ -2520,288 +2555,541 @@ elif feature == "Update Parade":
 # ------------------------------------------------------------------------------
 # 11) Feature D: Queries with Multiple Options
 # ------------------------------------------------------------------------------
-elif feature == "Queries":
-    st.subheader("Query Person Information")
-
-    # 1. Get all personnel from nominal roll for the multiselect
-    records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-    personnel_names = sorted([p['name'] for p in records_nominal if p['name']])
-
-    # 2. Selection UI
-    all_personnel_option = "ALL PERSONNEL"
-    selected_options = st.multiselect(
-        "Select personnel to query. You can select one or more.",
-        options=[all_personnel_option] + personnel_names,
-        default=[]
+elif feature == "Analytics":
+    
+    query_mode = st.radio(
+        "Select Analytics Mode",
+        ("By Personnel", "By Conduct"),
+        horizontal=True,
+        key="analytics_mode"
     )
 
-    # Determine the list of people to query
-    names_to_query = []
-    if all_personnel_option in selected_options:
-        names_to_query = personnel_names
-    else:
-        names_to_query = selected_options
+    if query_mode == "By Personnel":
+        st.subheader("Query by Personnel")
+        # 1. Get all personnel from nominal roll for the multiselect
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        personnel_names = sorted([p['name'] for p in records_nominal if p['name']])
 
-    if not names_to_query:
-        st.info("Please select personnel from the list above to see their information.")
-        st.stop()
+        # 2. Selection UI
+        all_personnel_option = "ALL PERSONNEL"
+        selected_options = st.multiselect(
+            "Select personnel to query. You can select one or more.",
+            options=[all_personnel_option] + personnel_names,
+            default=[]
+        )
 
-    # Data fetching for all tabs
-    records_parade = get_allparade_records(selected_company, SHEET_PARADE)
-    sheet_everything = worksheets.get("everything")
-    everything_data = sheet_everything.get_all_values() if sheet_everything else []
-
-    # Create a mapping from name to nominal record for easy lookup
-    nominal_map = {p['name'].lower(): p for p in records_nominal}
-    
-    # Create tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["Medical Statuses", "Leaves", "Training Attendance", "Daily Attendance"])
-
-    # Helper function to parse dates
-    def parse_ddmmyyyy(d):
-        try:
-            return datetime.strptime(str(d), "%d%m%Y")
-        except (ValueError, TypeError):
-            return None
-
-    # TAB 1: MEDICAL STATUSES
-    with tab1:
-        st.subheader("Medical Statuses")
-        display_prefixes = ("ex", "rib", "ld", "mc", "ml")
-
-        all_medical_summary = []
-        for name in names_to_query:
-            person_parade_records = [
-                r for r in records_parade 
-                if r.get('name', '').strip().lower() == name.strip().lower()
-            ]
-            
-            total_mc_days = 0
-            total_ml_days = 0
-            medical_details = []
-
-            for record in person_parade_records:
-                status = record.get("status", "").lower()
-                if any(status.startswith(p) for p in display_prefixes):
-                    start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
-                    end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
-                    
-                    duration = "Unknown"
-                    if start_date and end_date and end_date >= start_date:
-                        days = (end_date - start_date).days + 1
-                        duration = f"{days} day(s)"
-                        if status.startswith("mc"):
-                            total_mc_days += days
-                        elif status.startswith("ml"):
-                            total_ml_days += days
-
-                    medical_details.append({
-                        "Status": record.get("status", ""),
-                        "Start Date": record.get("start_date_ddmmyyyy", ""),
-                        "End Date": record.get("end_date_ddmmyyyy", ""),
-                        "Duration": duration
-                    })
-            
-            nominal_info = nominal_map.get(name.lower(), {})
-            all_medical_summary.append({
-                "Rank": nominal_info.get('rank', 'N/A'),
-                "Name": name,
-                "Total MC Days": total_mc_days,
-                "Total ML Days": total_ml_days,
-            })
-
-            if medical_details:
-                with st.expander(f"View medical history for {name}"):
-                    st.table(medical_details)
-        
-        if all_medical_summary:
-            df_medical_summary = pd.DataFrame(all_medical_summary)
-            st.dataframe(df_medical_summary, use_container_width=True, hide_index=True)
+        # Determine the list of people to query
+        names_to_query = []
+        if all_personnel_option in selected_options:
+            names_to_query = personnel_names
         else:
-            st.info("No medical status records found for the selected personnel.")
+            names_to_query = selected_options
 
-    # TAB 2: LEAVE COUNTER
-    with tab2:
-        st.subheader("Leaves")
-        leave_prefixes = ("ll", "ol", "leave")
+        if not names_to_query:
+            st.info("Please select personnel from the list above to see their information.")
+            st.stop()
+            
+        # Data fetching for all tabs
+        records_parade = get_allparade_records(selected_company, SHEET_PARADE)
+        sheet_everything = worksheets.get("everything")
+        everything_data = sheet_everything.get_all_values() if sheet_everything else []
+
+        # Create a mapping from name to nominal record for easy lookup
+        nominal_map = {p['name'].lower(): p for p in records_nominal}
         
-        all_leave_records = []
-        for name in names_to_query:
-            person_parade_records = [
-                r for r in records_parade 
-                if r.get('name', '').strip().lower() == name.strip().lower()
-            ]
-            
-            total_leave_days = 0
-            leave_details = []
-            
-            for record in person_parade_records:
-                status = record.get("status", "").lower()
-                if any(status.startswith(p) for p in leave_prefixes):
-                    start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
-                    end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
-                    
-                    duration = "Unknown"
-                    if start_date and end_date and end_date >= start_date:
-                        days = (end_date - start_date).days + 1
-                        total_leave_days += days
-                        duration = f"{days} day(s)"
-                    
-                    leave_details.append({
-                        "Status": record.get("status", ""),
-                        "Start Date": record.get("start_date_ddmmyyyy", ""),
-                        "End Date": record.get("end_date_ddmmyyyy", ""),
-                        "Duration": duration
-                    })
-            
-            nominal_info = nominal_map.get(name.lower(), {})
-            remaining_leaves = 14 - total_leave_days
-            
-            all_leave_records.append({
-                "Rank": nominal_info.get('rank', 'N/A'),
-                "Name": name,
-                "Leaves Taken (days)": total_leave_days,
-                "Leaves Remaining (days)": max(0, remaining_leaves)
-            })
+        # Create tabs
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Medical Statuses", "Leaves", "RSI/RSO", "Training Attendance", "Conduct Records", "Daily Attendance"])
 
-            if leave_details:
-                with st.expander(f"View leave history for {name}"):
-                    st.table(leave_details)
-        
-        if all_leave_records:
-            df_leave_summary = pd.DataFrame(all_leave_records)
-            st.dataframe(df_leave_summary, use_container_width=True, hide_index=True)
-        else:
-            st.info("No leave records found for the selected personnel.")
+        # Helper function to parse dates
+        def parse_ddmmyyyy(d):
+            try:
+                return datetime.strptime(str(d), "%d%m%Y")
+            except (ValueError, TypeError):
+                return None
 
-    # TAB 3: ATTENDANCE HISTORY
-    with tab3:
-        st.subheader("Training Attendance")
-        
-        if not everything_data or len(everything_data) < 2:
-            st.warning("The 'Everything' sheet is empty or has no data, so attendance history cannot be displayed.")
-        else:
-            headers = everything_data[0]
-            conduct_headers = headers[3:]
-            
-            attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
+        # TAB 1: MEDICAL STATUSES
+        with tab1:
+            st.subheader("Medical Statuses")
+            display_prefixes = ("ex", "rib", "ld", "mc", "ml")
 
-            all_attendance_records = []
-            
+            all_medical_summary = []
             for name in names_to_query:
-                person_row = attendance_map.get(name.lower())
+                person_parade_records = [
+                    r for r in records_parade 
+                    if r.get('name', '').strip().lower() == name.strip().lower()
+                ]
+                
+                total_mc_days = 0
+                total_ml_days = 0
+                medical_details = []
+
+                for record in person_parade_records:
+                    status = record.get("status", "").lower()
+                    if any(status.startswith(p) for p in display_prefixes):
+                        start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
+                        end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
+                        
+                        duration = "Unknown"
+                        if start_date and end_date and end_date >= start_date:
+                            days = (end_date - start_date).days + 1
+                            duration = f"{days} day(s)"
+                            if status.startswith("mc"):
+                                total_mc_days += days
+                            elif status.startswith("ml"):
+                                total_ml_days += days
+
+                        medical_details.append({
+                            "Status": record.get("status", ""),
+                            "Start Date": record.get("start_date_ddmmyyyy", ""),
+                            "End Date": record.get("end_date_ddmmyyyy", ""),
+                            "Duration": duration
+                        })
                 
                 nominal_info = nominal_map.get(name.lower(), {})
-                rank = nominal_info.get('rank', 'N/A')
+                all_medical_summary.append({
+                    "Rank": nominal_info.get('rank', 'N/A'),
+                    "Name": name,
+                    "Total MC Days": total_mc_days,
+                    "Total ML Days": total_ml_days,
+                })
 
-                if person_row:
-                    attended_count = 0
-                    total_conducts = 0
-                    missed_conducts_list = []
-                    
-                    for i, conduct_name in enumerate(conduct_headers):
-                        col_idx = i + 3
-                        attendance_status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
-                        
-                        if attendance_status in ("yes", "no"):
-                            total_conducts += 1
-                            if attendance_status == 'yes':
-                                attended_count += 1
-                            else:
-                                missed_conducts_list.append(conduct_name)
-                    
-                    attendance_percentage = (attended_count / total_conducts * 100) if total_conducts > 0 else 0
-                    
-                    all_attendance_records.append({
-                        "Rank": rank,
-                        "Name": name,
-                        "Attendance": f"{attended_count}/{total_conducts}",
-                        "Percentage": f"{attendance_percentage:.2f}%"
-                    })
-
-                    if missed_conducts_list:
-                         with st.expander(f"View missed conducts for {name}"):
-                            st.write(", ".join(missed_conducts_list))
-                else:
-                    all_attendance_records.append({
-                        "Rank": rank,
-                        "Name": name,
-                        "Attendance": "N/A",
-                        "Percentage": "N/A"
-                    })
-
-
-            if all_attendance_records:
-                df_attendance = pd.DataFrame(all_attendance_records)
-                st.dataframe(df_attendance, use_container_width=True, hide_index=True)
+                if medical_details:
+                    with st.expander(f"View medical history for {name}"):
+                        st.table(medical_details)
+            
+            if all_medical_summary:
+                df_medical_summary = pd.DataFrame(all_medical_summary)
+                st.dataframe(df_medical_summary, use_container_width=True, hide_index=True)
             else:
-                st.info("No attendance records found for the selected personnel in the 'Everything' sheet.")
-    
-    # TAB 4: DAILY ATTENDANCE
-    with tab4:
-        st.subheader("Daily Attendance")
+                st.info("No medical status records found for the selected personnel.")
 
-        # Date range is fixed from June 14 of the current year to today.
-        today = datetime.today().date()
-        start_date = datetime(today.year, 6, 14).date()
-        end_date = today
+        # TAB 2: LEAVE COUNTER
+        with tab2:
+            st.subheader("Leaves")
+            leave_prefixes = ("ll", "ol", "leave")
+            
+            all_leave_records = []
+            for name in names_to_query:
+                person_parade_records = [
+                    r for r in records_parade 
+                    if r.get('name', '').strip().lower() == name.strip().lower()
+                ]
+                
+                total_leave_days = 0
+                leave_details = []
+                    
+                for record in person_parade_records:
+                    status = record.get("status", "").lower()
+                    if any(status.startswith(p) for p in leave_prefixes):
+                        start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
+                        end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
+                        
+                        duration = "Unknown"
+                        if start_date and end_date and end_date >= start_date:
+                            days = (end_date - start_date).days + 1
+                            total_leave_days += days
+                            duration = f"{days} day(s)"
+                        
+                        leave_details.append({
+                            "Status": record.get("status", ""),
+                            "Start Date": record.get("start_date_ddmmyyyy", ""),
+                            "End Date": record.get("end_date_ddmmyyyy", ""),
+                            "Duration": duration
+                        })
+                
+                nominal_info = nominal_map.get(name.lower(), {})
+                remaining_leaves = 14 - total_leave_days
+                
+                all_leave_records.append({
+                    "Rank": nominal_info.get('rank', 'N/A'),
+                    "Name": name,
+                    "Leaves Taken (days)": total_leave_days,
+                    "Leaves Remaining (days)": max(0, remaining_leaves)
+                })
+
+                if leave_details:
+                    with st.expander(f"View leave history for {name}"):
+                        st.table(leave_details)
+            
+            if all_leave_records:
+                df_leave_summary = pd.DataFrame(all_leave_records)
+                st.dataframe(df_leave_summary, use_container_width=True, hide_index=True)
+            else:
+                st.info("No leave records found for the selected personnel.")
+
+        # TAB 3: RSI/RSO
+        with tab3:
+            st.subheader("RSI/RSO Records")
+            rsi_rso_prefixes = ("rsi", "rso")
+            
+            all_rsi_rso_summary = []
+            for name in names_to_query:
+                person_parade_records = [
+                    r for r in records_parade 
+                    if r.get('name', '').strip().lower() == name.strip().lower()
+                ]
+                
+                total_rsi = 0
+                total_rso = 0
+                rsi_rso_details = []
+                    
+                for record in person_parade_records:
+                    status = record.get("status", "").lower()
+                    
+                    is_rsi_or_rso = False
+                    if "rsi" in status:
+                        total_rsi += 1
+                        is_rsi_or_rso = True
+                    elif "rso" in status:
+                        total_rso += 1
+                        is_rsi_or_rso = True
+
+                    if is_rsi_or_rso:
+                        start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
+                        end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
+                        
+                        duration = "Unknown"
+                        if start_date and end_date and end_date >= start_date:
+                            days = (end_date - start_date).days + 1
+                            duration = f"{days} day(s)"
+
+                        rsi_rso_details.append({
+                            "Status": record.get("status", ""),
+                            "Start Date": record.get("start_date_ddmmyyyy", ""),
+                            "End Date": record.get("end_date_ddmmyyyy", ""),
+                            "Duration": duration
+                        })
+                
+                nominal_info = nominal_map.get(name.lower(), {})
+                all_rsi_rso_summary.append({
+                    "Rank": nominal_info.get('rank', 'N/A'),
+                    "Name": name,
+                    "RSI Count": total_rsi,
+                    "RSO Count": total_rso
+                })
+
+                if rsi_rso_details:
+                    with st.expander(f"View RSI/RSO history for {name}"):
+                        st.table(rsi_rso_details)
+            
+            if all_rsi_rso_summary:
+                df_summary = pd.DataFrame(all_rsi_rso_summary)
+                st.dataframe(df_summary, use_container_width=True, hide_index=True)
+            else:
+                st.info("No RSI/RSO records found for the selected personnel.")
+
+        # TAB 4: ATTENDANCE HISTORY
+        with tab4:
+            st.subheader("Training Attendance")
+            
+            if not everything_data or len(everything_data) < 2:
+                st.warning("The 'Everything' sheet is empty or has no data, so attendance history cannot be displayed.")
+            else:
+                headers = everything_data[0]
+                conduct_headers = headers[3:]
+                
+                attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
+
+                all_attendance_records = []
+                
+                for name in names_to_query:
+                    person_row = attendance_map.get(name.lower())
+                    
+                    nominal_info = nominal_map.get(name.lower(), {})
+                    rank = nominal_info.get('rank', 'N/A')
+
+                    if person_row:
+                        attended_count = 0
+                        total_conducts = 0
+                        missed_conducts_list = []
+                        
+                        for i, conduct_name in enumerate(conduct_headers):
+                            col_idx = i + 3
+                            attendance_status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
+                            
+                            if attendance_status in ("yes", "no"):
+                                total_conducts += 1
+                                if attendance_status == 'yes':
+                                    attended_count += 1
+                                else:
+                                    missed_conducts_list.append(conduct_name)
+                        
+                        attendance_percentage = (attended_count / total_conducts * 100) if total_conducts > 0 else 0
+                        
+                        all_attendance_records.append({
+                            "Rank": rank,
+                            "Name": name,
+                            "Attendance": f"{attended_count}/{total_conducts}",
+                            "Percentage": f"{attendance_percentage:.2f}%"
+                        })
+
+                        if missed_conducts_list:
+                            with st.expander(f"View missed conducts for {name}"):
+                                st.write(", ".join(missed_conducts_list))
+                    else:
+                        all_attendance_records.append({
+                            "Rank": rank,
+                            "Name": name,
+                            "Attendance": "N/A",
+                            "Percentage": "N/A"
+                        })
+
+
+                if all_attendance_records:
+                    df_attendance = pd.DataFrame(all_attendance_records)
+                    st.dataframe(df_attendance, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No attendance records found for the selected personnel in the 'Everything' sheet.")
         
-        st.write(f"Displaying attendance percentage from {start_date.strftime('%d %b %Y')} to {end_date.strftime('%d %b %Y')}.")
+        # TAB 5: CONDUCT RECORDS
+        with tab5:
+            st.subheader("Individual Conduct Records")
 
-        if start_date > end_date:
-            st.warning(f"The fixed start date ({start_date.strftime('%d %b %Y')}) is in the future. No data to display.")
+            if not everything_data or len(everything_data) < 2:
+                st.warning("The 'Everything' sheet is empty, so conduct records cannot be displayed.")
+            else:
+                headers = everything_data[0]
+                conduct_headers = headers[3:]
+                attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
+
+                conduct_filter = st.text_input("Filter conducts by name:", key="conduct_record_filter").lower()
+
+                # Pre-process headers to group conduct series
+                all_conduct_series = defaultdict(dict)
+                one_off_conducts = []
+                for header in conduct_headers:
+                    try:
+                        conduct_name_part = header.split(', ')[1]
+                    except IndexError:
+                        conduct_name_part = header
+                    match = re.match(r'^(.*\S)\s+(\d+)$', conduct_name_part)
+                    if match:
+                        base_name, session = match.groups()
+                        all_conduct_series[base_name.strip()][int(session)] = header
+                    else:
+                        one_off_conducts.append(header)
+
+                for name in names_to_query:
+                    person_row = attendance_map.get(name.lower())
+                    if not person_row:
+                        continue
+
+                    credited_conducts = []
+                    
+                    # Process one-off conducts
+                    for header in one_off_conducts:
+                        col_idx = headers.index(header)
+                        status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
+                        if status == 'yes':
+                            credited_conducts.append(header)
+
+                    # Process conduct series
+                    for base_name, sessions in all_conduct_series.items():
+                        yes_count = 0
+                        for session_num, header in sessions.items():
+                            col_idx = headers.index(header)
+                            status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
+                            if status == 'yes':
+                                yes_count += 1
+                        
+                        # Credit for the first `yes_count` sessions
+                        sorted_sessions = sorted(sessions.keys())
+                        for i in range(min(yes_count, len(sorted_sessions))):
+                            session_to_credit = sorted_sessions[i]
+                            credited_conducts.append(sessions[session_to_credit])
+
+                    # Apply the filter
+                    filtered_conducts = [c for c in credited_conducts if conduct_filter in c.lower()]
+
+                    nominal_info = nominal_map.get(name.lower(), {})
+                    rank = nominal_info.get('rank', 'N/A')
+                    
+                    with st.expander(f"View conduct records for {rank} {name}"):
+                        if filtered_conducts:
+                            st.write(", ".join(sorted(list(set(filtered_conducts)))))
+                        else:
+                            st.write("No matching conducts found.")
+
+        # TAB 6: DAILY ATTENDANCE
+        with tab6:
+            st.subheader("Daily Attendance")
+
+            # Date range is fixed from June 14 of the current year to today.
+            today = datetime.today().date()
+            start_date = datetime(today.year, 6, 14).date()
+            end_date = today
+            
+            st.write(f"Displaying attendance percentage from {start_date.strftime('%d %b %Y')} to {end_date.strftime('%d %b %Y')}.")
+
+            if start_date > end_date:
+                st.warning(f"The fixed start date ({start_date.strftime('%d %b %Y')}) is in the future. No data to display.")
+                st.stop()
+
+            all_attendance_summary = []
+            total_days_in_range = (end_date - start_date).days + 1
+
+            for name in names_to_query:
+                # Get all parade records for the person
+                person_parade_records = [
+                    r for r in records_parade 
+                    if r.get('name', '').strip().lower() == name.strip().lower()
+                ]
+
+                absent_dates = set()
+                for record in person_parade_records:
+                    status_prefix = record.get("status", "").lower().split(' ')[0]
+                    if status_prefix in LEGEND_STATUS_PREFIXES:
+                        record_start = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
+                        record_end = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
+
+                        if record_start and record_end:
+                            # Find the intersection of the record's date range and the overall query range
+                            overlap_start = max(start_date, record_start.date())
+                            overlap_end = min(end_date, record_end.date())
+
+                            # If they overlap, add all dates in the overlap period to the set
+                            if overlap_start <= overlap_end:
+                                current_date = overlap_start
+                                while current_date <= overlap_end:
+                                    absent_dates.add(current_date)
+                                    current_date += timedelta(days=1)
+                
+                num_absent_days = len(absent_dates)
+                present_days = total_days_in_range - num_absent_days
+                attendance_percentage = (present_days / total_days_in_range * 100) if total_days_in_range > 0 else 0
+                
+                nominal_info = nominal_map.get(name.lower(), {})
+                all_attendance_summary.append({
+                    "Rank": nominal_info.get('rank', 'N/A'),
+                    "Name": name,
+                    "Attendance (%)": f"{attendance_percentage:.2f}%"
+                })
+
+            if all_attendance_summary:
+                df_summary = pd.DataFrame(all_attendance_summary)
+                st.dataframe(df_summary, use_container_width=True, hide_index=True)
+
+    elif query_mode == "By Conduct":
+        st.subheader("Query by Conduct")
+        st.info("Select a conduct to see the status of all personnel, including back-crediting to allow for progressive tracking.")
+
+        sheet_everything = worksheets.get("everything")
+        everything_data = sheet_everything.get_all_values() if sheet_everything else []
+
+        if not everything_data or len(everything_data) < 2:
+            st.warning("The 'Everything' sheet is empty, so conducts cannot be queried.")
+            st.stop()
+        
+        headers = everything_data[0]
+        conduct_headers = headers[3:]
+        
+        selected_conducts = st.multiselect(
+            "Select one or more conducts to view:",
+            options=conduct_headers
+        )
+
+        if not selected_conducts:
+            st.info("Please select a conduct from the list above.")
             st.stop()
 
-        all_attendance_summary = []
-        total_days_in_range = (end_date - start_date).days + 1
+        # Data fetching needed for this mode
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        nominal_map = {p['name'].lower(): p for p in records_nominal}
+        attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
 
-        for name in names_to_query:
-            # Get all parade records for the person
-            person_parade_records = [
-                r for r in records_parade 
-                if r.get('name', '').strip().lower() == name.strip().lower()
-            ]
+        # Pre-process headers to group conduct series
+        all_conduct_series = defaultdict(dict)
+        for header in conduct_headers:
+            try:
+                conduct_name_part = header.split(', ')[1]
+            except IndexError:
+                conduct_name_part = header
+            match = re.match(r'^(.*\S)\s+(\d+)$', conduct_name_part)
+            if match:
+                base_name, session = match.groups()
+                all_conduct_series[base_name.strip()][int(session)] = header
+        
+        for conduct_header in selected_conducts:
+            st.markdown(f"#### Results for: `{conduct_header}`")
 
-            absent_dates = set()
-            for record in person_parade_records:
-                status_prefix = record.get("status", "").lower().split(' ')[0]
-                if status_prefix in LEGEND_STATUS_PREFIXES:
-                    record_start = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
-                    record_end = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
+            # Determine if the selected conduct is part of a series
+            base_name_selected, session_selected = None, None
+            is_series = False
+            try:
+                conduct_name_part = conduct_header.split(', ')[1]
+            except IndexError:
+                conduct_name_part = conduct_header
+            match = re.match(r'^(.*\S)\s+(\d+)$', conduct_name_part)
+            if match:
+                base_name_selected, session_selected = match.groups()
+                base_name_selected = base_name_selected.strip()
+                session_selected = int(session_selected)
+                is_series = True
 
-                    if record_start and record_end:
-                        # Find the intersection of the record's date range and the overall query range
-                        overlap_start = max(start_date, record_start.date())
-                        overlap_end = min(end_date, record_end.date())
+            results = []
+            for person in records_nominal:
+                name_lower = person['name'].lower()
+                person_row = attendance_map.get(name_lower)
+                
+                status = "Not Marked"
+                
+                if person_row:
+                    original_status = "Not Marked"
+                    try:
+                        col_idx = headers.index(conduct_header)
+                        original_status = person_row[col_idx].strip().lower()
+                    except (ValueError, IndexError):
+                        pass # Keep as Not Marked
 
-                        # If they overlap, add all dates in the overlap period to the set
-                        if overlap_start <= overlap_end:
-                            current_date = overlap_start
-                            while current_date <= overlap_end:
-                                absent_dates.add(current_date)
-                                current_date += timedelta(days=1)
+                    if not is_series:
+                        status = original_status
+                    else:
+                        # Back-crediting logic
+                        series_sessions = all_conduct_series.get(base_name_selected, {})
+                        
+                        # Find which sessions were actually attended
+                        actually_attended_sessions = {}
+                        for s_num, s_header in series_sessions.items():
+                            try:
+                                s_col_idx = headers.index(s_header)
+                                if len(person_row) > s_col_idx and person_row[s_col_idx].strip().lower() == 'yes':
+                                    actually_attended_sessions[s_num] = s_header
+                            except (ValueError, IndexError):
+                                continue
+                        
+                        yes_count = len(actually_attended_sessions)
+                        source_of_credit_header = ""
+                        if actually_attended_sessions:
+                            latest_attended_num = max(actually_attended_sessions.keys())
+                            source_of_credit_header = actually_attended_sessions[latest_attended_num]
+
+                        # Determine which sessions the person is credited for
+                        sorted_sessions_nums = sorted(series_sessions.keys())
+                        credited_sessions = sorted_sessions_nums[:yes_count]
+
+                        if session_selected in credited_sessions:
+                            if session_selected in actually_attended_sessions:
+                                status = "Yes"
+                            else:
+                                status = f"Yes (from {source_of_credit_header})"
+                        else:
+                            status = "No" if original_status in ('yes', 'no') else "Not Marked"
+
+                results.append({
+                    "Rank": person.get('rank', 'N/A'),
+                    "Name": person.get('name', 'N/A'),
+                    "Status": status.capitalize()
+                })
             
-            num_absent_days = len(absent_dates)
-            present_days = total_days_in_range - num_absent_days
-            attendance_percentage = (present_days / total_days_in_range * 100) if total_days_in_range > 0 else 0
-            
-            nominal_info = nominal_map.get(name.lower(), {})
-            all_attendance_summary.append({
-                "Rank": nominal_info.get('rank', 'N/A'),
-                "Name": name,
-                "Attendance (%)": f"{attendance_percentage:.2f}%"
-            })
+            if results:
+                df_results = pd.DataFrame(results)
+                st.dataframe(df_results, use_container_width=True, hide_index=True)
 
-        if all_attendance_summary:
-            df_summary = pd.DataFrame(all_attendance_summary)
-            st.dataframe(df_summary, use_container_width=True, hide_index=True)
-
-    
 # ------------------------------------------------------------------------------
-# 14) Feature F: Generate WhatsApp Message
+# 14) Feature F: Generate Message
 # ------------------------------------------------------------------------------
-elif feature == "Generate WhatsApp Message":
-    st.header("Generate WhatsApp Message")
+elif feature == "Message":
+    st.header("Parade State Message")
 
     # --- 1) Existing WhatsApp Message Generation for Selected Company ---
     records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
@@ -2821,364 +3109,3 @@ elif feature == "Generate WhatsApp Message":
     company_message = generate_company_message(selected_company, company_nominal, company_parade, target_date=target_datetime)
     st.code(company_message, language='text')
 
-
-
-
-elif feature == "Overall View":
-    st.header("Overall View of All Conducts")
-    # (a) Fetch all conducts
-    conducts = get_conduct_records(selected_company, SHEET_CONDUCTS)
-    if not conducts:
-        st.info("No conducts available to display.")
-    else:
-        # (b) Convert to DataFrame
-        df = pd.DataFrame(conducts)
-
-        # (c) Convert the 'date' field to datetime objects for sorting
-        # Assumes date format is "DDMMYYYY" as produced by ensure_date_str
-        def parse_date(date_str):
-            try:
-                return datetime.strptime(date_str, "%d%m%Y")
-            except ValueError:
-                return None
-
-        df['Date'] = df['date'].apply(parse_date)
-
-        # (d) Warn if any dates could not be parsed
-        invalid_dates = df['Date'].isnull()
-        if invalid_dates.any():
-            st.warning(f"{invalid_dates.sum()} conduct(s) have invalid date formats and will appear at the bottom.")
-            logger.warning(f"{invalid_dates.sum()} conduct(s) have invalid date formats in company '{selected_company}'.")
-
-        # (e) Sort the DataFrame by Date (latest first)
-        df_sorted = df.sort_values(by='Date', ascending=False)
-
-        # (f) Format the 'Date' column for display
-        df_sorted['Date'] = df_sorted['Date'].dt.strftime("%d-%m-%Y")
-
-        # (g) Select and rename columns for display (remove outlier and pointer columns)
-        display_columns = {
-            'Date': 'Date',
-            'conduct_name': 'Conduct Name',
-            'p/t plt1': 'P/T PLT1',
-            'p/t plt2': 'P/T PLT2',
-            'p/t plt3': 'P/T PLT3',
-            'p/t plt4': 'P/T PLT4',
-            'p/t coy hq': 'P/T Coy HQ',
-            'p/t total': 'P/T Total',
-            'submitted_by': 'Submitted By',
-            'pointers': 'Safety PAR'
-        }
-        df_display = df_sorted.rename(columns=display_columns)[list(display_columns.values())]
-
-        # -------------------------------------------------------------------------
-        # **Added: Filtering and Sorting Options**
-        # -------------------------------------------------------------------------
-        st.subheader("Filter and Sort Conducts")
-        with st.expander("🔍 Filter Conducts"):
-            search_term = st.text_input(
-                "Search by Conduct Name or Date (DDMMYYYY):",
-                value="",
-                help="Enter a keyword to filter conducts by name or date."
-            )
-            sort_field = st.selectbox("Sort By", options=["Date", "Conduct Name"], index=0)
-            sort_order = st.radio("Sort Order", options=["Ascending", "Descending"], index=1)
-            
-            # Apply filtering
-            if search_term:
-                search_term_upper = search_term.upper()
-                df_display = df_display[
-                    df_display['Conduct Name'].str.upper().str.contains(search_term_upper) |
-                    df_display['Date'].str.contains(search_term)
-                ]
-            
-            # Apply sorting
-            ascending = True if sort_order == "Ascending" else False
-            if sort_field == "Date":
-                df_display['Date_Sort'] = pd.to_datetime(df_display['Date'], format="%d-%m-%Y", errors='coerce')
-                df_display = df_display.sort_values(by='Date_Sort', ascending=ascending)
-                df_display = df_display.drop(columns=['Date_Sort'])
-            elif sort_field == "Conduct Name":
-                df_display = df_display.sort_values(by='Conduct Name', ascending=ascending)
-
-        # -------------------------------------------------------------------------
-        st.subheader("All Conducts")
-        st.dataframe(df_display, use_container_width=True)
-        # -------------------------------------------------------------------------
-        # **Added: Individuals' Missed Conducts**
-        # -------------------------------------------------------------------------
-        st.subheader("Individuals' Missed Conducts")
-        # Build a dictionary to track which individuals (by their 4D number) missed which conducts
-        missed_conducts_dict = defaultdict(set)
-        # List of outlier columns in the normalized conduct records
-        outlier_columns = [
-            "plt1 outliers",
-            "plt2 outliers",
-            "plt3 outliers",
-            "plt4 outliers",
-            "coy hq outliers"
-        ]
-        for conduct in conducts:
-            conduct_name = ensure_str(conduct.get('conduct_name', ''))
-            conduct_outliers = set()
-            for col in outlier_columns:
-                outliers_str = ensure_str(conduct.get(col, ''))
-                if outliers_str.lower() == 'none' or not outliers_str.strip():
-                    continue  # Skip if no outliers listed
-                # Split the outliers string by comma
-                outliers = [o.strip() for o in outliers_str.split(',') if o.strip()]
-                for outlier in outliers:
-                    # Extract the 4D number using regex (e.g., "4D1204")
-                    match = re.match(r'(4D\d{3,4})(?:\s*\(.*\))?', outlier, re.IGNORECASE)
-                    if match:
-                        four_d = match.group(1).upper()
-                        conduct_outliers.add(four_d)
-            for four_d in conduct_outliers:
-                missed_conducts_dict[four_d].add(conduct_name)
-
-        # Build a list of dictionaries for each individual
-        missed_conducts_data = []
-        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-        # Build a lookup: normalized 4D number (uppercase) to the person's name
-        four_d_to_name = {row['4d_number'].upper(): row['name'] for row in records_nominal}
-        for four_d, conducts_missed in missed_conducts_dict.items():
-            name = four_d_to_name.get(four_d, "Unknown")
-            missed_conducts_data.append({
-                "4D_Number": four_d,
-                "Name": name,
-                "Missed Conducts Count": len(conducts_missed),
-                "Missed Conducts": ", ".join(sorted(conducts_missed))
-            })
-
-        if missed_conducts_data:
-            df_missed = pd.DataFrame(missed_conducts_data)
-            # Sort individuals from most missed conducts to least
-            df_missed = df_missed.sort_values(by="Missed Conducts Count", ascending=False).reset_index(drop=True)
-
-            # Apply styling to bold the top 3 individuals
-            def highlight_top3(row):
-                return ['font-weight: bold' if row.name < 3 else '' for _ in row]
-            styled_df = df_missed.style.apply(highlight_top3, axis=1)
-            st.subheader("Missed Conducts by Individuals (Most to Least)")
-            st.dataframe(styled_df, use_container_width=True)
-        else:
-            st.info("✅ **No individuals have missed any conducts.**")
-            logger.info(f"No missed conducts recorded in company '{selected_company}' by user '{st.session_state.username}'.")
-
-        # -------------------------------------------------------------------------
-        logger.info(f"Displayed overall view of all conducts in company '{selected_company}' by user '{st.session_state.username}'.")
-
-    st.header("Attendance Analytics")
-
-    # Get Everything sheet data (assumes you have a gspread Worksheet object `sheet_everything`)
-    SHEET_EVERYTHING = worksheets["everything"]
-    everything_data = SHEET_EVERYTHING.get_all_values()
-    if not everything_data:
-        st.error("Everything sheet is empty!")
-    else:
-        # Assuming that the first three columns are static (e.g., Rank, 4D_Number, Name),
-        # the remaining columns are conduct columns.
-        conduct_headers = everything_data[0][3:]
-        if not conduct_headers:
-            st.error("No conduct columns found!")
-        else:
-            selected_conduct = st.selectbox("Select Conduct Column", conduct_headers)
-            
-            # Fetch the nominal records
-            records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-            
-            # Compute the analytics for the selected conduct column
-            try:
-                analytics = analyze_attendance(everything_data, records_nominal, selected_conduct)
-            except ValueError as e:
-                st.error(str(e))
-                analytics = None
-            
-            if analytics:
-                # Let the user choose which level to view
-                view_options = [
-                    "Overall Attendance",
-                    "Platoon-Level Attendance",
-                    "Section-Level Attendance",
-                    "Individual-Level Attendance",
-                    "Conduct Summary",
-                    "Training-Wide Attendance"  # New option for combined conduct analytics
-                ]
-                selected_view = st.radio("Select View", view_options)
-                
-                if selected_view == "Overall Attendance":
-                    overall = analytics['overall']
-                    st.subheader("Overall Attendance")
-                    st.write(
-                        f"**Total Individuals:** {overall['total']}  |  "
-                        f"**Present:** {overall['present']}  |  "
-                        f"**Attendance:** {overall['percentage']:.2f}%"
-                    )
-                
-                elif selected_view == "Platoon-Level Attendance":
-                    platoon_summary = analytics['platoon_summary']
-                    st.subheader("Platoon-Level Attendance")
-                    # Create a DataFrame for easy display
-                    df_platoon = pd.DataFrame.from_dict(platoon_summary, orient='index') \
-                        .reset_index() \
-                        .rename(columns={'index': 'Platoon'})
-                    st.dataframe(df_platoon, use_container_width=True)
-                    
-                elif selected_view == "Section-Level Attendance":
-                    section_summary = analytics['section_summary']
-                    st.subheader("Section-Level Attendance")
-                    # Build a DataFrame from the section summary
-                    df_section = pd.DataFrame([
-                        {
-                            'Platoon': key[0],
-                            'Section': key[1],
-                            'Total': val['total'],
-                            'Present': val['present']
-                        }
-                        for key, val in section_summary.items()
-                    ])
-                    st.dataframe(df_section, use_container_width=True)
-                    
-                elif selected_view == "Individual-Level Attendance":
-                    individual_details = analytics['individual_details']
-                    st.subheader("Individual-Level Attendance")
-                    # Create a DataFrame for individual details
-                    df_individual = pd.DataFrame([
-                        {
-                            'Name': name,
-                            'Platoon': details['platoon'],
-                            'Section': details['section'],
-                            'Roll': details['roll'],
-                            'Attendance': details['attendance']
-                        }
-                        for name, details in individual_details.items()
-                    ])
-                    st.dataframe(df_individual, use_container_width=True)
-                    
-                elif selected_view == "Conduct Summary":
-                    conduct_summary = analytics['conduct_summary']
-                    st.subheader("Conduct Summary")
-                    # Build a DataFrame from the conduct summary
-                    df_conduct = pd.DataFrame([
-                        {
-                            'Conduct Column': col,
-                            'Total Nominal': summary['total'],
-                            'Present': summary['present'],
-                            'Attendance (%)': f"{summary['percentage']:.2f}"
-                        }
-                        for col, summary in conduct_summary.items()
-                    ])
-                    st.dataframe(df_conduct, use_container_width=True)
-                    
-                elif selected_view == "Training-Wide Attendance":
-                    st.subheader("Training-Wide Attendance (Combined Conducts)")
-                    # Determine the number of conduct columns (all columns after the first three)
-                    headers = everything_data[0]
-                    conduct_headers = headers[3:]
-                    
-                    # Build a mapping from name to their attendance row (for fast lookup)
-                    attendance_mapping = {}
-                    for row in everything_data[1:]:
-                        name = row[2].strip().lower()
-                        attendance_mapping[name] = row
-                    
-                    # Initialize aggregates
-                    training_overall_total = 0
-                    training_overall_present = 0
-                    training_platoon_summary = {}   # {platoon: {'total': X, 'present': Y}}
-                    training_section_summary = {}   # {(platoon, section): {'total': X, 'present': Y}}
-                    training_individual_details = {}  # {name: {platoon, section, roll, yes_count, total, percentage}}
-                    
-                    for record in records_nominal:
-                        name = record['name'].strip().lower()
-                        row = attendance_mapping.get(name)
-                        yes_count = 0
-                        denom = 0
-                        # Iterate over all conduct columns
-                        for idx, header in enumerate(conduct_headers, start=3):
-                            value = row[idx].strip().lower() if row and len(row) > idx else ""
-                            if value in ("yes", "no"):
-                                denom += 1
-                                if value == "yes":
-                                    yes_count += 1
-
-                        # nothing applied? skip the record entirely
-                        if denom == 0:
-                            continue
-                        training_overall_total += denom
-                        training_overall_present += yes_count
-                        
-                        # Parse platoon, section, and roll using the helper function
-                        num_str = record.get('4d_number', '')
-                        platoon, section, roll = parse_4d_number(num_str)
-                        
-                        # Aggregate only if both platoon and section are available
-                        if platoon and section:
-                            if platoon not in training_platoon_summary:
-                                training_platoon_summary[platoon] = {'total': 0, 'present': 0}
-                            training_platoon_summary[platoon]['total'] += denom
-                            training_platoon_summary[platoon]['present'] += yes_count
-                            
-                            key = (platoon, section)
-                            if key not in training_section_summary:
-                                training_section_summary[key] = {'total': 0, 'present': 0}
-                            training_section_summary[key]['total'] += denom
-                            training_section_summary[key]['present'] += yes_count
-                        
-                        individual_percentage = (yes_count / denom * 100) if denom else 0
-                        training_individual_details[name] = {
-                            'platoon': platoon,
-                            'section': section,
-                            'roll': roll,
-                            'yes_count': yes_count,
-                            'total': denom,
-                            'percentage': individual_percentage
-                        }
-                    
-                    overall_percentage = (training_overall_present / training_overall_total * 100) if training_overall_total else 0
-                    st.write(
-                        f"**Attendance:** {overall_percentage:.2f}%"
-                    )
-                    
-                    st.subheader("Platoon-Level Training-Wide Attendance")
-                    df_platoon_tw = pd.DataFrame([
-                        {
-                            'Platoon': platoon,
-                            'Attendance (%)': f"{(summary['present']/summary['total']*100):.2f}" if summary['total'] else "0.00"
-                        }
-                        for platoon, summary in training_platoon_summary.items()
-                    ])
-                    st.dataframe(df_platoon_tw, use_container_width=True)
-                    
-                    st.subheader("Section-Level Training-Wide Attendance")
-                    df_section_tw = pd.DataFrame([
-                        {
-                            'Platoon': key[0],
-                            'Section': key[1],
-                            'Attendance (%)': f"{(val['present']/val['total']*100):.2f}" if val['total'] else "0.00"
-                        }
-                        for key, val in training_section_summary.items()
-                    ])
-                    st.dataframe(df_section_tw, use_container_width=True)
-                    
-                    st.subheader("Individual-Level Training-Wide Attendance")
-                    df_individual_tw = pd.DataFrame([
-                        {
-                            'Name': name,
-                            'Platoon': details['platoon'],
-                            'Section': details['section'],
-                            'Roll': details['roll'],
-                            'Attendance (%)': f"{details['percentage']:.2f}"
-                        }
-                        for name, details in training_individual_details.items()
-                    ])
-                    def highlight_below_threshold(val):
-                        try:
-                            if float(val) < 75:
-                                return 'background-color: #ff9999'
-                        except Exception:
-                            pass
-                        return ''
-                    
-                    styled_df = df_individual_tw.style.applymap(highlight_below_threshold, subset=['Attendance (%)'])
-                    st.dataframe(styled_df, use_container_width=True)
