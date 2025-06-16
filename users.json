@@ -55,54 +55,6 @@
         "password": "kevanP@ss13",
         "companies": ["Support"]
     },
-    "2lt_xuegai": {
-        "password": "xuegaiP@ss14",
-        "companies": ["Bravo"]
-    },
-    "2lt_henrieco": {
-        "password": "henriecoP@ss15",
-        "companies": ["Bravo"]
-    },
-    "2lt_kumarkarthik": {
-        "password": "kumarkarthikP@ss16",
-        "companies": ["Bravo"]
-    },
-    "2sg_vishal": {
-        "password": "vishalP@ss17",
-        "companies": ["Bravo"]
-    },
-    "2sg_khaarthik": {
-        "password": "khaarthikP@ss18",
-        "companies": ["Bravo"]
-    },
-    "3sg_kumar": {
-        "password": "kumarP@ss19",
-        "companies": ["Bravo"]
-    },
-    "3sg_shicheng": {
-        "password": "shichengP@ss20",
-        "companies": ["Bravo"]
-    },
-    "3sg_millard": {
-        "password": "millardP@ss21",
-        "companies": ["Bravo"]
-    },
-    "3sg_athul": {
-        "password": "athulP@ss22",
-        "companies": ["Bravo"]
-    },
-    "3sg_nazry": {
-        "password": "nazryP@ss23",
-        "companies": ["Bravo"]
-    },
-    "3sg_rayden": {
-        "password": "raydenP@ss24",
-        "companies": ["Bravo"]
-    },
-    "3sg_clifford": {
-        "password": "cliffordP@ss25",
-        "companies": ["Bravo"]
-    },
     "OC_Alpha": {
         "password": "passOC9",
         "companies": ["Alpha"]
@@ -138,5 +90,57 @@
     "P5_Alpha": {
         "password": "pass5$",
         "companies": ["Alpha"]
+    },
+    "cpt_aravin": {
+        "password": "aravinP@ss14",
+        "companies": ["Bravo"]
+    },
+    "3wo_nelson": {
+        "password": "nelsonP@ss15",
+        "companies": ["Bravo"]
+    },
+    "2lt_chee": {
+        "password": "cheeP@ss16",
+        "companies": ["Bravo"]
+    },
+    "2lt_henrieco": {
+        "password": "henriecoP@ss17",
+        "companies": ["Bravo"]
+    },
+    "2lt_kumar": {
+        "password": "kumarP@ss18",
+        "companies": ["Bravo"]
+    },
+    "2sg_vishal": {
+        "password": "vishalP@ss19",
+        "companies": ["Bravo"]
+    },
+    "3sg_athul": {
+        "password": "athulP@ss20",
+        "companies": ["Bravo"]
+    },
+    "3sg_palaniappan": {
+        "password": "palaniappanP@ss21",
+        "companies": ["Bravo"]
+    },
+    "3sg_nazry": {
+        "password": "nazryP@ss22",
+        "companies": ["Bravo"]
+    },
+    "3sg_millard": {
+        "password": "millardP@ss23",
+        "companies": ["Bravo"]
+    },
+    "3sg_liang": {
+        "password": "liangP@ss24",
+        "companies": ["Bravo"]
+    },
+    "3sg_wong": {
+        "password": "wongP@ss25",
+        "companies": ["Bravo"]
+    },
+    "3sg_clifford": {
+        "password": "cliffordP@ss26",
+        "companies": ["Bravo"]
     }
 }
