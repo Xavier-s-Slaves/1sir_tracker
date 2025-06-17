@@ -2229,7 +2229,7 @@ elif feature == "Update Parade":
 
     st.session_state.parade_platoon = st.selectbox(
         "Platoon for Parade Update:",
-        options=[1, 2, 3, 4, 5, "Coy HQ"],
+        options=[1, 2, 3, 4, 5, "Coy HQ", "S1", "S2", "S3", "S4", "SSP", "BCS"],
         format_func=lambda x: str(x)
     )
 
