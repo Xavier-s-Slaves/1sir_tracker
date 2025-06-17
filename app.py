@@ -538,6 +538,16 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                 "4": "OPFOR PL"
             }
             platoon_label = support_platoon_map.get(platoon, f"Platoon {platoon}")
+        elif selected_company == "HQ":
+            hq_branch_map = {
+                "S1": "S1 Branch",
+                "S2": "S2 Branch",
+                "S3": "S3 Branch",
+                "S4": "S4 Branch",
+                "SSP": "SSP",
+                "BCS": "BCS",
+            }
+            platoon_label = hq_branch_map.get(platoon, f"S{platoon} Branch")
         else:
             platoon_label = f"Platoon {platoon}"
 
@@ -666,8 +676,10 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     # Build platoon-specific sections
     for detail in platoon_details:
         message_lines.append(f"_*{detail['label']}*_")
-        message_lines.append(f"Pl Present Strength: {detail['present']:02d}/{detail['nominal']:02d}")
-        message_lines.append(f"Pl Absent Strength: {detail['unique_absent']:02d}/{detail['nominal']:02d}")
+        # Determine strength label based on company
+        strength_label = "Br" if selected_company == "HQ" else "Pl"
+        message_lines.append(f"{strength_label} Present Strength: {detail['present']:02d}/{detail['nominal']:02d}")
+        message_lines.append(f"{strength_label} Absent Strength: {detail['unique_absent']:02d}/{detail['nominal']:02d}")
 
         # For platoons other than Coy HQ, show commander/non-cmd breakdown
         if detail['label'] != "Coy HQ":
@@ -717,7 +729,9 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                 status_entry = f"{status_code} {details_str}"
                 status_group[key].append(status_entry)
             pl_status_count = len(status_group)
-            message_lines.append(f"\nPl Statuses: {pl_status_count:02d}/{detail['nominal']:02d}")
+            # Determine strength label based on company
+            strength_label = "Br" if selected_company == "HQ" else "Pl"
+            message_lines.append(f"\n{strength_label} Statuses: {pl_status_count:02d}/{detail['nominal']:02d}")
             for (rank, name, d), details_list in status_group.items():
                 if rank and name and d:
                     line_prefix = f"> {d} {rank} {name}"
