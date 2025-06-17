@@ -1,7 +1,7 @@
 {
     "admin": {
         "password": "pass",
-        "companies": ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ"]
+        "companies": ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ", "Wolf"]
     },
     "cpt_don": {
         "password": "donP@ss1",
@@ -162,5 +162,13 @@
     "3sg_leroy":{
         "password": "pass",
         "companies": ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ"]
+    },
+    "3sg_bill":{
+        "password": "pass",
+        "companies": ["HQ"]
+    },
+    "3sg_nicholas":{
+        "password": "pass",
+        "companies": ["HQ"]
     }
 }
