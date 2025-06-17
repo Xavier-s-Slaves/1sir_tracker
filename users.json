@@ -142,5 +142,21 @@
     "3sg_clifford": {
         "password": "cliffordP@ss26",
         "companies": ["Bravo"]
+    },
+    "MSC_HQ": {
+        "password": "passMSCHQ",
+        "companies": ["MSC"]
+    },
+    "MSC_PLT1": {
+        "password": "passMSC1",
+        "companies": ["MSC"]
+    },
+    "MSC_PLT2": {
+        "password": "passMSC2",
+        "companies": ["MSC"]
+    },
+    "MSC_PLT3": {
+        "password": "passMSC3",
+        "companies": ["MSC"]
     }
 }
