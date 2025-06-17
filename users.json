@@ -158,5 +158,9 @@
     "MSC_PLT3": {
         "password": "passMSC3",
         "companies": ["MSC"]
+    },
+    "3sg_leroy":{
+        "password": "pass",
+        "companies": ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ"]
     }
 }
