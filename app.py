@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 TIMEZONE = ZoneInfo('Asia/Singapore')  
 USER_DB_PATH = "users.json"
-NON_CMD_RANKS = ["PTE", "LCP", "CPL", "CFC", "REC"]
+NON_CMD_RANKS = ["PTE", "LCP", "CPL", "CFC", "REC", "SCT"]
 LEGEND_STATUS_PREFIXES = {
         "ol": "[OL]",   # Overseas Leave
         "ll": "[LL]",   # Local Leave
