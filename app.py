@@ -17,6 +17,17 @@ logger = logging.getLogger(__name__)
 TIMEZONE = ZoneInfo('Asia/Singapore')  
 USER_DB_PATH = "users.json"
 NON_CMD_RANKS = ["PTE", "LCP", "CPL", "CFC", "REC", "SCT"]
+
+# SSP personnel mapping by company
+SSP_PERSONNEL = {
+    "Support": ["SCT RAYNEN"],
+    "Charlie": ["PTE RYAN", "SCT HONG KAI"],
+    "Bravo": ["PTE QIU BIN"],
+    "MSC": ["SCT GARETH WONG QING YI"],
+    "Alpha": ["SCT KARTIGANESH", "PTE ISIDIYAZ RIFQI"],
+    "HQ": ["PTE MUHAMMAD AIRUL IMAN", "PTE MUHAMMAD SABRI BIN RAZALI", "PTE THENESH SARAVANAN", "CPL DEVANAND S/O GANESAN", "CPL DERRICK TAN JIAN HUI"],
+    "Wolf": []  # Add Wolf company with empty list for now
+}
 LEGEND_STATUS_PREFIXES = {
         "ol": "[OL]",   # Overseas Leave
         "ll": "[LL]",   # Local Leave
@@ -644,21 +655,17 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             platoon_absent = len(combined_group)
         total_absent += platoon_absent
 
-        # For platoons (other than Coy HQ), calculate nominal breakdown based on rank
-        if platoon.lower() not in ('coy hq', 'hq'):
-            platoon_nominal_records = [
-                r for r in company_nominal_records
-                if r.get('platoon', 'Coy HQ') == platoon
-            ]
-            commander_nominal = sum(
-                1 for r in platoon_nominal_records if r.get('rank', '').upper() not in NON_CMD_RANKS
-            )
-            non_cmd_nominal = sum(
-                1 for r in platoon_nominal_records if r.get('rank', '').upper() in NON_CMD_RANKS
-            )
-        else:
-            commander_nominal = None
-            non_cmd_nominal = None
+        # Calculate nominal breakdown based on rank for all platoons including Coy HQ
+        platoon_nominal_records = [
+            r for r in company_nominal_records
+            if r.get('platoon', 'Coy HQ') == platoon
+        ]
+        commander_nominal = sum(
+            1 for r in platoon_nominal_records if r.get('rank', '').upper() not in NON_CMD_RANKS
+        )
+        non_cmd_nominal = sum(
+            1 for r in platoon_nominal_records if r.get('rank', '').upper() in NON_CMD_RANKS
+        )
 
         platoon_details.append({
             'label': platoon_label,
@@ -680,7 +687,11 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     officer_present = officer_absent = 0
     wospec_present = wospec_absent = 0
     trooper_present = trooper_absent = 0
+    ssp_present = ssp_absent = 0
 
+    # Get SSP personnel for this company
+    company_ssp_personnel = SSP_PERSONNEL.get(selected_company, [])
+    
     # Count present personnel by rank category
     for record in company_nominal_records:
         rank = record.get('rank', '').upper()
@@ -704,8 +715,18 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                 except ValueError:
                     continue
         
-        # Categorize by rank
-        if rank in officer_ranks:
+        # Check if person is SSP (by matching rank + name)
+        full_name_rank = f"{rank} {name}".upper()
+        is_ssp = any(ssp_person.upper() == full_name_rank for ssp_person in company_ssp_personnel)
+        
+        # Categorize by rank/role (SSP personnel are counted ONLY in SSP, not in troopers)
+        if is_ssp:
+            # SSP personnel - count here and skip other categories
+            if is_absent:
+                ssp_absent += 1
+            else:
+                ssp_present += 1
+        elif rank in officer_ranks:
             if is_absent:
                 officer_absent += 1
             else:
@@ -716,6 +737,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             else:
                 wospec_present += 1
         elif rank in NON_CMD_RANKS:
+            # Regular troopers (excluding SSP personnel)
             if is_absent:
                 trooper_absent += 1
             else:
@@ -732,7 +754,8 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     # Add rank category breakdown
     message_lines.append(f"Coy Officers: {officer_present:02d}/{officer_present + officer_absent:02d}")
     message_lines.append(f"Coy Wospecs: {wospec_present:02d}/{wospec_present + wospec_absent:02d}")
-    message_lines.append(f"Coy Troopers: {trooper_present:02d}/{trooper_present + trooper_absent:02d}\n")
+    message_lines.append(f"Coy Troopers: {trooper_present:02d}/{trooper_present + trooper_absent:02d}")
+    message_lines.append(f"Coy SSP: {ssp_present:02d}/{ssp_present + ssp_absent:02d}\n")
 
     # Build platoon-specific sections
     for detail in platoon_details:
@@ -742,40 +765,26 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
         message_lines.append(f"{strength_label} Present Strength: {detail['present']:02d}/{detail['nominal']:02d}")
         message_lines.append(f"{strength_label} Absent Strength: {detail['unique_absent']:02d}/{detail['nominal']:02d}")
 
-        # For platoons other than Coy HQ, show commander/non-cmd breakdown
-        if detail['label'] != "Coy HQ":
-            message_lines.append(
-                f"Commander Absent Strength: {len(detail['commander_group']):02d}/{detail['commander_nominal']:02d}"
-            )
-            for (d, rank, name), details_list in detail['commander_group'].items():
-                details_str = ", ".join(details_list)
-                if d:
-                    message_lines.append(f"> {d} {rank} {name} ({details_str})")
-                else:
-                    message_lines.append(f"> {rank} {name} ({details_str})")
+        # Show commander/non-cmd breakdown for all platoons including Coy HQ
+        message_lines.append(
+            f"Commander Absent Strength: {len(detail['commander_group']):02d}/{detail['commander_nominal']:02d}"
+        )
+        for (d, rank, name), details_list in detail['commander_group'].items():
+            details_str = ", ".join(details_list)
+            if d:
+                message_lines.append(f"> {d} {rank} {name} ({details_str})")
+            else:
+                message_lines.append(f"> {rank} {name} ({details_str})")
 
-            message_lines.append(
-                f"Non-Commander Absent Strength: {len(detail['non_cmd_group']):02d}/{detail['non_cmd_nominal']:02d}"
-            )
-            for (d, rank, name), details_list in detail['non_cmd_group'].items():
-                details_str = ", ".join(details_list)
-                if d:
-                    message_lines.append(f"> {d} {rank} {name} ({details_str})")
-                else:
-                    message_lines.append(f"> {rank} {name} ({details_str})")
-        else:
-            # For Coy HQ, combine commander and non-cmd into one list
-            combined_group = defaultdict(list)
-            for key, details_list in detail['commander_group'].items():
-                combined_group[key].extend(details_list)
-            for key, details_list in detail['non_cmd_group'].items():
-                combined_group[key].extend(details_list)
-            for (d, rank, name), details_list in combined_group.items():
-                details_str = ", ".join(details_list)
-                if d:
-                    message_lines.append(f"> {d} {rank} {name} ({details_str})")
-                else:
-                    message_lines.append(f"> {rank} {name} ({details_str})")
+        message_lines.append(
+            f"Non-Commander Absent Strength: {len(detail['non_cmd_group']):02d}/{detail['non_cmd_nominal']:02d}"
+        )
+        for (d, rank, name), details_list in detail['non_cmd_group'].items():
+            details_str = ", ".join(details_list)
+            if d:
+                message_lines.append(f"> {d} {rank} {name} ({details_str})")
+            else:
+                message_lines.append(f"> {rank} {name} ({details_str})")
 
         # Add non-conformant parade statuses if any exist
         status_group = defaultdict(list)
