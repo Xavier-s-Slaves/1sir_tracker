@@ -549,6 +549,15 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                 "BCS": "BCS",
             }
             platoon_label = hq_branch_map.get(platoon, f"S{platoon} Branch")
+        elif selected_company == "Charlie":
+            charlie_platoon_map = {
+                "1": "Plt 11",
+                "2": "Plt 12",
+                "3": "Plt 13",
+                "4": "Plt 14",
+                "5": "Plt 15"
+            }
+            platoon_label = charlie_platoon_map.get(platoon, f"Plt 1{platoon}")
         else:
             platoon_label = f"Platoon {platoon}"
 
