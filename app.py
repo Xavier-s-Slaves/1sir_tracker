@@ -666,6 +666,52 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     # Calculate overall present strength
     total_present = total_nominal - total_absent
 
+    # Calculate rank category breakdowns
+    officer_ranks = ["2LT", "LTA", "CPT", "MAJ", "LTC", "DX10"]
+    officer_present = officer_absent = 0
+    wospec_present = wospec_absent = 0
+    trooper_present = trooper_absent = 0
+
+    # Count present personnel by rank category
+    for record in company_nominal_records:
+        rank = record.get('rank', '').upper()
+        name = record.get('name', '').strip()
+        
+        # Check if person is absent (has active parade status)
+        is_absent = False
+        name_key = name.lower()
+        for parade in parade_records:
+            if parade.get('company', '') == selected_company and parade.get('name', '').strip().lower() == name_key:
+                start_str = parade.get('start_date_ddmmyyyy', '')
+                end_str = parade.get('end_date_ddmmyyyy', '')
+                try:
+                    start_dt = datetime.strptime(start_str, "%d%m%Y").date()
+                    end_dt = datetime.strptime(end_str, "%d%m%Y").date()
+                    if start_dt <= today.date() <= end_dt:
+                        status_prefix = parade.get('status', '').lower().split()[0]
+                        if status_prefix in LEGEND_STATUS_PREFIXES:
+                            is_absent = True
+                            break
+                except ValueError:
+                    continue
+        
+        # Categorize by rank
+        if rank in officer_ranks:
+            if is_absent:
+                officer_absent += 1
+            else:
+                officer_present += 1
+        elif "WO" in rank or "SG" in rank or "ME" in rank:
+            if is_absent:
+                wospec_absent += 1
+            else:
+                wospec_present += 1
+        elif rank in NON_CMD_RANKS:
+            if is_absent:
+                trooper_absent += 1
+            else:
+                trooper_present += 1
+
     # Start building the message header
     message_lines = []
     message_lines.append(f"*🐆 {selected_company.upper()} COY*")
@@ -673,6 +719,11 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     message_lines.append(f"*🗓️ {date_str}*\n")
     message_lines.append(f"Coy Present Strength: {total_present:02d}/{total_nominal:02d}")
     message_lines.append(f"Coy Absent Strength: {total_absent:02d}/{total_nominal:02d}\n")
+    
+    # Add rank category breakdown
+    message_lines.append(f"Coy Officers: {officer_present:02d}/{officer_present + officer_absent:02d}")
+    message_lines.append(f"Coy Wospecs: {wospec_present:02d}/{wospec_present + wospec_absent:02d}")
+    message_lines.append(f"Coy Troopers: {trooper_present:02d}/{trooper_present + trooper_absent:02d}\n")
 
     # Build platoon-specific sections
     for detail in platoon_details:
