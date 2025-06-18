@@ -170,5 +170,53 @@
     "3sg_nicholas":{
         "password": "pass",
         "companies": ["HQ"]
+    },
+    "cpt_asyraf": {
+        "password": "asyrafP@ss27",
+        "companies": ["Charlie"]
+    },
+    "3wo_koung": {
+        "password": "koungP@ss28",
+        "companies": ["Charlie"]
+    },
+    "cpt_tan": {
+        "password": "tanP@ss29",
+        "companies": ["Charlie"]
+    },
+    "3sg_matthew": {
+        "password": "matthewP@ss30",
+        "companies": ["Charlie"]
+    },
+    "2sg_christian": {
+        "password": "christianP@ss31",
+        "companies": ["Charlie"]
+    },
+    "2lt_yuhao": {
+        "password": "yuhaoP@ss32",
+        "companies": ["Charlie"]
+    },
+    "2sg_azri": {
+        "password": "azriP@ss33",
+        "companies": ["Charlie"]
+    },
+    "2lt_ryan": {
+        "password": "ryanP@ss34",
+        "companies": ["Charlie"]
+    },
+    "3sg_chan": {
+        "password": "chanP@ss35",
+        "companies": ["Charlie"]
+    },
+    "1sg_sharanyugjit": {
+        "password": "sharanyugjitP@ss36",
+        "companies": ["Charlie"]
+    },
+    "3sg_lee": {
+        "password": "leeP@ss37",
+        "companies": ["Charlie"]
+    },
+    "3sg_lam": {
+        "password": "lamP@ss38",
+        "companies": ["Charlie"]
     }
 }
