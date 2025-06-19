@@ -20,12 +20,12 @@ NON_CMD_RANKS = ["PTE", "LCP", "CPL", "CFC", "REC", "SCT"]
 
 # SSP personnel mapping by company
 SSP_PERSONNEL = {
-    "Support": ["SCT RAYNEN"],
+    "Support": ["SCT RAYNEN", "PTE AIRUL"],
     "Charlie": ["PTE RYAN", "SCT HONG KAI"],
     "Bravo": ["PTE QIU BIN"],
     "MSC": ["SCT GARETH WONG QING YI"],
     "Alpha": ["SCT KARTIGANESH", "PTE ISIDIYAZ RIFQI"],
-    "HQ": ["PTE MUHAMMAD AIRUL IMAN", "PTE MUHAMMAD SABRI BIN RAZALI", "PTE THENESH SARAVANAN", "CPL DEVANAND S/O GANESAN", "CPL DERRICK TAN JIAN HUI"],
+    "HQ": ["PTE MUHAMMAD SABRI BIN RAZALI", "PTE THENESH SARAVANAN", "CPL DEVANAND S/O GANESAN", "CPL DERRICK TAN JIAN HUI"],
     "Wolf": []  # Add Wolf company with empty list for now
 }
 LEGEND_STATUS_PREFIXES = {
