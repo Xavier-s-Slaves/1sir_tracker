@@ -558,6 +558,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                 "S4": "S4 Branch",
                 "SSP": "SSP",
                 "BCS": "BCS",
+                "UIP": "UIP"
             }
             platoon_label = hq_branch_map.get(platoon, f"S{platoon} Branch")
         elif selected_company == "Charlie":
@@ -2299,7 +2300,7 @@ elif feature == "Update Parade":
 
     st.session_state.parade_platoon = st.selectbox(
         "Platoon for Parade Update:",
-        options=[1, 2, 3, 4, 5, "Coy HQ", "S1", "S2", "S3", "S4", "SSP", "BCS"],
+        options=[1, 2, 3, 4, 5, "Coy HQ", "S1", "S2", "S3", "S4", "SSP", "BCS", "UIP"],
         format_func=lambda x: str(x)
     )
 
@@ -2720,7 +2721,7 @@ elif feature == "Analytics":
         nominal_map = {p['name'].lower(): p for p in records_nominal}
         
         # Create tabs
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Medical Statuses", "Leaves", "RSI/RSO", "Training Attendance", "Conduct Records", "Daily Attendance"])
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Medical Statuses", "Leaves", "RSI/RSO", "Training Attendance", "Conduct Records", "Daily Attendance", "SBO 3"])
 
         # Helper function to parse dates
         def parse_ddmmyyyy(d):
@@ -3241,6 +3242,117 @@ elif feature == "Analytics":
             if all_attendance_summary:
                 df_summary = pd.DataFrame(all_attendance_summary)
                 st.dataframe(df_summary, use_container_width=True, hide_index=True)
+
+        # TAB 7: SBO 3
+        with tab7:
+            st.subheader("SBO 3 Progress Tracking")
+            
+            # Define SBO 3 requirements
+            sbo3_requirements = {
+                "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek"], "current": 0},
+                "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
+                "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm"], "current": 0},
+                "Combat Circuit": {"target": 1, "keywords": ["combat circuit"], "current": 0},
+                "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit"], "current": 0},
+                "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
+            }
+            
+            # Calculate current week based on Week 0 being 16-22 June
+            week_0_start = datetime(datetime.now().year, 6, 16).date()
+            current_week = (datetime.now().date() - week_0_start).days // 7
+            st.info(f"Current Week: {current_week} (Week 0 started on 16 June 2024)")
+            st.info("SBO 3 Target: 31 conducts by Week 7")
+            
+            if not everything_data or len(everything_data) < 2:
+                st.warning("The 'Everything' sheet is empty or has no data, so SBO 3 progress cannot be displayed.")
+            else:
+                headers = everything_data[0]
+                conduct_headers = headers[3:]
+                
+                # Filter conduct headers based on date range
+                filtered_conduct_headers = [h for h in conduct_headers if conduct_in_date_range(h)]
+                
+                attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
+                
+                all_sbo3_records = []
+                group_totals = {category: 0 for category in sbo3_requirements.keys()}
+                
+                for name in names_to_query:
+                    person_row = attendance_map.get(name.lower())
+                    nominal_info = nominal_map.get(name.lower(), {})
+                    
+                    person_counts = {category: 0 for category in sbo3_requirements.keys()}
+                    completed_conducts = {category: [] for category in sbo3_requirements.keys()}
+                    
+                    if person_row:
+                        for conduct_header in filtered_conduct_headers:
+                            try:
+                                col_idx = headers.index(conduct_header)
+                                attendance_status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
+                                
+                                if attendance_status == "yes":
+                                    conduct_name = conduct_header.lower()
+                                    
+                                    # Check which category this conduct belongs to
+                                    for category, requirements in sbo3_requirements.items():
+                                        for keyword in requirements["keywords"]:
+                                            if keyword.lower() in conduct_name:
+                                                person_counts[category] += 1
+                                                completed_conducts[category].append(conduct_header)
+                                                group_totals[category] += 1
+                                                break  # Only count once per category
+                            except ValueError:
+                                continue
+                    
+                    # Calculate total completed and percentage
+                    total_completed = sum(person_counts.values())
+                    total_target = sum(req["target"] for req in sbo3_requirements.values())
+                    completion_percentage = (total_completed / total_target * 100) if total_target > 0 else 0
+                    
+                    all_sbo3_records.append({
+                        "Rank": nominal_info.get('rank', 'N/A'),
+                        "Name": name,
+                        "Cardio": f"{person_counts['Cardio']}/10",
+                        "S&P": f"{person_counts['Strength & Power']}/12",
+                        "IFM": f"{person_counts['Interval Fast March']}/3",
+                        "CC": f"{person_counts['Combat Circuit']}/1",
+                        "FT": f"{person_counts['Functional Training']}/3",
+                        "S&G": f"{person_counts['Sports & Games']}/2",
+                        "Total": f"{total_completed}/31",
+                        "Completion %": f"{completion_percentage:.1f}%"
+                    })
+                    
+                    # Show detailed breakdown for each person
+                    with st.expander(f"View SBO 3 details for {name}"):
+                        for category, conducts in completed_conducts.items():
+                            if conducts:
+                                st.write(f"**{category}** ({len(conducts)}/{sbo3_requirements[category]['target']}):")
+                                for conduct in conducts:
+                                    st.write(f"  • {conduct}")
+                            else:
+                                st.write(f"**{category}**: No conducts completed (0/{sbo3_requirements[category]['target']})")
+                
+                # Group Summary
+                if any(opt in selected_options for opt in special_options) and names_to_query:
+                    st.subheader("Group Summary (SBO 3)")
+                    num_people = len(names_to_query)
+                    
+                    # Calculate group averages
+                    group_total_completed = sum(group_totals.values())
+                    group_avg_completion = (group_total_completed / (num_people * 31) * 100) if num_people > 0 else 0
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Selected Personnel", num_people)
+                    with col2:
+                        st.metric("Group Avg Completion", f"{group_avg_completion:.1f}%")
+                
+                if all_sbo3_records:
+                    st.subheader("Individual SBO 3 Progress")
+                    df_sbo3 = pd.DataFrame(all_sbo3_records)
+                    st.dataframe(df_sbo3, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No SBO 3 records found for the selected personnel.")
 
     elif query_mode == "By Conduct":
         st.subheader("Query by Conduct")
