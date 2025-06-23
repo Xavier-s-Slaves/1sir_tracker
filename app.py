@@ -3002,8 +3002,20 @@ elif feature == "Analytics":
 
                 if any(opt in selected_options for opt in special_options) and names_to_query:
                     st.subheader("Group Summary (Training Attendance)")
-                    group_attended_count = sum(int(record["Attendance"].split("/")[0]) for record in all_attendance_records)
-                    group_total_conducts = sum(int(record["Attendance"].split("/")[1]) for record in all_attendance_records)
+                    group_attended_count = 0
+                    group_total_conducts = 0
+                    
+                    for record in all_attendance_records:
+                        attendance_str = record["Attendance"]
+                        if attendance_str != "N/A" and "/" in attendance_str:
+                            try:
+                                attended, total = attendance_str.split("/")
+                                group_attended_count += int(attended)
+                                group_total_conducts += int(total)
+                            except (ValueError, IndexError):
+                                # Skip records that can't be parsed
+                                continue
+                    
                     group_attendance_percentage = (group_attended_count / group_total_conducts * 100) if group_total_conducts > 0 else 0
                     
                     col1, col2 = st.columns(2)
