@@ -2650,6 +2650,29 @@ elif feature == "Analytics":
 
     if query_mode == "By Personnel":
         st.subheader("Query by Personnel")
+        
+        # Date range selection
+        st.subheader("📅 Date Range Selection")
+        col1, col2 = st.columns(2)
+        with col1:
+            start_date = st.date_input(
+                "Start Date",
+                value=datetime(datetime.now().year, 6, 14).date(),
+                key="analytics_start_date"
+            )
+        with col2:
+            end_date = st.date_input(
+                "End Date", 
+                value=datetime.now().date(),
+                key="analytics_end_date"
+            )
+        
+        if start_date > end_date:
+            st.error("Start date cannot be after end date.")
+            st.stop()
+        
+        st.info(f"Analyzing data from {start_date.strftime('%d %b %Y')} to {end_date.strftime('%d %b %Y')}")
+        
         # 1. Get all personnel from nominal roll for the multiselect
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         personnel_names = sorted([p['name'] for p in records_nominal if p['name']])
@@ -2706,6 +2729,22 @@ elif feature == "Analytics":
             except (ValueError, TypeError):
                 return None
 
+        # Helper function to check if record overlaps with date range
+        def record_in_date_range(record, start_date, end_date):
+            """Check if a parade record overlaps with the selected date range"""
+            record_start = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
+            record_end = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
+            
+            if not record_start or not record_end:
+                return False
+            
+            # Convert to date objects for comparison
+            record_start_date = record_start.date()
+            record_end_date = record_end.date()
+            
+            # Check if there's any overlap between record period and selected range
+            return not (record_end_date < start_date or record_start_date > end_date)
+
         # TAB 1: MEDICAL STATUSES
         with tab1:
             st.subheader("Medical Statuses")
@@ -2718,6 +2757,7 @@ elif feature == "Analytics":
                 person_parade_records = [
                     r for r in records_parade 
                     if r.get('name', '').strip().lower() == name.strip().lower()
+                    and record_in_date_range(r, start_date, end_date)  # Apply date filtering
                 ]
                 
                 person_totals = defaultdict(int)
@@ -2727,12 +2767,15 @@ elif feature == "Analytics":
                     status = record.get("status", "").lower()
                     for prefix in display_prefixes:
                         if status.startswith(prefix):
-                            start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
-                            end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
+                            record_start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
+                            record_end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
                             
                             duration = "Unknown"
-                            if start_date and end_date and end_date >= start_date:
-                                days = (end_date - start_date).days + 1
+                            if record_start_date and record_end_date and record_end_date >= record_start_date:
+                                # Calculate only the days within the selected range
+                                overlap_start = max(start_date, record_start_date.date())
+                                overlap_end = min(end_date, record_end_date.date())
+                                days = (overlap_end - overlap_start).days + 1
                                 duration = f"{days} day(s)"
                                 person_totals[prefix] += days
 
@@ -2801,6 +2844,7 @@ elif feature == "Analytics":
                 person_parade_records = [
                     r for r in records_parade 
                     if r.get('name', '').strip().lower() == name.strip().lower()
+                    and record_in_date_range(r, start_date, end_date)  # Apply date filtering
                 ]
                 
                 total_leave_days = 0
@@ -2809,12 +2853,15 @@ elif feature == "Analytics":
                 for record in person_parade_records:
                     status = record.get("status", "").lower()
                     if any(status.startswith(p) for p in leave_prefixes):
-                        start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
-                        end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
+                        record_start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
+                        record_end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
                         
                         duration = "Unknown"
-                        if start_date and end_date and end_date >= start_date:
-                            days = (end_date - start_date).days + 1
+                        if record_start_date and record_end_date and record_end_date >= record_start_date:
+                            # Calculate only the days within the selected range
+                            overlap_start = max(start_date, record_start_date.date())
+                            overlap_end = min(end_date, record_end_date.date())
+                            days = (overlap_end - overlap_start).days + 1
                             total_leave_days += days
                             duration = f"{days} day(s)"
                         
@@ -2872,6 +2919,7 @@ elif feature == "Analytics":
                 person_parade_records = [
                     r for r in records_parade 
                     if r.get('name', '').strip().lower() == name.strip().lower()
+                    and record_in_date_range(r, start_date, end_date)  # Apply date filtering
                 ]
                 
                 total_rsi = 0
@@ -2890,12 +2938,12 @@ elif feature == "Analytics":
                         is_rsi_or_rso = True
 
                     if is_rsi_or_rso:
-                        start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
-                        end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
+                        record_start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
+                        record_end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
                         
                         duration = "Unknown"
-                        if start_date and end_date and end_date >= start_date:
-                            days = (end_date - start_date).days + 1
+                        if record_start_date and record_end_date and record_end_date >= record_start_date:
+                            days = (record_end_date - record_start_date).days + 1
                             duration = f"{days} day(s)"
 
                         rsi_rso_details.append({
@@ -2953,6 +3001,18 @@ elif feature == "Analytics":
                 headers = everything_data[0]
                 conduct_headers = headers[3:]
                 
+                # Filter conduct headers based on date range
+                def conduct_in_date_range(conduct_header):
+                    """Check if a conduct header falls within the selected date range"""
+                    try:
+                        conduct_date_str = conduct_header.split(',')[0].strip()
+                        conduct_date = datetime.strptime(conduct_date_str, "%d%m%Y").date()
+                        return start_date <= conduct_date <= end_date
+                    except (ValueError, IndexError):
+                        return False  # Skip malformed headers
+                
+                filtered_conduct_headers = [h for h in conduct_headers if conduct_in_date_range(h)]
+                
                 attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
 
                 all_attendance_records = []
@@ -2968,16 +3028,19 @@ elif feature == "Analytics":
                         total_conducts = 0
                         missed_conducts_list = []
                         
-                        for i, conduct_name in enumerate(conduct_headers):
-                            col_idx = i + 3
-                            attendance_status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
-                            
-                            if attendance_status in ("yes", "no"):
-                                total_conducts += 1
-                                if attendance_status == 'yes':
-                                    attended_count += 1
-                                else:
-                                    missed_conducts_list.append(conduct_name)
+                        for conduct_name in filtered_conduct_headers:
+                            try:
+                                col_idx = headers.index(conduct_name)
+                                attendance_status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
+                                
+                                if attendance_status in ("yes", "no"):
+                                    total_conducts += 1
+                                    if attendance_status == 'yes':
+                                        attended_count += 1
+                                    else:
+                                        missed_conducts_list.append(conduct_name)
+                            except ValueError:
+                                continue  # Skip if header not found
                         
                         attendance_percentage = (attended_count / total_conducts * 100) if total_conducts > 0 else 0
                         
@@ -3039,14 +3102,27 @@ elif feature == "Analytics":
             else:
                 headers = everything_data[0]
                 conduct_headers = headers[3:]
+                
+                # Filter conduct headers based on date range (reuse the function from tab 4)
+                def conduct_in_date_range(conduct_header):
+                    """Check if a conduct header falls within the selected date range"""
+                    try:
+                        conduct_date_str = conduct_header.split(',')[0].strip()
+                        conduct_date = datetime.strptime(conduct_date_str, "%d%m%Y").date()
+                        return start_date <= conduct_date <= end_date
+                    except (ValueError, IndexError):
+                        return False  # Skip malformed headers
+                
+                filtered_conduct_headers = [h for h in conduct_headers if conduct_in_date_range(h)]
+                
                 attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
 
                 conduct_filter = st.text_input("Filter conducts by name:", key="conduct_record_filter").lower()
 
-                # Pre-process headers to group conduct series
+                # Pre-process filtered headers to group conduct series
                 all_conduct_series = defaultdict(dict)
                 one_off_conducts = []
-                for header in conduct_headers:
+                for header in filtered_conduct_headers:
                     try:
                         conduct_name_part = header.split(', ')[1]
                     except IndexError:
@@ -3103,15 +3179,10 @@ elif feature == "Analytics":
         with tab6:
             st.subheader("Daily Attendance")
 
-            # Date range is fixed from June 14 of the current year to today.
-            today = datetime.today().date()
-            start_date = datetime(today.year, 6, 14).date()
-            end_date = today
-            
             st.write(f"Displaying attendance percentage from {start_date.strftime('%d %b %Y')} to {end_date.strftime('%d %b %Y')}.")
 
             if start_date > end_date:
-                st.warning(f"The fixed start date ({start_date.strftime('%d %b %Y')}) is in the future. No data to display.")
+                st.warning(f"The start date ({start_date.strftime('%d %b %Y')}) is after the end date. No data to display.")
                 st.stop()
 
             all_attendance_summary = []
@@ -3123,6 +3194,7 @@ elif feature == "Analytics":
                 person_parade_records = [
                     r for r in records_parade 
                     if r.get('name', '').strip().lower() == name.strip().lower()
+                    and record_in_date_range(r, start_date, end_date)  # Apply date filtering
                 ]
 
                 absent_dates = set()
@@ -3174,6 +3246,28 @@ elif feature == "Analytics":
         st.subheader("Query by Conduct")
         st.info("Select a conduct to see the status of all personnel, including back-crediting to allow for progressive tracking.")
 
+        # Date range selection (same as Personnel mode)
+        st.subheader("📅 Date Range Selection")
+        col1, col2 = st.columns(2)
+        with col1:
+            start_date = st.date_input(
+                "Start Date",
+                value=datetime(datetime.now().year, 6, 14).date(),
+                key="conduct_analytics_start_date"
+            )
+        with col2:
+            end_date = st.date_input(
+                "End Date", 
+                value=datetime.now().date(),
+                key="conduct_analytics_end_date"
+            )
+        
+        if start_date > end_date:
+            st.error("Start date cannot be after end date.")
+            st.stop()
+        
+        st.info(f"Showing conducts from {start_date.strftime('%d %b %Y')} to {end_date.strftime('%d %b %Y')}")
+
         sheet_everything = worksheets.get("everything")
         everything_data = sheet_everything.get_all_values() if sheet_everything else []
 
@@ -3184,9 +3278,21 @@ elif feature == "Analytics":
         headers = everything_data[0]
         conduct_headers = headers[3:]
         
+        # Filter conduct headers based on date range
+        def conduct_in_date_range(conduct_header):
+            """Check if a conduct header falls within the selected date range"""
+            try:
+                conduct_date_str = conduct_header.split(',')[0].strip()
+                conduct_date = datetime.strptime(conduct_date_str, "%d%m%Y").date()
+                return start_date <= conduct_date <= end_date
+            except (ValueError, IndexError):
+                return False  # Skip malformed headers
+        
+        filtered_conduct_headers = [h for h in conduct_headers if conduct_in_date_range(h)]
+        
         selected_conducts = st.multiselect(
             "Select one or more conducts to view:",
-            options=conduct_headers
+            options=filtered_conduct_headers
         )
 
         if not selected_conducts:
@@ -3198,9 +3304,9 @@ elif feature == "Analytics":
         nominal_map = {p['name'].lower(): p for p in records_nominal}
         attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
 
-        # Pre-process headers to group conduct series
+        # Pre-process filtered headers to group conduct series
         all_conduct_series = defaultdict(dict)
-        for header in conduct_headers:
+        for header in filtered_conduct_headers:
             try:
                 conduct_name_part = header.split(', ')[1]
             except IndexError:
