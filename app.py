@@ -503,6 +503,10 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
 
     # Extract all platoons from nominal records for the selected company
     all_platoons = set(record.get('platoon', 'Coy HQ') for record in company_nominal_records)
+    
+    # Filter out platoon "1" for HQ company (UIP)
+    if selected_company == "HQ":
+        all_platoons.discard("1")
 
     # Initialize a dictionary to hold parade records active today, organized by platoon
     active_parade_by_platoon = defaultdict(list)
@@ -513,6 +517,10 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             continue
 
         platoon = parade.get('platoon', 'Coy HQ')  # Default to 'Coy HQ' if not specified
+        
+        # Skip platoon "1" for HQ company
+        if selected_company == "HQ" and platoon == "1":
+            continue
 
         start_str = parade.get('start_date_ddmmyyyy', '')
         end_str = parade.get('end_date_ddmmyyyy', '')
@@ -528,7 +536,11 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             continue
 
     # Initialize counters for overall nominal and absent strengths
-    total_nominal = len(company_nominal_records)
+    # Exclude platoon "1" personnel from HQ company total
+    if selected_company == "HQ":
+        total_nominal = len([r for r in company_nominal_records if r.get('platoon', 'Coy HQ') != "1"])
+    else:
+        total_nominal = len(company_nominal_records)
     total_absent = 0
 
     # Initialize storage for platoon-wise details
@@ -558,7 +570,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                 "S4": "S4 Branch",
                 "SSP": "SSP",
                 "BCS": "BCS",
-                "UIP": "UIP"
+                "1": "UIP"
             }
             platoon_label = hq_branch_map.get(platoon, f"S{platoon} Branch")
         elif selected_company == "Bravo":
@@ -704,6 +716,10 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     
     # Count present personnel by rank category
     for record in company_nominal_records:
+        # Skip platoon "1" for HQ company
+        if selected_company == "HQ" and record.get('platoon', 'Coy HQ') == "1":
+            continue
+            
         rank = record.get('rank', '').upper()
         name = record.get('name', '').strip()
         
