@@ -171,6 +171,22 @@
         "password": "pass",
         "companies": ["HQ"]
     },
+    "hq1": {
+        "password": "Vk8#mQ7nL!dR9xW",
+        "companies": ["HQ"]
+    },
+    "hq2": {
+        "password": "Nj5$pY3zF&hM8qT",
+        "companies": ["HQ"]
+    },
+    "hq3": {
+        "password": "Br2@kX6vS*gN4lP",
+        "companies": ["HQ"]
+    },
+    "hq4": {
+        "password": "Cw9%yJ1nR^mT7eL",
+        "companies": ["HQ"]
+    },
     "cpt_asyraf": {
         "password": "asyrafP@ss27",
         "companies": ["Charlie"]
