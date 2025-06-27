@@ -24,7 +24,7 @@ SSP_PERSONNEL = {
     "Charlie": ["PTE RYAN", "SCT HONG KAI"],
     "Bravo": ["PTE QIU BIN", "SCT SYAWAL"],
     "MSC": ["SCT GARETH WONG QING YI"],
-    "Alpha": ["SCT KARTIGANESH", "PTE ISIDIYAZ RIFQI"],
+    "Alpha": ["SCT GANESH", "PTE ISIDIYAZ RIFQI", "PTE YUSOF"],
     "HQ": ["PTE MUHAMMAD SABRI BIN RAZALI", "PTE THENESH SARAVANAN", "CPL DEVANAND S/O GANESAN", "CPL DERRICK TAN JIAN HUI"],
     "Wolf": []  # Add Wolf company with empty list for now
 }
