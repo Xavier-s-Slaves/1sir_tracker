@@ -240,14 +240,15 @@ COMPANY_SPREADSHEETS = {
 def extract_attendance_data(edited_data):
     """
     Extracts attendance data from the edited conduct data.
-    Returns a list of tuples containing (name, rank, is_present).
+    Returns a list of tuples containing (name, rank, attendance_status).
+    attendance_status can be "Yes", "No", or "N/A"
     """
     attendance_data = []
     for row in edited_data:
         name = row.get("Name", "").strip()
         rank = row.get("Rank", "").strip()
-        is_present = not row.get("Is_Outlier", False)
-        attendance_data.append((name, rank, is_present))
+        attendance_status = row.get("Attendance_Status", "No")
+        attendance_data.append((name, rank, attendance_status))
     return attendance_data
 def parse_4d_number(num_str: str):
     """
@@ -351,7 +352,7 @@ def add_conduct_column_everything(sheet_everything, conduct_date: str, conduct_n
     - sheet_everything: gspread Worksheet object for 'Everything' sheet
     - conduct_date (str): Date of the conduct in DDMMYYYY format
     - conduct_name (str): Name of the conduct
-    - attendance_data: List of tuples containing (name, rank, is_present)
+    - attendance_data: List of tuples containing (name, rank, attendance_status)
     """
     # Define the new column header
     new_col_header = f"{conduct_date}, {conduct_name}"
@@ -366,8 +367,8 @@ def add_conduct_column_everything(sheet_everything, conduct_date: str, conduct_n
         new_col_index = len(all_data[0]) + 1
         sheet_everything.update_cell(1, new_col_index, new_col_header)
         
-        # Create a mapping of names to their attendance
-        attendance_map = {name: is_present for name, rank, is_present in attendance_data}
+        # Create a mapping of names to their attendance status
+        attendance_map = {name: attendance_status for name, rank, attendance_status in attendance_data}
         
         # Prepare batch updates
         updates = []
@@ -375,9 +376,9 @@ def add_conduct_column_everything(sheet_everything, conduct_date: str, conduct_n
             name = row[2].strip()  # Assuming Name is in second column
             # Check if this person was in the conduct
             if name in attendance_map:
-                value = "Yes" if attendance_map[name] else "No"
+                value = attendance_map[name]  # "Yes", "No", or "N/A"
             else:
-                value = "No"  # Default to No if person wasn't in the conduct
+                value = ""  # Default to empty if person wasn't in the conduct
             
             cell = gspread.utils.rowcol_to_a1(row_idx, new_col_index)
             updates.append({
@@ -402,7 +403,7 @@ def update_conduct_column_everything(sheet_everything, conduct_date: str, conduc
     - sheet_everything: gspread Worksheet object for 'Everything' sheet
     - conduct_date (str): Date of the conduct in DDMMYYYY format
     - conduct_name (str): Name of the conduct
-    - attendance_data: List of tuples containing (name, rank, is_present)
+    - attendance_data: List of tuples containing (name, rank, attendance_status)
     """
     target_col_header = f"{conduct_date}, {conduct_name}"
     
@@ -421,15 +422,15 @@ def update_conduct_column_everything(sheet_everything, conduct_date: str, conduc
             #st.error(f"Conduct column '{target_col_header}' not found in Everything sheet")
             return
 
-        # Create a mapping of names to their attendance
-        attendance_map = {name: is_present for name, rank, is_present in attendance_data}
+        # Create a mapping of names to their attendance status
+        attendance_map = {name: attendance_status for name, rank, attendance_status in attendance_data}
         
         # Prepare updates
         updates = []
         for row_idx, row in enumerate(all_data[1:], start=2):  # Start from 2 to skip header
             name = row[2].strip()  # Assuming Name is in second column
             if name in attendance_map:
-                value = "Yes" if attendance_map[name] else "No"
+                value = attendance_map[name]  # "Yes", "No", or "N/A"
                 cell = gspread.utils.rowcol_to_a1(row_idx, conduct_col_index)
                 updates.append({
                     'range': cell,
@@ -1163,7 +1164,7 @@ def build_onstatus_table(platoon: str, date_obj: datetime, records_nominal, reco
 def build_conduct_table(platoon: str, date_obj: datetime, records_nominal, records_parade):
     """
     Return a list of dicts for all personnel in the platoon.
-    'Is_Outlier' is True if the person has an active status on the given date.
+    'Attendance_Status' can be "Yes", "No", or "N/A" - default is "No" if person has active status, "Yes" if not.
     """
     parade_map = defaultdict(list)
     for row in records_parade:
@@ -1197,13 +1198,15 @@ def build_conduct_table(platoon: str, date_obj: datetime, records_nominal, recor
                     f"{parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}"
                 )
                 continue
-        is_outlier = len(active_statuses) > 0
-        status_desc = ", ".join(active_statuses) if is_outlier else ""
+        has_active_status = len(active_statuses) > 0
+        status_desc = ", ".join(active_statuses) if has_active_status else ""
+        attendance_status = "No" if has_active_status else "Yes"
+        
         data.append({
             'Rank': rank,
             'Name': name,
             '4D_Number': four_d,
-            'Is_Outlier': is_outlier,
+            'Attendance_Status': attendance_status,
             'StatusDesc': status_desc
         })
     logger.info(f"Built conduct table with {len(data)} personnel for platoon {platoon} on {date_obj.strftime('%d%m%Y')}.")
@@ -1216,7 +1219,7 @@ def build_conduct_table(platoon: str, date_obj: datetime, records_nominal, recor
 def build_fake_conduct_table(platoon: str, date_obj: datetime, records_nominal, records_parade):
     """
     Return a list of dicts for all personnel in the platoon.
-    'Is_Outlier' is True if the person has an active status on the given date.
+    'Attendance_Status' defaults to "Yes" for fake table (used in updates).
     """
     parade_map = defaultdict(list)
     for row in records_parade:
@@ -1233,31 +1236,15 @@ def build_fake_conduct_table(platoon: str, date_obj: datetime, records_nominal, 
         four_d = person.get('4d_number', '')
         name_key = name.strip().upper()
 
-        active_statuses = []  # List to hold all active statuses for the person
+        # For fake table, we don't check active statuses - just default to "Yes"
+        attendance_status = "Yes"
+        status_desc = ""
         
-
-        for parade in parade_map.get(name_key, []):
-            try:
-                start_dt = datetime.strptime(parade.get('start_date_ddmmyyyy', ''), "%d%m%Y").date()
-                end_dt = datetime.strptime(parade.get('end_date_ddmmyyyy', ''), "%d%m%Y").date()
-                if start_dt <= date_obj.date() <= end_dt:
-                    status = parade.get('status', '').strip().upper()
-                    if status:  # Ensure status is not empty
-                        active_statuses.append(status)
-            except ValueError:
-                logger.warning(
-                    f"Invalid date format for {name_key}: "
-                    f"{parade.get('start_date_ddmmyyyy', '')} - {parade.get('end_date_ddmmyyyy', '')}"
-                )
-                continue
-        active_statuses = 0
-        is_outlier = active_statuses > 0
-        status_desc = ", ".join(active_statuses) if is_outlier else ""
         data.append({
             'Rank': rank,
             'Name': name,
             '4D_Number': four_d,
-            'Is_Outlier': is_outlier,
+            'Attendance_Status': attendance_status,
             'StatusDesc': status_desc
         })
     logger.info(f"Built conduct table with {len(data)} personnel for platoon {platoon} on {date_obj.strftime('%d%m%Y')}.")
@@ -1448,7 +1435,7 @@ Examples:
         )
 
     if st.session_state.conduct_table:
-        st.write("Toggle 'Is_Outlier' if not participating, or add new rows for extra people.")
+        st.write("Select attendance status: 'Yes' = attended, 'No' = absent, 'N/A' = not applicable")
         sorted_conduct_table = sorted(st.session_state.conduct_table, 
                                  key=lambda x: "ZZZ" if x.get("Rank", "").upper() in NON_CMD_RANKS else x.get("Rank", ""))
         edited_data = st.data_editor(
@@ -1456,6 +1443,13 @@ Examples:
             use_container_width=True,
             num_rows="fixed",
             hide_index=True,
+            column_config={
+                "Attendance_Status": st.column_config.SelectboxColumn(
+                    "Attendance Status",
+                    options=["Yes", "No", "N/A"],
+                    required=True
+                )
+            }
         )
     else:
         edited_data = st.data_editor(
@@ -1463,6 +1457,13 @@ Examples:
             use_container_width=True,
             num_rows="fixed",
             hide_index=True,
+            column_config={
+                "Attendance_Status": st.column_config.SelectboxColumn(
+                    "Attendance Status",
+                    options=["Yes", "No", "N/A"],
+                    required=True
+                )
+            }
         )
 
     if st.button("Finalize Conduct"):
@@ -1512,7 +1513,7 @@ Examples:
             four_d = is_valid_4d(row.get("4D_Number", ""))
             name_ = ensure_str(row.get("Name", ""))
             rank_ = ensure_str(row.get("Rank", ""))
-            is_outlier = row.get("Is_Outlier", False)
+            attendance_status = row.get("Attendance_Status", "No")
             status_desc = ensure_str(row.get("StatusDesc", ""))
 
             # If both 4D and Name are missing, skip
@@ -1532,8 +1533,12 @@ Examples:
                     f"Platoon={platoon} in company '{selected_company}' by user '{submitted_by}'."
                 )
 
-            if is_outlier:
-                if status_desc:
+            if attendance_status in ["No", "N/A"]:
+                if attendance_status == "N/A":
+                    # For N/A, always show (N/A) even if no other status description
+                    combined_status = f"N/A{', ' + status_desc if status_desc else ''}"
+                    all_outliers.append(f"{four_d} {name_} ({combined_status})" if four_d else f"{name_} ({combined_status})")
+                elif status_desc:
                     all_outliers.append(f"{four_d} {name_} ({status_desc})" if four_d else f"{name_} ({status_desc})")
                 else:
                     all_outliers.append(f"{four_d} {name_}" if four_d else f"{name_}")
@@ -1568,9 +1573,9 @@ Examples:
                 else:
                     cmd_totals[plt] += 1
 
-        # Count participating non-cmd and cmd
+        # Count participating non-cmd and cmd (only "Yes" status counts as participating)
         for row in edited_data:
-            if not row.get('Is_Outlier', False):
+            if row.get('Attendance_Status', 'No') == "Yes":
                 plt = platoon
                 if plt in platoon_options:
                     if row.get('Rank', '').upper() in NON_CMD_RANKS:
@@ -1752,18 +1757,19 @@ elif feature == "Add Ad-Hoc Conduct":
                 except ValueError:
                     continue
             
-            is_outlier = len(active_statuses) > 0
-            status_desc = ", ".join(active_statuses) if is_outlier else ""
+            has_active_status = len(active_statuses) > 0
+            status_desc = ", ".join(active_statuses) if has_active_status else ""
+            attendance_status = "No" if has_active_status else "Yes"
             adhoc_data.append({
                 'Rank': person.get('rank', ''), 'Name': name, '4D_Number': person.get('4d_number', ''),
-                'Is_Outlier': is_outlier, 'StatusDesc': status_desc
+                'Attendance_Status': attendance_status, 'StatusDesc': status_desc
             })
 
         st.session_state.adhoc_personnel = adhoc_data
         logger.info(f"Loaded {len(adhoc_data)} personnel for ad-hoc conduct by user '{st.session_state.username}'.")
 
     if st.session_state.adhoc_personnel:
-        st.write("Review outlier status. Uncheck 'Is_Outlier' if the person participated.")
+        st.write("Select attendance status: 'Yes' = attended, 'No' = absent, 'N/A' = not applicable")
         edited_data = st.data_editor(
             st.session_state.adhoc_personnel,
             use_container_width=True, num_rows="fixed", hide_index=True,
@@ -1771,6 +1777,11 @@ elif feature == "Add Ad-Hoc Conduct":
                 "Name": st.column_config.TextColumn("Name", disabled=True),
                 "4D_Number": st.column_config.TextColumn("4D_Number", disabled=True),
                 "Rank": st.column_config.TextColumn("Rank", disabled=True),
+                "Attendance_Status": st.column_config.SelectboxColumn(
+                    "Attendance Status",
+                    options=["Yes", "No", "N/A"],
+                    required=True
+                )
             }
         )
     else:
@@ -1802,7 +1813,7 @@ elif feature == "Add Ad-Hoc Conduct":
         new_col_index = len(all_everything_data[0]) + 1
         SHEET_EVERYTHING.update_cell(1, new_col_index, new_col_header)
 
-        participation_map = {row["Name"]: "No" if row["Is_Outlier"] else "Yes" for row in edited_data}
+        participation_map = {row["Name"]: row["Attendance_Status"] for row in edited_data}
         
         updates = []
         for row_idx, row in enumerate(all_everything_data[1:], start=2):
@@ -1814,9 +1825,9 @@ elif feature == "Add Ad-Hoc Conduct":
         if updates:
             SHEET_EVERYTHING.batch_update(updates)
 
-        # Update 'Conducts' sheet
-        non_cmd_part = sum(1 for p in edited_data if not p["Is_Outlier"] and p["Rank"].upper() in NON_CMD_RANKS)
-        cmd_part = sum(1 for p in edited_data if not p["Is_Outlier"] and p["Rank"].upper() not in NON_CMD_RANKS)
+        # Update 'Conducts' sheet (only "Yes" status counts as participating)
+        non_cmd_part = sum(1 for p in edited_data if p["Attendance_Status"] == "Yes" and p["Rank"].upper() in NON_CMD_RANKS)
+        cmd_part = sum(1 for p in edited_data if p["Attendance_Status"] == "Yes" and p["Rank"].upper() not in NON_CMD_RANKS)
         non_cmd_total = sum(1 for p in edited_data if p["Rank"].upper() in NON_CMD_RANKS)
         cmd_total = sum(1 for p in edited_data if p["Rank"].upper() not in NON_CMD_RANKS)
         pt_total_str = f"non-cmd: {non_cmd_part}/{non_cmd_total}\ncmd: {cmd_part}/{cmd_total}\nTOTAL: {non_cmd_part + cmd_part}/{len(edited_data)}"
@@ -1824,10 +1835,26 @@ elif feature == "Add Ad-Hoc Conduct":
         outliers_by_platoon = defaultdict(list)
         name_to_platoon_map = {p['name']: p['platoon'] for p in records_nominal}
         for person in edited_data:
-            if person["Is_Outlier"]:
+            if person["Attendance_Status"] in ["No", "N/A"]:
                 platoon = name_to_platoon_map.get(person["Name"], "Coy HQ")
-                status = f" ({person['StatusDesc']})" if person['StatusDesc'] else ""
-                outliers_by_platoon[platoon].append(f"{person.get('4D_Number', '')} {person['Name']}{status}".strip())
+                if person["Attendance_Status"] == "N/A":
+                    # For N/A, always show (N/A) and filter out any "N/A" from StatusDesc to prevent duplication
+                    status_desc_cleaned = person['StatusDesc'].strip() if person['StatusDesc'] else ""
+                    # Remove any occurrence of "N/A" from the status description
+                    if status_desc_cleaned.lower() in ['n/a', 'na']:
+                        status_desc_cleaned = ""
+                    elif status_desc_cleaned.lower().startswith('n/a'):
+                        status_desc_cleaned = status_desc_cleaned[3:].strip(' ,')
+                    combined_status = f"N/A{', ' + status_desc_cleaned if status_desc_cleaned else ''}"
+                    outliers_by_platoon[platoon].append(f"{person.get('4D_Number', '')} {person['Name']}{status}".strip())
+                elif person['StatusDesc']:
+                    status = f" ({person['StatusDesc']})"
+                    combined_status = f"N/A{', ' + person['StatusDesc'] if person['StatusDesc'] else ''}"
+                    outliers_by_platoon[platoon].append(f"{person.get('4D_Number', '')} {person['Name']}{status}".strip())
+                else:
+                    status = ""
+                    combined_status = f"N/A{', ' + person['StatusDesc'] if person['StatusDesc'] else ''}"
+                    outliers_by_platoon[platoon].append(f"{person.get('4D_Number', '')} {person['Name']}{status}".strip())
         
         platoon_options = ["1", "2", "3", "4", "5", "Coy HQ"]
         outliers_list = [", ".join(outliers_by_platoon.get(p, [])) or "None" for p in platoon_options]
@@ -2065,18 +2092,31 @@ elif feature == "Update Conduct":
                             name = row_data[2].strip()
                             attendance_status = row_data[col_idx].strip().lower()
 
-                            if attendance_status in ("yes", "no"):
+                            if attendance_status in ("yes", "no", "n/a"):
                                 person_nominal = nominal_map.get(name.lower())
                                 if person_nominal:
-                                    is_outlier = attendance_status == "no"
+                                    # Map from Everything sheet values to our attendance status
+                                    if attendance_status == "yes":
+                                        attendance_status_mapped = "Yes"
+                                    elif attendance_status == "no":
+                                        attendance_status_mapped = "No"
+                                    else:  # n/a
+                                        attendance_status_mapped = "N/A"
+                                    
                                     # Look up status description from parsed outliers
                                     status_desc = parsed_outliers.get(name.lower(), {}).get('status_desc', '')
+                                    
+                                    # If status description indicates N/A but attendance was marked as "no", override to N/A
+                                    if attendance_status_mapped == "No" and status_desc and ("n/a" in status_desc.lower() or status_desc.lower().startswith("n/a")):
+                                        attendance_status_mapped = "N/A"
+                                        # Clear StatusDesc to avoid duplication like "(N/A, N/A)"
+                                        status_desc = ""
                                     
                                     conduct_data.append({
                                         'Rank': person_nominal.get('rank', ''),
                                         'Name': name,
                                         '4D_Number': person_nominal.get('4d_number', ''),
-                                        'Is_Outlier': is_outlier,
+                                        'Attendance_Status': attendance_status_mapped,
                                         'StatusDesc': status_desc
                                     })
                 except ValueError:
@@ -2119,11 +2159,23 @@ elif feature == "Update Conduct":
                     for row in conduct_data:
                         # Match by name (case-insensitive) as the primary identifier
                         if row.get("Name", "").strip().lower() == name_to_find.strip().lower():
-                            row["Is_Outlier"] = True
-                            if status_desc:
-                                row["StatusDesc"] = status_desc
+                            # Check if status description indicates N/A
+                            if status_desc and ("n/a" in status_desc.lower() or status_desc.lower().startswith("n/a")):
+                                row["Attendance_Status"] = "N/A"
+                                # Clear StatusDesc to avoid duplication like "(N/A, N/A)"
+                                row["StatusDesc"] = ""
+                            else:
+                                row["Attendance_Status"] = "No"
+                                # Keep original status description for non-N/A cases
+                                if status_desc:
+                                    row["StatusDesc"] = status_desc
                             break
 
+        # Final cleanup: ensure StatusDesc is empty for all N/A cases to prevent duplication
+        for row in conduct_data:
+            if row.get("Attendance_Status") == "N/A":
+                row["StatusDesc"] = ""
+        
         st.session_state.update_conduct_table = conduct_data
         st.success(f"Loaded {len(conduct_data)} personnel for the selected conduct.")
         logger.info(
@@ -2137,10 +2189,18 @@ elif feature == "Update Conduct":
         sorted_conduct_table = sorted(st.session_state.update_conduct_table, 
                                  key=lambda x: "ZZZ" if x.get("Rank", "").upper() in NON_CMD_RANKS else x.get("Rank", ""))
         st.write("In order to update, make sure correct platoon chosen and then press load on status for the table to reflect correct platoon. Hence, whenever changing platoon make sure to press load after that to reflect accordingly.")
+        st.write("Select attendance status: 'Yes' = attended, 'No' = absent, 'N/A' = not applicable")
         edited_data = st.data_editor(
             st.session_state.update_conduct_table,
             num_rows="fixed",
             hide_index=True,
+            column_config={
+                "Attendance_Status": st.column_config.SelectboxColumn(
+                    "Attendance Status",
+                    options=["Yes", "No", "N/A"],
+                    required=True
+                )
+            }
         )
     else:
         edited_data = None
@@ -2194,9 +2254,9 @@ elif feature == "Update Conduct":
             # --- Ad-Hoc Conduct Update Logic ---
             st.info("Updating Ad-Hoc Conduct...")
             
-            # 1. Calculate P/T Total for the ad-hoc group
-            non_cmd_participating = sum(1 for p in edited_data if not p["Is_Outlier"] and p["Rank"].upper() in NON_CMD_RANKS)
-            cmd_participating = sum(1 for p in edited_data if not p["Is_Outlier"] and p["Rank"].upper() not in NON_CMD_RANKS)
+            # 1. Calculate P/T Total for the ad-hoc group (only "Yes" status counts as participating)
+            non_cmd_participating = sum(1 for p in edited_data if p["Attendance_Status"] == "Yes" and p["Rank"].upper() in NON_CMD_RANKS)
+            cmd_participating = sum(1 for p in edited_data if p["Attendance_Status"] == "Yes" and p["Rank"].upper() not in NON_CMD_RANKS)
             non_cmd_total_group = sum(1 for p in edited_data if p["Rank"].upper() in NON_CMD_RANKS)
             cmd_total_group = sum(1 for p in edited_data if p["Rank"].upper() not in NON_CMD_RANKS)
             new_pt_total_value = f"non-cmd: {non_cmd_participating}/{non_cmd_total_group}\ncmd: {cmd_participating}/{cmd_total_group}\nTOTAL: {non_cmd_participating + cmd_participating}/{len(edited_data)}"
@@ -2207,10 +2267,24 @@ elif feature == "Update Conduct":
             outliers_by_platoon = defaultdict(list)
             name_to_platoon_map = {p['name']: p['platoon'] for p in records_nominal}
             for person in edited_data:
-                if person["Is_Outlier"]:
+                if person["Attendance_Status"] in ["No", "N/A"]:
                     platoon_of_person = name_to_platoon_map.get(person["Name"], "Coy HQ")
-                    status = f" ({person['StatusDesc']})" if person['StatusDesc'] else ""
-                    outliers_by_platoon[platoon_of_person].append(f"{person.get('4D_Number', '')} {person['Name']}{status}".strip())
+                    base_name = f"{person.get('4D_Number', '')} {person['Name']}".strip()
+                    
+                    if person["Attendance_Status"] == "N/A":
+                        # For N/A, always show (N/A) and filter out any "N/A" from StatusDesc to prevent duplication
+                        status_desc_cleaned = person['StatusDesc'].strip() if person['StatusDesc'] else ""
+                        # Remove any occurrence of "N/A" from the status description
+                        if status_desc_cleaned.lower() in ['n/a', 'na']:
+                            status_desc_cleaned = ""
+                        elif status_desc_cleaned.lower().startswith('n/a'):
+                            status_desc_cleaned = status_desc_cleaned[3:].strip(' ,')
+                        combined_status = f"N/A{', ' + status_desc_cleaned if status_desc_cleaned else ''}"
+                        outliers_by_platoon[platoon_of_person].append(f"{base_name} ({combined_status})")
+                    elif person['StatusDesc']:
+                        outliers_by_platoon[platoon_of_person].append(f"{base_name} ({person['StatusDesc']})")
+                    else:
+                        outliers_by_platoon[platoon_of_person].append(base_name)
             
             platoon_options = ["1", "2", "3", "4", "5", "Coy HQ"]
             for i, p_opt in enumerate(platoon_options):
@@ -2223,14 +2297,14 @@ elif feature == "Update Conduct":
             st.info("Updating Platoon Conduct...")
             platoon = str(st.session_state.conduct_platoon).strip()
             
-            # 1. Calculate and update the specific platoon's P/T value
+            # 1. Calculate and update the specific platoon's P/T value (only "Yes" status counts as participating)
             records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-            non_cmd_counts = sum(1 for row in edited_data if not row.get('Is_Outlier', False) and row.get('Rank', '').upper() in NON_CMD_RANKS)
-            cmd_counts = sum(1 for row in edited_data if not row.get('Is_Outlier', False) and row.get('Rank', '').upper() not in NON_CMD_RANKS)
+            non_cmd_counts = sum(1 for row in edited_data if row.get('Attendance_Status', 'No') == "Yes" and row.get('Rank', '').upper() in NON_CMD_RANKS)
+            cmd_counts = sum(1 for row in edited_data if row.get('Attendance_Status', 'No') == "Yes" and row.get('Rank', '').upper() not in NON_CMD_RANKS)
             
             non_cmd_totals_platoon = sum(1 for p in records_nominal if p.get("platoon", "") == platoon and p.get("rank", "").upper() in NON_CMD_RANKS)
             cmd_totals_platoon = sum(1 for p in records_nominal if p.get("platoon", "") == platoon and p.get("rank", "").upper() not in NON_CMD_RANKS)
-            new_participating = len([r for r in edited_data if not r['Is_Outlier']])
+            new_participating = len([r for r in edited_data if r.get('Attendance_Status', 'No') == "Yes"])
             new_total_platoon = len(edited_data)
             
             new_pt_value = f"non-cmd: {non_cmd_counts}/{non_cmd_totals_platoon}\ncmd: {cmd_counts}/{cmd_totals_platoon}\nTOTAL: {new_participating}/{new_total_platoon}"
@@ -2245,12 +2319,25 @@ elif feature == "Update Conduct":
                 st.stop()
             SHEET_CONDUCTS.update_cell(row_number, pt_column_index, new_pt_value)
 
-            # 2. Calculate and update the specific platoon's outliers
-            outliers_for_platoon = [
-                (f"{row.get('4D_Number', '')} {row['Name']}" + 
-                 (f" ({row.get('StatusDesc', '')})" if row.get('StatusDesc') else "")).strip()
-                for row in edited_data if row.get('Is_Outlier', False)
-            ]
+            # 2. Calculate and update the specific platoon's outliers (both "No" and "N/A" status count as outliers)
+            outliers_for_platoon = []
+            for row in edited_data:
+                if row.get('Attendance_Status', 'Yes') in ["No", "N/A"]:
+                    base_name = f"{row.get('4D_Number', '')} {row['Name']}".strip()
+                    if row.get('Attendance_Status') == "N/A":
+                        # For N/A, always show (N/A) and filter out any "N/A" from StatusDesc to prevent duplication
+                        status_desc_cleaned = row.get('StatusDesc', '').strip() if row.get('StatusDesc') else ""
+                        # Remove any occurrence of "N/A" from the status description
+                        if status_desc_cleaned.lower() in ['n/a', 'na']:
+                            status_desc_cleaned = ""
+                        elif status_desc_cleaned.lower().startswith('n/a'):
+                            status_desc_cleaned = status_desc_cleaned[3:].strip(' ,')
+                        combined_status = f"N/A{', ' + status_desc_cleaned if status_desc_cleaned else ''}"
+                        outliers_for_platoon.append(f"{base_name} ({combined_status})")
+                    elif row.get('StatusDesc'):
+                        outliers_for_platoon.append(f"{base_name} ({row.get('StatusDesc')})")
+                    else:
+                        outliers_for_platoon.append(base_name)
             SHEET_CONDUCTS.update_cell(row_number, outlier_column_index, ", ".join(outliers_for_platoon) or "None")
 
             # 3. Recalculate and update the overall P/T Total in column 9
@@ -2875,6 +2962,7 @@ elif feature == "Analytics":
                 
                 total_leave_days = 0
                 leave_details = []
+                    
                     
                 for record in person_parade_records:
                     status = record.get("status", "").lower()
