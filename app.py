@@ -469,6 +469,113 @@ def get_sheets(selected_company: str):
         return None
 
 
+def generate_battalion_message(target_date: Optional[datetime] = None) -> str:
+    """
+    Generate a battalion-level summary message across all companies.
+    """
+    # Get current date and time
+    today = target_date if target_date else datetime.now(TIMEZONE)
+    date_str = today.strftime("%d %b %y, %A")
+    
+    # Initialize battalion totals
+    battalion_officer_present = battalion_officer_total = 0
+    battalion_wospec_present = battalion_wospec_total = 0
+    battalion_trooper_present = battalion_trooper_total = 0
+    battalion_ssp_present = battalion_ssp_total = 0
+    
+    # Process each company
+    companies = ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ"]
+    
+    for company in companies:
+        try:
+            # Get worksheets for this company
+            worksheets = get_sheets(company)
+            if not worksheets:
+                continue
+                
+            # Get records for this company
+            company_nominal = get_nominal_records(company, worksheets["nominal"])
+            company_parade = get_allparade_records(company, worksheets["parade"])
+            
+            # For battalion message, include all personnel including UIP from HQ
+            
+            # Get SSP personnel for this company
+            company_ssp_personnel = SSP_PERSONNEL.get(company, [])
+            
+            # Process each person in the company
+            for record in company_nominal:
+                rank = record.get('rank', '').upper()
+                name = record.get('name', '').strip()
+                
+                # Check if person is absent (has active parade status)
+                is_absent = False
+                name_key = name.lower()
+                for parade in company_parade:
+                    if parade.get('name', '').strip().lower() == name_key:
+                        start_str = parade.get('start_date_ddmmyyyy', '')
+                        end_str = parade.get('end_date_ddmmyyyy', '')
+                        try:
+                            start_dt = datetime.strptime(start_str, "%d%m%Y").date()
+                            end_dt = datetime.strptime(end_str, "%d%m%Y").date()
+                            if start_dt <= today.date() <= end_dt:
+                                status_prefix = parade.get('status', '').lower().split()[0]
+                                if status_prefix in LEGEND_STATUS_PREFIXES:
+                                    is_absent = True
+                                    break
+                        except ValueError:
+                            continue
+                
+                # Check if person is SSP (by matching rank + name)
+                full_name_rank = f"{rank} {name}".upper()
+                is_ssp = any(ssp_person.upper() == full_name_rank for ssp_person in company_ssp_personnel)
+                
+                # Categorize by rank/role (SSP personnel are counted ONLY in SSP, not in troopers)
+                officer_ranks = ["2LT", "LTA", "CPT", "MAJ", "LTC", "DX10"]
+                
+                if is_ssp:
+                    # SSP personnel - count here and skip other categories
+                    battalion_ssp_total += 1
+                    if not is_absent:
+                        battalion_ssp_present += 1
+                elif rank in officer_ranks:
+                    battalion_officer_total += 1
+                    if not is_absent:
+                        battalion_officer_present += 1
+                elif "WO" in rank or "SG" in rank or "ME" in rank:
+                    battalion_wospec_total += 1
+                    if not is_absent:
+                        battalion_wospec_present += 1
+                elif rank in NON_CMD_RANKS:
+                    # Regular troopers (excluding SSP personnel)
+                    battalion_trooper_total += 1
+                    if not is_absent:
+                        battalion_trooper_present += 1
+                        
+        except Exception as e:
+            logger.warning(f"Error processing company {company} for battalion message: {e}")
+            continue
+    
+    # Calculate battalion totals
+    battalion_total_present = (battalion_officer_present + battalion_wospec_present + 
+                              battalion_trooper_present + battalion_ssp_present)
+    battalion_total_strength = (battalion_officer_total + battalion_wospec_total + 
+                               battalion_trooper_total + battalion_ssp_total)
+    
+    # Build the message
+    message_lines = []
+    message_lines.append("*🐆 1XX IVT*")
+    message_lines.append("*👥 Bn Parade State*")
+    message_lines.append(f"*📅 {date_str}*\n")
+    message_lines.append(f"> Battalion Total: Updated by BOS")
+    message_lines.append(f"- Officer: {battalion_officer_present}/{battalion_officer_total}")
+    message_lines.append(f"- WOSpecs: {battalion_wospec_present}/{battalion_wospec_total}")
+    message_lines.append(f"- Troopers: {battalion_trooper_present}/{battalion_trooper_total}")
+    message_lines.append(f"- SSP: {battalion_ssp_present}/{battalion_ssp_total}")
+    message_lines.append(f"- Sub-Total: {battalion_total_present}/{battalion_total_strength}")
+    
+    return "\n".join(message_lines)
+
+
 def generate_company_message(selected_company: str, nominal_records: List[Dict], parade_records: List[Dict], target_date: Optional[datetime] = None) -> str:
     """
     Generate a company-specific message in the specified format.
@@ -3667,21 +3774,39 @@ elif feature == "Analytics":
 elif feature == "Message":
     st.header("Parade State Message")
 
-    # --- 1) Existing WhatsApp Message Generation for Selected Company ---
-    records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
-    records_parade2 = get_allparade_records(selected_company, SHEET_PARADE)
+    # Message type selection
+    message_type = st.radio(
+        "Select Message Type",
+        ("Company Message", "Battalion Summary"),
+        horizontal=True
+    )
 
     selected_date = st.date_input("Select Parade Date", datetime.now(TIMEZONE).date())
     target_datetime = datetime.combine(selected_date, datetime.min.time())
-    # Fetch nominal and parade records for the selected company
-    company_nominal = [record for record in records_nominal if record['company'] == selected_company]
-    company_parade = [record for record in records_parade2 if record['company'] == selected_company]
 
-    if not company_nominal:
-        st.warning(f"No nominal records found for company '{selected_company}'.")
-        st.stop()
+    if message_type == "Company Message":
+        # --- Company-specific message ---
+        records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+        records_parade2 = get_allparade_records(selected_company, SHEET_PARADE)
 
-    # Generate the company-specific message
-    company_message = generate_company_message(selected_company, company_nominal, company_parade, target_date=target_datetime)
-    st.code(company_message, language='text')
+        # Fetch nominal and parade records for the selected company
+        company_nominal = [record for record in records_nominal if record['company'] == selected_company]
+        company_parade = [record for record in records_parade2 if record['company'] == selected_company]
+
+        if not company_nominal:
+            st.warning(f"No nominal records found for company '{selected_company}'.")
+            st.stop()
+
+        # Generate the company-specific message
+        company_message = generate_company_message(selected_company, company_nominal, company_parade, target_date=target_datetime)
+        st.code(company_message, language='text')
+
+    elif message_type == "Battalion Summary":
+        # --- Battalion summary message ---
+        st.info("Generating battalion summary across all six companies...")
+        
+        with st.spinner("Loading data from all companies..."):
+            battalion_message = generate_battalion_message(target_date=target_datetime)
+        
+        st.code(battalion_message, language='text')
 
