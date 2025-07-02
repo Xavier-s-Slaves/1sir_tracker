@@ -3391,6 +3391,16 @@ elif feature == "Analytics":
                 headers = everything_data[0]
                 conduct_headers = headers[3:]
                 
+                # Define SBO 3 requirements (same as TAB 7)
+                sbo3_requirements = {
+                    "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di"], "current": 0},
+                    "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
+                    "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm"], "current": 0},
+                    "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc"], "current": 0},
+                    "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
+                    "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
+                }
+                
                 # Filter conduct headers based on date range (reuse the function from tab 4)
                 def conduct_in_date_range(conduct_header):
                     """Check if a conduct header falls within the selected date range"""
@@ -3457,9 +3467,41 @@ elif feature == "Analytics":
                     nominal_info = nominal_map.get(name.lower(), {})
                     rank = nominal_info.get('rank', 'N/A')
                     
+                    # Group conducts by SBO 3 categories using keyword matching
+                    categorized_conducts = {category: [] for category in sbo3_requirements.keys()}
+                    uncategorized_conducts = []
+                    
+                    for conduct in filtered_conducts:
+                        conduct_name = conduct.lower()
+                        matched_category = None
+                        
+                        # Check which category this conduct belongs to
+                        for category, requirements in sbo3_requirements.items():
+                            for keyword in requirements["keywords"]:
+                                if keyword.lower() in conduct_name:
+                                    categorized_conducts[category].append(conduct)
+                                    matched_category = category
+                                    break
+                            if matched_category:
+                                break
+                        
+                        if not matched_category:
+                            uncategorized_conducts.append(conduct)
+                    
                     with st.expander(f"View conduct records for {rank} {name}"):
-                        if filtered_conducts:
-                            st.write(", ".join(sorted(list(set(filtered_conducts)))))
+                        if any(categorized_conducts.values()) or uncategorized_conducts:
+                            # Display by SBO 3 categories
+                            for category, conducts in categorized_conducts.items():
+                                if conducts:
+                                    st.write(f"**{category}** ({len(conducts)}/{sbo3_requirements[category]['target']}):")
+                                    for conduct in sorted(conducts):
+                                        st.write(f"  • {conduct}")
+                            
+                            # Display uncategorized conducts
+                            if uncategorized_conducts:
+                                st.write("**Other Conducts:**")
+                                for conduct in sorted(uncategorized_conducts):
+                                    st.write(f"  • {conduct}")
                         else:
                             st.write("No matching conducts found.")
 
@@ -3536,11 +3578,11 @@ elif feature == "Analytics":
             
             # Define SBO 3 requirements
             sbo3_requirements = {
-                "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek"], "current": 0},
+                "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di"], "current": 0},
                 "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
                 "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm"], "current": 0},
-                "Combat Circuit": {"target": 1, "keywords": ["combat circuit"], "current": 0},
-                "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit"], "current": 0},
+                "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc"], "current": 0},
+                "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
                 "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
             }
             
@@ -3677,6 +3719,16 @@ elif feature == "Analytics":
         headers = everything_data[0]
         conduct_headers = headers[3:]
         
+        # Define SBO 3 requirements (same as TAB 7)
+        sbo3_requirements = {
+            "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di"], "current": 0},
+            "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
+            "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm"], "current": 0},
+            "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc"], "current": 0},
+            "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
+            "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
+        }
+        
         # Filter conduct headers based on date range
         def conduct_in_date_range(conduct_header):
             """Check if a conduct header falls within the selected date range"""
@@ -3689,10 +3741,43 @@ elif feature == "Analytics":
         
         filtered_conduct_headers = [h for h in conduct_headers if conduct_in_date_range(h)]
         
+        # Group conducts by SBO 3 categories for better organization
+        categorized_conducts = {category: [] for category in sbo3_requirements.keys()}
+        uncategorized_conducts = []
+        
+        for conduct in filtered_conduct_headers:
+            conduct_name = conduct.lower()
+            matched_category = None
+            
+            # Check which category this conduct belongs to
+            for category, requirements in sbo3_requirements.items():
+                for keyword in requirements["keywords"]:
+                    if keyword.lower() in conduct_name:
+                        categorized_conducts[category].append(conduct)
+                        matched_category = category
+                        break
+                if matched_category:
+                    break
+            
+            if not matched_category:
+                uncategorized_conducts.append(conduct)
+        
+        # Create organized options for multiselect
+        organized_options = []
+        for category, conducts in categorized_conducts.items():
+            if conducts:
+                organized_options.extend([f"--- {category.upper()} ---"] + sorted(conducts))
+        
+        if uncategorized_conducts:
+            organized_options.extend(["--- OTHER CONDUCTS ---"] + sorted(uncategorized_conducts))
+        
         selected_conducts = st.multiselect(
-            "Select one or more conducts to view:",
-            options=filtered_conduct_headers
+            "Select one or more conducts to view (organized by SBO 3 categories):",
+            options=organized_options
         )
+
+        # Filter out category headers from selection
+        selected_conducts = [c for c in selected_conducts if not c.startswith("---")]
 
         if not selected_conducts:
             st.info("Please select a conduct from the list above.")
@@ -3716,7 +3801,18 @@ elif feature == "Analytics":
                 all_conduct_series[base_name.strip()][int(session)] = header
         
         for conduct_header in selected_conducts:
-            st.markdown(f"#### Results for: `{conduct_header}`")
+            # Determine SBO 3 category for this conduct
+            conduct_category = "Other"
+            conduct_name = conduct_header.lower()
+            for category, requirements in sbo3_requirements.items():
+                for keyword in requirements["keywords"]:
+                    if keyword.lower() in conduct_name:
+                        conduct_category = category
+                        break
+                if conduct_category != "Other":
+                    break
+            
+            st.markdown(f"#### Results for: `{conduct_header}` ({conduct_category})")
 
             # Determine if the selected conduct is part of a series
             base_name_selected, session_selected = None, None
