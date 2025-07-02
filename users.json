@@ -234,5 +234,9 @@
     "3sg_lam": {
         "password": "lamP@ss38",
         "companies": ["Charlie"]
+    },
+    "DOO": {
+        "password": "bnBosP@ss2024",
+        "companies": ["Battalion"]
     }
 }

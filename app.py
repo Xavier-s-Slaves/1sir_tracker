@@ -1372,14 +1372,22 @@ selected_company = st.sidebar.selectbox(
     options=st.session_state.user_companies
 )
 
-worksheets = get_sheets(selected_company)
-if not worksheets:
-    st.error("Failed to load the selected company's spreadsheets. Please check the logs for more details.")
-    st.stop()
+# Handle special case for Battalion-only users
+if selected_company == "Battalion":
+    # Battalion users don't need individual company spreadsheets
+    worksheets = None
+    SHEET_NOMINAL = None
+    SHEET_PARADE = None
+    SHEET_CONDUCTS = None
+else:
+    worksheets = get_sheets(selected_company)
+    if not worksheets:
+        st.error("Failed to load the selected company's spreadsheets. Please check the logs for more details.")
+        st.stop()
 
-SHEET_NOMINAL = worksheets["nominal"]
-SHEET_PARADE = worksheets["parade"]
-SHEET_CONDUCTS = worksheets["conducts"]
+    SHEET_NOMINAL = worksheets["nominal"]
+    SHEET_PARADE = worksheets["parade"]
+    SHEET_CONDUCTS = worksheets["conducts"]
 
 if "conduct_date" not in st.session_state:
     st.session_state.conduct_date = ""
@@ -1421,9 +1429,17 @@ if "adhoc_conduct_name" not in st.session_state:
 if "adhoc_conduct_date" not in st.session_state:
     st.session_state.adhoc_conduct_date = ""
 
+# Determine available features based on user access
+if selected_company == "Battalion":
+    # Battalion users can only access the Message feature
+    available_features = ["Message"]
+else:
+    # Regular company users have access to all features
+    available_features = ["Add Conduct", "Add Ad-Hoc Conduct", "Update Conduct", "Update Parade", "Analytics", "Message"]
+
 feature = st.sidebar.selectbox(
     "Select Feature",
-    ["Add Conduct", "Add Ad-Hoc Conduct", "Update Conduct", "Update Parade", "Analytics", "Message"]
+    available_features
 )
 
 def add_pointer():
@@ -1434,6 +1450,13 @@ def add_update_pointer():
     st.session_state.update_conduct_pointers.append(
         {"observation": "", "reflection": "", "recommendation": ""}
     )
+
+# Check if Battalion user is trying to access company-specific features
+if selected_company == "Battalion" and feature != "Message":
+    st.error("❌ Access Denied")
+    st.warning("Battalion users can only access the Message feature for battalion-level summaries.")
+    st.info("Please contact your administrator if you need access to company-specific features.")
+    st.stop()
 
 if feature == "Add Conduct":
     st.header("Add Conduct")
@@ -3774,18 +3797,20 @@ elif feature == "Analytics":
 elif feature == "Message":
     st.header("Parade State Message")
 
-    # Message type selection
-    message_type = st.radio(
-        "Select Message Type",
-        ("Company Message", "Battalion Summary"),
-        horizontal=True
-    )
-
     selected_date = st.date_input("Select Parade Date", datetime.now(TIMEZONE).date())
     target_datetime = datetime.combine(selected_date, datetime.min.time())
 
-    if message_type == "Company Message":
-        # --- Company-specific message ---
+    if selected_company == "Battalion":
+        # --- Battalion-only user: Show only Battalion Summary ---
+        st.info("Generating battalion summary across all six companies...")
+        
+        with st.spinner("Loading data from all companies..."):
+            battalion_message = generate_battalion_message(target_date=target_datetime)
+        
+        st.code(battalion_message, language='text')
+
+    else:
+        # --- Regular company users: Show only their company message ---
         records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
         records_parade2 = get_allparade_records(selected_company, SHEET_PARADE)
 
@@ -3800,13 +3825,4 @@ elif feature == "Message":
         # Generate the company-specific message
         company_message = generate_company_message(selected_company, company_nominal, company_parade, target_date=target_datetime)
         st.code(company_message, language='text')
-
-    elif message_type == "Battalion Summary":
-        # --- Battalion summary message ---
-        st.info("Generating battalion summary across all six companies...")
-        
-        with st.spinner("Loading data from all companies..."):
-            battalion_message = generate_battalion_message(target_date=target_datetime)
-        
-        st.code(battalion_message, language='text')
 
