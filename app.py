@@ -2792,11 +2792,52 @@ elif feature == "Analytics":
         commanders = sorted([p['name'] for p in records_nominal if p['name'] and p['rank'].upper() not in NON_CMD_RANKS])
         non_commanders = sorted([p['name'] for p in records_nominal if p['name'] and p['rank'].upper() in NON_CMD_RANKS])
 
+        # Get all unique platoons and create platoon-based options
+        all_platoons = sorted(set(p.get('platoon', 'Coy HQ') for p in records_nominal if p.get('platoon')))
+        platoon_options = []
+        platoon_personnel_map = {}
+        
+        for platoon in all_platoons:
+            # Create user-friendly platoon labels
+            if selected_company == "Support":
+                support_platoon_map = {
+                    "1": "SIGNAL PL", "2": "SCOUT PL", "3": "PIONEER PL", "4": "OPFOR PL"
+                }
+                platoon_label = support_platoon_map.get(platoon, f"PLATOON {platoon}")
+            elif selected_company == "HQ":
+                hq_branch_map = {
+                    "S1": "S1 BRANCH", "S2": "S2 BRANCH", "S3": "S3 BRANCH", 
+                    "S4": "S4 BRANCH", "SSP": "SSP", "BCS": "BCS", "1": "UIP"
+                }
+                platoon_label = hq_branch_map.get(platoon, f"S{platoon} BRANCH")
+            elif selected_company == "Bravo":
+                bravo_platoon_map = {
+                    "1": "PLT 6", "2": "PLT 7", "3": "PLT 8", "4": "PLT 9", "5": "PLT 10"
+                }
+                platoon_label = bravo_platoon_map.get(platoon, f"PLT {int(platoon) + 5}" if platoon.isdigit() else f"PLATOON {platoon}")
+            elif selected_company == "Charlie":
+                charlie_platoon_map = {
+                    "1": "PLT 11", "2": "PLT 12", "3": "PLT 13", "4": "PLT 14", "5": "PLT 15"
+                }
+                platoon_label = charlie_platoon_map.get(platoon, f"PLT 1{platoon}" if platoon.isdigit() else f"PLATOON {platoon}")
+            else:
+                if platoon.lower() in ('coy hq', 'hq'):
+                    platoon_label = "COY HQ"
+                else:
+                    platoon_label = f"PLATOON {platoon}"
+            
+            option_name = f"ALL {platoon_label}"
+            platoon_options.append(option_name)
+            
+            # Map option name to personnel in that platoon
+            platoon_personnel = [p['name'] for p in records_nominal if p.get('platoon', 'Coy HQ') == platoon and p['name']]
+            platoon_personnel_map[option_name] = platoon_personnel
+
         # 2. Selection UI
         all_personnel_option = "ALL PERSONNEL"
         commanders_option = "ALL COMMANDERS"
         non_commanders_option = "ALL NON-COMMANDERS"
-        special_options = [all_personnel_option, commanders_option, non_commanders_option]
+        special_options = [all_personnel_option, commanders_option, non_commanders_option] + platoon_options
 
         selected_options = st.multiselect(
             "Select groups or individuals to query.",
@@ -2809,9 +2850,14 @@ elif feature == "Analytics":
         if all_personnel_option in selected_options:
             names_to_query_set.update(personnel_names)
         if commanders_option in selected_options:
-            names_to_query_set.update(commanders)
+            names_to_query_set.update(commanders)  
         if non_commanders_option in selected_options:
             names_to_query_set.update(non_commanders)
+        
+        # Add personnel from selected platoons
+        for option in selected_options:
+            if option in platoon_personnel_map:
+                names_to_query_set.update(platoon_personnel_map[option])
         
         # Add any individually selected people
         for option in selected_options:
