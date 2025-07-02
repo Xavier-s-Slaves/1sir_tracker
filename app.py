@@ -26,7 +26,6 @@ SSP_PERSONNEL = {
     "MSC": ["SCT GARETH WONG QING YI", "PTE ISIDIYAZ RIFQIE"],
     "Alpha": ["PTE YUSOF"],
     "HQ": ["PTE MUHAMMAD SABRI BIN RAZALI", "PTE THENESH SARAVANAN", "CPL DEVANAND S/O GANESAN", "CPL DERRICK TAN JIAN HUI"],
-    "Wolf": []  # Add Wolf company with empty list for now
 }
 LEGEND_STATUS_PREFIXES = {
         "ol": "[OL]",   # Overseas Leave
@@ -233,7 +232,6 @@ COMPANY_SPREADSHEETS = {
     "Support": "Support",
     "MSC": "MSC",
     "HQ": "HQ",
-    "Wolf":"Wolf"
 }
 
 
