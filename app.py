@@ -3326,7 +3326,10 @@ elif feature == "Analytics":
                                     if attendance_status == 'yes':
                                         attended_count += 1
                                     else:
-                                        missed_conducts_list.append(conduct_name)
+                                        missed_conducts_list.append(f"{conduct_name} (Absent)")
+                                elif attendance_status == "n/a":
+                                    # Add N/A to missed list but don't count in attendance calculation
+                                    missed_conducts_list.append(f"{conduct_name} (N/A)")
                             except ValueError:
                                 continue  # Skip if header not found
                         
