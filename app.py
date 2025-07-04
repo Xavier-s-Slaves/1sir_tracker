@@ -232,6 +232,7 @@ COMPANY_SPREADSHEETS = {
     "Support": "Support",
     "MSC": "MSC",
     "HQ": "HQ",
+    "Pegasus": "Pegasus",
 }
 
 
@@ -484,7 +485,7 @@ def generate_battalion_message(target_date: Optional[datetime] = None) -> str:
     battalion_ssp_present = battalion_ssp_total = 0
     
     # Process each company
-    companies = ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ"]
+    companies = ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ", "Pegasus"]
     
     for company in companies:
         try:

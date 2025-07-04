@@ -1,7 +1,7 @@
 {
     "admin": {
         "password": "pass",
-        "companies": ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ", "Wolf"]
+        "companies": ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ", "Wolf", "Pegasus"]
     },
     "cpt_don": {
         "password": "donP@ss1",
@@ -57,7 +57,7 @@
     },
     "OC_Alpha": {
         "password": "Zx9#kL7mP!nR2vB",
-        "companies": ["Alpha"]
+        "companies": ["Alpha", "Pegasus"]
     },
     "CSM_Alpha": {
         "password": "Qw8$hM3yN&eT6uI",
@@ -65,7 +65,7 @@
     },
     "COS_Alpha": {
         "password": "Rt5%jK9xC*fG4oP",
-        "companies": ["Alpha"]
+        "companies": ["Alpha", "Pegasus"]
     },
     "HQ_Alpha": {
         "password": "Lm2@bV7nH^dS9wE",
