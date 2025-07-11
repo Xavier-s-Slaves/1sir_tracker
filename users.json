@@ -143,6 +143,10 @@
         "password": "cliffordP@ss26",
         "companies": ["Bravo"]
     },
+    "2sg_kaarthik": {
+        "password": "kaarthikP@ss39",
+        "companies": ["Bravo"]
+    },
     "MSC_HQ": {
         "password": "passMSCHQ",
         "companies": ["MSC"]
