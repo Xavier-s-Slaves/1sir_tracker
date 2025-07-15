@@ -3400,7 +3400,7 @@ elif feature == "Analytics":
                     "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di"], "current": 0},
                     "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
                     "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm"], "current": 0},
-                    "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc"], "current": 0},
+                    "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
                     "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
                     "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
                 }
@@ -3585,15 +3585,15 @@ elif feature == "Analytics":
                 "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di"], "current": 0},
                 "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
                 "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm"], "current": 0},
-                "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc"], "current": 0},
+                "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
                 "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
                 "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
             }
             
-            # Calculate current week based on Week 0 being 16-22 June
-            week_0_start = datetime(datetime.now().year, 6, 16).date()
-            current_week = (datetime.now().date() - week_0_start).days // 7
-            st.info(f"Current Week: {current_week} (Week 0 started on 16 June 2024)")
+            # Calculate current week based on Week 1 being 23-29 June
+            week_1_start = datetime(datetime.now().year, 6, 23).date()
+            current_week = (datetime.now().date() - week_1_start).days // 7 + 1
+            st.info(f"Current Week: {current_week} (Week 1 started on 23 June 2024)")
             st.info("SBO 3 Target: 31 conducts by Week 7")
             
             if not everything_data or len(everything_data) < 2:
@@ -3728,7 +3728,7 @@ elif feature == "Analytics":
             "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di"], "current": 0},
             "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
             "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm"], "current": 0},
-            "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc"], "current": 0},
+            "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
             "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
             "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
         }
