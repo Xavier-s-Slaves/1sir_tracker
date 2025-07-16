@@ -1841,10 +1841,98 @@ elif feature == "Add Ad-Hoc Conduct":
     records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
     personnel_options = sorted([p['name'] for p in records_nominal if p.get('name')])
     
+    # Predefined Groups
+    st.subheader("📋 Load Predefined Group")
+    
+    # Initialize predefined groups
+    predefined_groups = {
+        "hq pes fit": [
+            "MATTHEW LEE YI KANG",
+            "AUNG THU", 
+            "SIM JIA-YU, JOSHUA",
+            "NG KWAN SHENG",
+            "LEONG KAH WEI",
+            "Yong Zhi Guang",
+            "Muhammad Raqiib Bin Mohamad Rahup",
+            "LOH JUN JIE",
+            "NICHOLAS CHEE MING HAN",
+            "SELVAM VISHNUGANDAN",
+            "LEE JUN WEI",
+            "ORCULLO EMILIO JOAQUIN CORREA",
+            "PIERSON NEO",
+            "ISHNEET SUKHVINDER SINGH",
+            "HARSHAVARDHAN SURESH",
+            "CHOW MUN KAY",
+            "TERANCE CHAI",
+            "KWOK AN YONG BLAISE",
+            "KAI YEO YING HENG",
+            "CHUAH KAI YI",
+            "DEVANAND S/O GANESAN",
+            "DERRICK TAN JIAN HUI",
+            "NG CHIN SEK"
+        ]
+    }
+    
+    # Filter predefined groups to only include personnel that exist in the current company
+    available_groups = {}
+    for group_name, members in predefined_groups.items():
+        valid_members = [name for name in members if name in personnel_options]
+        if valid_members:  # Only add if there are valid members
+            available_groups[group_name] = valid_members
+    
+    if available_groups:
+        # Display available groups
+        st.write("**Available Groups:**")
+        for group_name, members in available_groups.items():
+            st.write(f"📋 **{group_name}** ({len(members)} personnel)")
+        
+        st.markdown("---")
+        
+        group_names = list(available_groups.keys())
+        selected_group = st.selectbox(
+            "Select a group to load:",
+            options=[""] + group_names,
+            key="load_group_select"
+        )
+        
+        if selected_group:
+            group_personnel = available_groups[selected_group]
+            
+            # Show group details in an expandable section
+            with st.expander(f"View members of '{selected_group}' ({len(group_personnel)} personnel)", expanded=True):
+                col1, col2 = st.columns(2)
+                for i, person in enumerate(group_personnel):
+                    if i % 2 == 0:
+                        col1.write(f"• {person}")
+                    else:
+                        col2.write(f"• {person}")
+            
+            # Load group buttons
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔄 Load This Group", key="load_group_btn"):
+                    st.session_state.selected_personnel_names = group_personnel
+                    st.success(f"Loaded group '{selected_group}' with {len(group_personnel)} personnel!")
+            
+    else:
+        st.info("No predefined groups available for this company.")
+    
+    st.markdown("---")
+    st.subheader("👥 Personnel Selection")
+    
+    # Get selected personnel names (either from group loading or manual selection)
+    if 'selected_personnel_names' not in st.session_state:
+        st.session_state.selected_personnel_names = []
+    
     selected_personnel_names = st.multiselect(
-        "Select Personnel for this Conduct",
-        options=personnel_options
+        "Select Personnel for this Conduct:",
+        options=personnel_options,
+        default=st.session_state.selected_personnel_names,
+        key="manual_personnel_select"
     )
+    
+    # Update session state with current selection
+    st.session_state.selected_personnel_names = selected_personnel_names
 
     if st.button("Load Personnel & Status"):
         date_str = st.session_state.adhoc_conduct_date.strip()
