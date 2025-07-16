@@ -242,5 +242,117 @@
     "DOO": {
         "password": "bnBosP@ss2024",
         "companies": ["Battalion"]
+    },
+    "2lt_matthew": {
+        "password": "matthewP@ss40",
+        "companies": ["HQ"]
+    },
+    "2lt_aung": {
+        "password": "aungP@ss41",
+        "companies": ["HQ"]
+    },
+    "2lt_joshua": {
+        "password": "joshuaP@ss42",
+        "companies": ["HQ"]
+    },
+    "2lt_loh": {
+        "password": "lohP@ss43",
+        "companies": ["HQ"]
+    },
+    "2lt_emilio": {
+        "password": "emilioP@ss44",
+        "companies": ["HQ"]
+    },
+    "2lt_harshavardhan": {
+        "password": "harshavardhanP@ss45",
+        "companies": ["HQ"]
+    },
+    "2lt_chuah": {
+        "password": "chuahP@ss46",
+        "companies": ["HQ"]
+    },
+    "2lt_haiqal": {
+        "password": "haiqalP@ss47",
+        "companies": ["Alpha"]
+    },
+    "2lt_kase": {
+        "password": "kaseP@ss48",
+        "companies": ["Alpha"]
+    },
+    "2lt_chaohao": {
+        "password": "chaohaoP@ss49",
+        "companies": ["Alpha"]
+    },
+    "2lt_rifqi": {
+        "password": "rifqiP@ss50",
+        "companies": ["Alpha"]
+    },
+    "2lt_sam": {
+        "password": "samP@ss51",
+        "companies": ["Bravo"]
+    },
+    "2lt_limwei": {
+        "password": "limweiP@ss52",
+        "companies": ["Bravo"]
+    },
+    "2lt_shadrach": {
+        "password": "shadrachP@ss53",
+        "companies": ["Bravo"]
+    },
+    "2lt_seth": {
+        "password": "sethP@ss54",
+        "companies": ["Bravo"]
+    },
+    "2lt_alson": {
+        "password": "alsonP@ss55",
+        "companies": ["Bravo"]
+    },
+    "2lt_adwitya": {
+        "password": "adwityaP@ss56",
+        "companies": ["Charlie"]
+    },
+    "2lt_reinard": {
+        "password": "reinardP@ss57",
+        "companies": ["Charlie"]
+    },
+    "2lt_toh": {
+        "password": "tohP@ss58",
+        "companies": ["Charlie"]
+    },
+    "2lt_quek": {
+        "password": "quekP@ss59",
+        "companies": ["Charlie"]
+    },
+    "2lt_huang": {
+        "password": "huangP@ss60",
+        "companies": ["Support"]
+    },
+    "2lt_alexander": {
+        "password": "alexanderP@ss61",
+        "companies": ["Support"]
+    },
+    "2lt_lau": {
+        "password": "lauP@ss62",
+        "companies": ["MSC"]
+    },
+    "2lt_harry": {
+        "password": "harryP@ss63",
+        "companies": ["MSC"]
+    },
+    "2lt_hyder": {
+        "password": "hyderP@ss64",
+        "companies": ["MSC"]
+    },
+    "2lt_danial": {
+        "password": "danialP@ss65",
+        "companies": ["MSC"]
+    },
+    "2lt_kyle": {
+        "password": "kyleP@ss66",
+        "companies": ["MSC"]
+    },
+    "3sg_shane": {
+        "password": "shaneP@ss67",
+        "companies": ["Charlie"]
     }
 }
