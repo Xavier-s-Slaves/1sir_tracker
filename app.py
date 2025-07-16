@@ -2974,24 +2974,40 @@ elif feature == "Analytics":
             default=[]
         )
 
-        # Determine the list of people to query
-        names_to_query_set = set()
+        # Determine the list of people to query using AND logic (intersection)
+        group_criteria = []
+        individual_selections = []
+        
+        # Collect group criteria
         if all_personnel_option in selected_options:
-            names_to_query_set.update(personnel_names)
+            group_criteria.append(set(personnel_names))
         if commanders_option in selected_options:
-            names_to_query_set.update(commanders)  
+            group_criteria.append(set(commanders))
         if non_commanders_option in selected_options:
-            names_to_query_set.update(non_commanders)
+            group_criteria.append(set(non_commanders))
         
         # Add personnel from selected platoons
         for option in selected_options:
             if option in platoon_personnel_map:
-                names_to_query_set.update(platoon_personnel_map[option])
+                group_criteria.append(set(platoon_personnel_map[option]))
         
-        # Add any individually selected people
+        # Collect individual selections
         for option in selected_options:
             if option not in special_options:
-                names_to_query_set.add(option)
+                individual_selections.append(option)
+        
+        # Apply AND logic: start with all personnel, then intersect with each criteria
+        if group_criteria:
+            # Start with the first criteria
+            names_to_query_set = group_criteria[0]
+            # Intersect with all other criteria (AND logic)
+            for criteria in group_criteria[1:]:
+                names_to_query_set = names_to_query_set.intersection(criteria)
+        else:
+            names_to_query_set = set()
+        
+        # Add individual selections (these are always included)
+        names_to_query_set.update(individual_selections)
         
         names_to_query = sorted(list(names_to_query_set))
 
