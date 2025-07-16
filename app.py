@@ -3400,7 +3400,7 @@ elif feature == "Analytics":
                     "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di"], "current": 0},
                     "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
                     "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm"], "current": 0},
-                    "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
+                    "Combat Circuit": {"target": 2, "keywords": ["combat circuit", "cc "], "current": 0},
                     "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
                     "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
                 }
@@ -3585,7 +3585,7 @@ elif feature == "Analytics":
                 "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di"], "current": 0},
                 "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
                 "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm"], "current": 0},
-                "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
+                "Combat Circuit": {"target": 2, "keywords": ["combat circuit", "cc "], "current": 0},
                 "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
                 "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
             }
@@ -3594,7 +3594,8 @@ elif feature == "Analytics":
             week_1_start = datetime(datetime.now().year, 6, 23).date()
             current_week = (datetime.now().date() - week_1_start).days // 7 + 1
             st.info(f"Current Week: {current_week} (Week 1 started on 23 June 2024)")
-            st.info("SBO 3 Target: 31 conducts by Week 7")
+            st.info("SBO 3 Target: 31 conducts in any 7-week window")
+            st.info("🔄 **Sliding Window**: Week 1-7, then Week 2-8, Week 3-9, etc. until qualified")
             
             if not everything_data or len(everything_data) < 2:
                 st.warning("The 'Everything' sheet is empty or has no data, so SBO 3 progress cannot be displayed.")
@@ -3602,23 +3603,39 @@ elif feature == "Analytics":
                 headers = everything_data[0]
                 conduct_headers = headers[3:]
                 
-                # Filter conduct headers based on date range
-                filtered_conduct_headers = [h for h in conduct_headers if conduct_in_date_range(h)]
-                
                 attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
                 
                 all_sbo3_records = []
                 group_totals = {category: 0 for category in sbo3_requirements.keys()}
                 
-                for name in names_to_query:
-                    person_row = attendance_map.get(name.lower())
-                    nominal_info = nominal_map.get(name.lower(), {})
+                def check_sliding_windows(person_row, headers, conduct_headers):
+                    """Check sliding 7-week windows until qualification or no more windows"""
+                    week_1_start = datetime(datetime.now().year, 6, 23).date()
                     
-                    person_counts = {category: 0 for category in sbo3_requirements.keys()}
-                    completed_conducts = {category: [] for category in sbo3_requirements.keys()}
-                    
-                    if person_row:
-                        for conduct_header in filtered_conduct_headers:
+                    # Try sliding windows: Week 1-7, Week 2-8, Week 3-9, etc.
+                    for window_start in range(1, current_week + 1):
+                        window_end = window_start + 6  # 7-week window
+                        
+                        # Calculate date range for this window
+                        window_start_date = week_1_start + timedelta(days=(window_start - 1) * 7)
+                        window_end_date = week_1_start + timedelta(days=window_end * 7 - 1)
+                        
+                        # Filter conducts in this window
+                        window_conducts = []
+                        for conduct_header in conduct_headers:
+                            try:
+                                conduct_date_str = conduct_header.split(',')[0].strip()
+                                conduct_date = datetime.strptime(conduct_date_str, "%d%m%Y").date()
+                                if window_start_date <= conduct_date <= window_end_date:
+                                    window_conducts.append(conduct_header)
+                            except (ValueError, IndexError):
+                                continue
+                        
+                        # Count conducts in this window
+                        window_counts = {category: 0 for category in sbo3_requirements.keys()}
+                        window_completed_conducts = {category: [] for category in sbo3_requirements.keys()}
+                        
+                        for conduct_header in window_conducts:
                             try:
                                 col_idx = headers.index(conduct_header)
                                 attendance_status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
@@ -3630,55 +3647,141 @@ elif feature == "Analytics":
                                     for category, requirements in sbo3_requirements.items():
                                         for keyword in requirements["keywords"]:
                                             if keyword.lower() in conduct_name:
-                                                person_counts[category] += 1
-                                                completed_conducts[category].append(conduct_header)
-                                                group_totals[category] += 1
+                                                window_counts[category] += 1
+                                                window_completed_conducts[category].append(conduct_header)
                                                 break  # Only count once per category
                             except ValueError:
                                 continue
+                        
+                        # Check if qualified in this window
+                        window_total = sum(window_counts.values())
+                        if window_total >= 31:
+                            return {
+                                "qualified": True,
+                                "window": f"Week {window_start}-{window_end}",
+                                "counts": window_counts,
+                                "completed_conducts": window_completed_conducts,
+                                "total": window_total
+                            }
                     
-                    # Calculate total completed and percentage
-                    total_completed = sum(person_counts.values())
-                    total_target = sum(req["target"] for req in sbo3_requirements.values())
-                    completion_percentage = (total_completed / total_target * 100) if total_target > 0 else 0
+                    # If no qualification found, return latest window progress
+                    latest_window_start = max(1, current_week - 6)
+                    latest_window_end = current_week
                     
-                    all_sbo3_records.append({
-                        "Rank": nominal_info.get('rank', 'N/A'),
-                        "Name": name,
-                        "Cardio": f"{person_counts['Cardio']}/10",
-                        "S&P": f"{person_counts['Strength & Power']}/12",
-                        "IFM": f"{person_counts['Interval Fast March']}/3",
-                        "CC": f"{person_counts['Combat Circuit']}/1",
-                        "FT": f"{person_counts['Functional Training']}/3",
-                        "S&G": f"{person_counts['Sports & Games']}/2",
-                        "Total": f"{total_completed}/31",
-                        "Completion %": f"{completion_percentage:.1f}%"
-                    })
+                    latest_window_start_date = week_1_start + timedelta(days=(latest_window_start - 1) * 7)
+                    latest_window_end_date = week_1_start + timedelta(days=latest_window_end * 7 - 1)
                     
-                    # Show detailed breakdown for each person
-                    with st.expander(f"View SBO 3 details for {name}"):
-                        for category, conducts in completed_conducts.items():
-                            if conducts:
-                                st.write(f"**{category}** ({len(conducts)}/{sbo3_requirements[category]['target']}):")
-                                for conduct in conducts:
-                                    st.write(f"  • {conduct}")
-                            else:
-                                st.write(f"**{category}**: No conducts completed (0/{sbo3_requirements[category]['target']})")
+                    # Get latest window conducts
+                    latest_window_conducts = []
+                    for conduct_header in conduct_headers:
+                        try:
+                            conduct_date_str = conduct_header.split(',')[0].strip()
+                            conduct_date = datetime.strptime(conduct_date_str, "%d%m%Y").date()
+                            if latest_window_start_date <= conduct_date <= latest_window_end_date:
+                                latest_window_conducts.append(conduct_header)
+                        except (ValueError, IndexError):
+                            continue
+                    
+                    # Count latest window
+                    latest_counts = {category: 0 for category in sbo3_requirements.keys()}
+                    latest_completed_conducts = {category: [] for category in sbo3_requirements.keys()}
+                    
+                    for conduct_header in latest_window_conducts:
+                        try:
+                            col_idx = headers.index(conduct_header)
+                            attendance_status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
+                            
+                            if attendance_status == "yes":
+                                conduct_name = conduct_header.lower()
+                                
+                                for category, requirements in sbo3_requirements.items():
+                                    for keyword in requirements["keywords"]:
+                                        if keyword.lower() in conduct_name:
+                                            latest_counts[category] += 1
+                                            latest_completed_conducts[category].append(conduct_header)
+                                            break
+                        except ValueError:
+                            continue
+                    
+                    return {
+                        "qualified": False,
+                        "window": f"Week {latest_window_start}-{latest_window_end}",
+                        "counts": latest_counts,
+                        "completed_conducts": latest_completed_conducts,
+                        "total": sum(latest_counts.values())
+                    }
+                
+                for name in names_to_query:
+                    person_row = attendance_map.get(name.lower())
+                    nominal_info = nominal_map.get(name.lower(), {})
+                    
+                    if person_row:
+                        result = check_sliding_windows(person_row, headers, conduct_headers)
+                        
+                        # Update group totals
+                        for category, count in result["counts"].items():
+                            group_totals[category] += count
+                        
+                        # Determine status
+                        if result["qualified"]:
+                            status = f"✅ QUALIFIED ({result['window']})"
+                            completion_percentage = 100.0
+                        else:
+                            completion_percentage = (result["total"] / 31 * 100) if result["total"] > 0 else 0
+                            status = f"❌ Not Qualified ({result['window']})"
+                        
+                        all_sbo3_records.append({
+                            "Rank": nominal_info.get('rank', 'N/A'),
+                            "Name": name,
+                            "Status": status,
+                            "Cardio": f"{result['counts']['Cardio']}/10",
+                            "S&P": f"{result['counts']['Strength & Power']}/12",
+                            "IFM": f"{result['counts']['Interval Fast March']}/3",
+                            "CC": f"{result['counts']['Combat Circuit']}/2",
+                            "FT": f"{result['counts']['Functional Training']}/3",
+                            "S&G": f"{result['counts']['Sports & Games']}/2",
+                            "Total": f"{result['total']}/31",
+                            "Completion %": f"{completion_percentage:.1f}%"
+                        })
+                        
+                        # Show detailed breakdown for each person
+                        with st.expander(f"View SBO 3 details for {name} - {status}"):
+                            for category, conducts in result["completed_conducts"].items():
+                                if conducts:
+                                    st.write(f"**{category}** ({len(conducts)}/{sbo3_requirements[category]['target']}):")
+                                    for conduct in conducts:
+                                        st.write(f"  • {conduct}")
+                                else:
+                                    st.write(f"**{category}**: No conducts completed (0/{sbo3_requirements[category]['target']})")
+                    else:
+                        # Person not found in Everything sheet
+                        all_sbo3_records.append({
+                            "Rank": nominal_info.get('rank', 'N/A'),
+                            "Name": name,
+                            "Status": "❌ Not in Everything Sheet",
+                            "Cardio": "0/10",
+                            "S&P": "0/12",
+                            "IFM": "0/3",
+                            "CC": "0/2",
+                            "FT": "0/3",
+                            "S&G": "0/2",
+                            "Total": "0/31",
+                            "Completion %": "0.0%"
+                        })
                 
                 # Group Summary
                 if any(opt in selected_options for opt in special_options) and names_to_query:
                     st.subheader("Group Summary (SBO 3)")
                     num_people = len(names_to_query)
+                    qualified_count = sum(1 for record in all_sbo3_records if "✅ QUALIFIED" in record.get("Status", ""))
                     
-                    # Calculate group averages
-                    group_total_completed = sum(group_totals.values())
-                    group_avg_completion = (group_total_completed / (num_people * 31) * 100) if num_people > 0 else 0
-                    
-                    col1, col2 = st.columns(2)
+                    col1, col2, col3 = st.columns(3)
                     with col1:
                         st.metric("Selected Personnel", num_people)
                     with col2:
-                        st.metric("Group Avg Completion", f"{group_avg_completion:.1f}%")
+                        st.metric("Qualified Personnel", qualified_count)
+                    with col3:
+                        st.metric("Qualification Rate", f"{(qualified_count/num_people*100):.1f}%" if num_people > 0 else "0%")
                 
                 if all_sbo3_records:
                     st.subheader("Individual SBO 3 Progress")
@@ -3728,7 +3831,7 @@ elif feature == "Analytics":
             "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di"], "current": 0},
             "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
             "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm"], "current": 0},
-            "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
+            "Combat Circuit": {"target": 2, "keywords": ["combat circuit", "cc "], "current": 0},
             "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
             "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
         }
