@@ -1854,6 +1854,7 @@ elif feature == "Add Ad-Hoc Conduct":
             "LEONG KAH WEI",
             "Yong Zhi Guang",
             "Muhammad Raqiib Bin Mohamad Rahup",
+            "Huzaifah Bin Abdul Raof",
             "LOH JUN JIE",
             "NICHOLAS CHEE MING HAN",
             "SELVAM VISHNUGANDAN",
@@ -1869,7 +1870,38 @@ elif feature == "Add Ad-Hoc Conduct":
             "CHUAH KAI YI",
             "DEVANAND S/O GANESAN",
             "DERRICK TAN JIAN HUI",
-            "NG CHIN SEK"
+            "NG CHIN SEK",
+            "MARCUS"
+        ],
+        "non pes fit": [
+            "TING WEI EN",
+            "CAYDEN CHIK YONG JUN",
+            "TAN YEW LOONG",
+            "HO JOSEN",
+            "LEROY QUEK YU ZHI",
+            "LIN ZHENG QUAN KEITHARO",
+            "MUHAMMAD AQEEL NAUFAL BIN AHMAD",
+            "TONY TAN KAI WERN",
+            "IAN LIM",
+            "LEE YU KEAT",
+            "SU JIA RONG KEITH",
+            "CHEN WANTENG",
+            "BILL CHUA KANG JIAN",
+            "THENESH SARAVANAN",
+            "MUHAMMAD SABRI BIN RAZALI"
+        ],
+        "hhq": [
+            "JOHN TEO YI AN",
+            "RAO VIJAY VENKATESH",
+            "YANG SZE KANG, KEVIN",
+            "JOHN CHONG WEI JIAN",
+            "XAVIER CHEONG JI YING",
+            "SIM TECK JOO",
+            "CHONG MING HAN",
+            "PREMKUMAR S/O GOVINDARAJU",
+            "CHAN PERNG KWANG",
+            "SCOTT ANG",
+            "EUGENE WONG"
         ]
     }
     
