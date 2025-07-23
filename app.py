@@ -1943,8 +1943,17 @@ elif feature == "Add Ad-Hoc Conduct":
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("🔄 Load This Group", key="load_group_btn"):
-                    st.session_state.selected_personnel_names = group_personnel
+                    st.session_state.selected_personnel_names = group_personnel.copy()
                     st.success(f"Loaded group '{selected_group}' with {len(group_personnel)} personnel!")
+            
+            with col2:
+                if st.button("➕ Add to Selection", key="add_group_btn"):
+                    if 'selected_personnel_names' not in st.session_state:
+                        st.session_state.selected_personnel_names = []
+                    current = st.session_state.selected_personnel_names
+                    new = list(set(current + group_personnel))
+                    st.session_state.selected_personnel_names = new
+                    st.success(f"Added '{selected_group}' to selection. Total unique: {len(new)} personnel!")
             
     else:
         st.info("No predefined groups available for this company.")
