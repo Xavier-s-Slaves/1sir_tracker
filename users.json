@@ -354,5 +354,9 @@
     "3sg_shane": {
         "password": "shaneP@ss67",
         "companies": ["Charlie"]
+    },
+    "sc_charlie": {
+        "password": "Ch@rlie9$xK3mN!wQ7",
+        "companies": ["Charlie"]
     }
 }
