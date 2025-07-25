@@ -3542,10 +3542,10 @@ elif feature == "Analytics":
                 
                 # Define SBO 3 requirements (same as TAB 7)
                 sbo3_requirements = {
-                    "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di"], "current": 0},
+                    "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di", " er ", " fl "], "current": 0},
                     "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
-                    "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm"], "current": 0},
-                    "Combat Circuit": {"target": 2, "keywords": ["combat circuit", "cc "], "current": 0},
+                    "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm", "route march"], "current": 0},
+                    "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
                     "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
                     "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
                 }
@@ -3727,10 +3727,10 @@ elif feature == "Analytics":
             
             # Define SBO 3 requirements
             sbo3_requirements = {
-                "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di"], "current": 0},
+                "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di", " er ", " fl "], "current": 0},
                 "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
-                "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm"], "current": 0},
-                "Combat Circuit": {"target": 2, "keywords": ["combat circuit", "cc "], "current": 0},
+                "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm", "route march"], "current": 0},
+                "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
                 "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
                 "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
             }
@@ -3790,6 +3790,9 @@ elif feature == "Analytics":
                                     
                                     # Check which category this conduct belongs to
                                     for category, requirements in sbo3_requirements.items():
+                                        # Stop counting if this category already reached its target
+                                        if window_counts[category] >= requirements["target"]:
+                                            continue
                                         for keyword in requirements["keywords"]:
                                             if keyword.lower() in conduct_name:
                                                 window_counts[category] += 1
@@ -3799,14 +3802,20 @@ elif feature == "Analytics":
                                 continue
                         
                         # Check if qualified in this window
-                        window_total = sum(window_counts.values())
-                        if window_total >= 31:
+                        # Check if ALL individual components meet their targets
+                        all_components_qualified = True
+                        for category, requirements in sbo3_requirements.items():
+                            if window_counts[category] < requirements["target"]:
+                                all_components_qualified = False
+                                break
+                        
+                        if all_components_qualified:
                             return {
                                 "qualified": True,
                                 "window": f"Week {window_start}-{window_end}",
                                 "counts": window_counts,
                                 "completed_conducts": window_completed_conducts,
-                                "total": window_total
+                                "total": sum(window_counts.values())
                             }
                     
                     # If no qualification found, return latest window progress
@@ -3840,6 +3849,9 @@ elif feature == "Analytics":
                                 conduct_name = conduct_header.lower()
                                 
                                 for category, requirements in sbo3_requirements.items():
+                                    # Stop counting if this category already reached its target
+                                    if latest_counts[category] >= requirements["target"]:
+                                        continue
                                     for keyword in requirements["keywords"]:
                                         if keyword.lower() in conduct_name:
                                             latest_counts[category] += 1
@@ -3882,7 +3894,7 @@ elif feature == "Analytics":
                             "Cardio": f"{result['counts']['Cardio']}/10",
                             "S&P": f"{result['counts']['Strength & Power']}/12",
                             "IFM": f"{result['counts']['Interval Fast March']}/3",
-                            "CC": f"{result['counts']['Combat Circuit']}/2",
+                            "CC": f"{result['counts']['Combat Circuit']}/1",
                             "FT": f"{result['counts']['Functional Training']}/3",
                             "S&G": f"{result['counts']['Sports & Games']}/2",
                             "Total": f"{result['total']}/31",
@@ -3907,7 +3919,7 @@ elif feature == "Analytics":
                             "Cardio": "0/10",
                             "S&P": "0/12",
                             "IFM": "0/3",
-                            "CC": "0/2",
+                            "CC": "0/1",
                             "FT": "0/3",
                             "S&G": "0/2",
                             "Total": "0/31",
@@ -3973,10 +3985,10 @@ elif feature == "Analytics":
         
         # Define SBO 3 requirements (same as TAB 7)
         sbo3_requirements = {
-            "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di"], "current": 0},
+            "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di", " er ", " fl "], "current": 0},
             "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
-            "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm"], "current": 0},
-            "Combat Circuit": {"target": 2, "keywords": ["combat circuit", "cc "], "current": 0},
+            "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm", "route march"], "current": 0},
+            "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
             "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
             "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
         }
