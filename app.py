@@ -3542,11 +3542,11 @@ elif feature == "Analytics":
                 
                 # Define SBO 3 requirements (same as TAB 7)
                 sbo3_requirements = {
-                    "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di", " er ", " fl "], "current": 0},
+                    "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di ", " er ", " fl "], "current": 0},
                     "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
-                    "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm", "route march"], "current": 0},
+                    "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm ", "route march"], "current": 0},
                     "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
-                    "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
+                    "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft ", "mc "], "current": 0},
                     "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
                 }
                 
@@ -3727,11 +3727,11 @@ elif feature == "Analytics":
             
             # Define SBO 3 requirements
             sbo3_requirements = {
-                "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di", " er ", " fl "], "current": 0},
+                "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di ", " er ", " fl "], "current": 0},
                 "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
-                "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm", "route march"], "current": 0},
+                "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm ", "route march"], "current": 0},
                 "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
-                "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
+                "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft ", "mc "], "current": 0},
                 "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
             }
             
@@ -3985,11 +3985,11 @@ elif feature == "Analytics":
         
         # Define SBO 3 requirements (same as TAB 7)
         sbo3_requirements = {
-            "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di", " er ", " fl "], "current": 0},
+            "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di ", " er ", " fl "], "current": 0},
             "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
-            "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm", "route march"], "current": 0},
+            "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm ", "route march"], "current": 0},
             "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
-            "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft", "mc"], "current": 0},
+            "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft ", "mc "], "current": 0},
             "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
         }
         
