@@ -1945,6 +1945,7 @@ elif feature == "Add Ad-Hoc Conduct":
                 if st.button("🔄 Load This Group", key="load_group_btn"):
                     st.session_state.selected_personnel_names = group_personnel.copy()
                     st.success(f"Loaded group '{selected_group}' with {len(group_personnel)} personnel!")
+                    st.rerun()  # Force rerun to update the multiselect widget
             
             with col2:
                 if st.button("➕ Add to Selection", key="add_group_btn"):
@@ -1954,6 +1955,7 @@ elif feature == "Add Ad-Hoc Conduct":
                     new = list(set(current + group_personnel))
                     st.session_state.selected_personnel_names = new
                     st.success(f"Added '{selected_group}' to selection. Total unique: {len(new)} personnel!")
+                    st.rerun()  # Force rerun to update the multiselect widget
             
     else:
         st.info("No predefined groups available for this company.")
@@ -1961,19 +1963,30 @@ elif feature == "Add Ad-Hoc Conduct":
     st.markdown("---")
     st.subheader("👥 Personnel Selection")
     
-    # Get selected personnel names (either from group loading or manual selection)
+    # Initialize session state for selected personnel
     if 'selected_personnel_names' not in st.session_state:
         st.session_state.selected_personnel_names = []
     
+    # Use a unique key that doesn't conflict with session state
     selected_personnel_names = st.multiselect(
         "Select Personnel for this Conduct:",
         options=personnel_options,
         default=st.session_state.selected_personnel_names,
-        key="manual_personnel_select"
+        key="adhoc_personnel_multiselect",
+        help="💡 Tip: You can select multiple personnel by clicking on each name. Use Ctrl+Click to deselect."
     )
     
-    # Update session state with current selection
-    st.session_state.selected_personnel_names = selected_personnel_names
+    # Only update session state if the selection actually changed
+    if selected_personnel_names != st.session_state.selected_personnel_names:
+        st.session_state.selected_personnel_names = selected_personnel_names
+        # Force a rerun to ensure UI consistency
+        st.rerun()
+    
+    # Display current selection count
+    if selected_personnel_names:
+        st.info(f"✅ {len(selected_personnel_names)} personnel selected")
+    else:
+        st.warning("⚠️ No personnel selected")
 
     if st.button("Load Personnel & Status"):
         date_str = st.session_state.adhoc_conduct_date.strip()
