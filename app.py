@@ -3745,8 +3745,20 @@ elif feature == "Analytics":
             week_0_start = datetime(datetime.now().year, 6, 16).date()
             current_week_index = (datetime.now().date() - week_0_start).days // 7
             st.info(f"Current Week: {current_week_index} (Week 0 started on 16 June 2024)")
+
+            # Allow user to choose the week to start SBO 3 calculations (0..current_week_index)
+            start_week_options = list(range(max(0, current_week_index) + 1))
+            selected_start_week = st.selectbox(
+                "Start SBO 3 from week:",
+                options=start_week_options,
+                index=0,
+                help="Choose the earliest week to consider for SBO 3 sliding windows"
+            )
             st.info("SBO 3 Target: 31 conducts in any 9-week window")
-            st.info("🔄 **Sliding Window**: Week 0-8, then Week 1-9, Week 2-10, etc. until qualified")
+            # Dynamic sliding window message based on selected start week
+            st.info(
+                f"🔄 **Sliding Window**: Week {selected_start_week}-{selected_start_week + 8}, then Week {selected_start_week + 1}-{selected_start_week + 9}, Week {selected_start_week + 2}-{selected_start_week + 10}, etc. until qualified"
+            )
             
             if not everything_data or len(everything_data) < 2:
                 st.warning("The 'Everything' sheet is empty or has no data, so SBO 3 progress cannot be displayed.")
@@ -3763,8 +3775,8 @@ elif feature == "Analytics":
                     """Check sliding 9-week windows until qualification or no more windows"""
                     week_0_start = datetime(datetime.now().year, 6, 16).date()
                     
-                    # Try sliding windows: Week 0-8, Week 1-9, Week 2-10, etc.
-                    for window_start in range(0, current_week_index + 1):
+                    # Try sliding windows starting from the selected start week: Week S-(S+8), (S+1)-(S+9), ... up to current week
+                    for window_start in range(selected_start_week, current_week_index + 1):
                         window_end = window_start + 8  # 9-week window
                         
                         # Calculate date range for this window
@@ -3825,7 +3837,7 @@ elif feature == "Analytics":
                             }
                     
                     # If no qualification found, return latest window progress
-                    latest_window_start = max(0, current_week_index - 8)
+                    latest_window_start = max(selected_start_week, current_week_index - 8)
                     latest_window_end = current_week_index
                     
                     latest_window_start_date = week_0_start + timedelta(days=latest_window_start * 7)
@@ -3868,7 +3880,8 @@ elif feature == "Analytics":
                     
                     return {
                         "qualified": False,
-                        "window": f"Week {latest_window_start}-{latest_window_end}",
+                        # Show full intended 9-week window label from the selected start point
+                        "window": f"Week {latest_window_start}-{latest_window_start + 8}",
                         "counts": latest_counts,
                         "completed_conducts": latest_completed_conducts,
                         "total": sum(latest_counts.values())
