@@ -358,5 +358,9 @@
     "sc_charlie": {
         "password": "Ch@rlie9$xK3mN!wQ7",
         "companies": ["Charlie"]
+    },
+    "2sg_jerrold": {
+        "password": "jerroldP@ss68",
+        "companies": ["Support"]
     }
 }

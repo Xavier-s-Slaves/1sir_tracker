@@ -1959,7 +1959,88 @@ elif feature == "Add Ad-Hoc Conduct":
             
     else:
         st.info("No predefined groups available for this company.")
-    
+
+    # --- Load By Platoon ------------------------------------------------------
+    st.markdown("---")
+    st.subheader("🪖 Load By Platoon")
+
+    # Build platoon -> members from nominal records
+    platoon_to_members = {}
+    for rec in records_nominal:
+        name = rec.get('name')
+        if not name or name not in personnel_options:
+            continue
+        platoon_code = str(rec.get('platoon', '')).strip() or "Coy HQ"
+        platoon_to_members.setdefault(platoon_code, []).append(name)
+
+    # Map platoon codes to user-friendly labels based on company
+    def format_platoon_label(platoon_code: str) -> str:
+        code = str(platoon_code).strip()
+        if selected_company == "Support":
+            mapping = {"1": "SIGNAL PL", "2": "SCOUT PL", "3": "PIONEER PL", "4": "OPFOR PL"}
+            return mapping.get(code, f"Platoon {code}")
+        if selected_company == "HQ":
+            mapping = {
+                "S1": "S1 Branch", "S2": "S2 Branch", "S3": "S3 Branch", "S4": "S4 Branch",
+                "S6": "S6 Branch", "S7": "S7 Branch", "BCS": "BCS", "1": "UIP",
+                "Coy HQ": "Coy HQ", "HQ": "Coy HQ", "hq": "Coy HQ"
+            }
+            return mapping.get(code, f"S{code} Branch" if code.upper().startswith('S') else f"Platoon {code}")
+        if selected_company == "Bravo":
+            mapping = {"1": "Plt 6", "2": "Plt 7", "3": "Plt 8", "4": "Plt 9", "5": "Plt 10"}
+            return mapping.get(code, f"Platoon {code}")
+        if selected_company == "Charlie":
+            mapping = {"1": "Plt 11", "2": "Plt 12", "3": "Plt 13", "4": "Plt 14", "5": "Plt 15"}
+            return mapping.get(code, f"Platoon {code}")
+        if code.lower() in ("coy hq", "hq"):
+            return "Coy HQ"
+        return f"Platoon {code}"
+
+    # Create label->members mapping
+    platoon_label_to_members = {}
+    for code, members in platoon_to_members.items():
+        if not members:
+            continue
+        label = format_platoon_label(code)
+        platoon_label_to_members[label] = sorted(members)
+
+    if platoon_label_to_members:
+        platoon_labels = sorted(platoon_label_to_members.keys())
+        selected_platoon_label = st.selectbox(
+            "Select a platoon to load:",
+            options=[""] + platoon_labels,
+            key="adhoc_platoon_select"
+        )
+
+        if selected_platoon_label:
+            platoon_members = platoon_label_to_members.get(selected_platoon_label, [])
+
+            with st.expander(
+                f"View members of '{selected_platoon_label}' ({len(platoon_members)} personnel)",
+                expanded=True
+            ):
+                col1, col2 = st.columns(2)
+                for i, person in enumerate(platoon_members):
+                    (col1 if i % 2 == 0 else col2).write(f"• {person}")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔄 Load This Platoon", key="load_platoon_btn"):
+                    st.session_state.selected_personnel_names = platoon_members.copy()
+                    st.success(f"Loaded '{selected_platoon_label}' - {len(platoon_members)} personnel!")
+                    st.rerun()
+            with col2:
+                if st.button("➕ Add Platoon to Selection", key="add_platoon_btn"):
+                    if 'selected_personnel_names' not in st.session_state:
+                        st.session_state.selected_personnel_names = []
+                    current = st.session_state.selected_personnel_names
+                    new = list(set(current + platoon_members))
+                    st.session_state.selected_personnel_names = new
+                    st.success(
+                        f"Added '{selected_platoon_label}' to selection. Total unique: {len(new)} personnel!"
+                    )
+                    st.rerun()
+
     st.markdown("---")
     st.subheader("👥 Personnel Selection")
     
