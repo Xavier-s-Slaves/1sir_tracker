@@ -3741,10 +3741,10 @@ elif feature == "Analytics":
                 "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
             }
             
-            # Calculate current week index based on Week 0 being 23-29 June
-            week_0_start = datetime(datetime.now().year, 6, 23).date()
+            # Calculate current week index based on Week 0 
+            week_0_start = datetime(datetime.now().year, 6, 16).date()
             current_week_index = (datetime.now().date() - week_0_start).days // 7
-            st.info(f"Current Week: {current_week_index} (Week 0 started on 23 June 2024)")
+            st.info(f"Current Week: {current_week_index} (Week 0 started on 16 June 2024)")
             st.info("SBO 3 Target: 31 conducts in any 9-week window")
             st.info("🔄 **Sliding Window**: Week 0-8, then Week 1-9, Week 2-10, etc. until qualified")
             
@@ -3761,7 +3761,7 @@ elif feature == "Analytics":
                 
                 def check_sliding_windows(person_row, headers, conduct_headers):
                     """Check sliding 9-week windows until qualification or no more windows"""
-                    week_0_start = datetime(datetime.now().year, 6, 23).date()
+                    week_0_start = datetime(datetime.now().year, 6, 16).date()
                     
                     # Try sliding windows: Week 0-8, Week 1-9, Week 2-10, etc.
                     for window_start in range(0, current_week_index + 1):
