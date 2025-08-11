@@ -3741,12 +3741,12 @@ elif feature == "Analytics":
                 "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
             }
             
-            # Calculate current week based on Week 1 being 23-29 June
-            week_1_start = datetime(datetime.now().year, 6, 23).date()
-            current_week = (datetime.now().date() - week_1_start).days // 7 + 1
-            st.info(f"Current Week: {current_week} (Week 1 started on 23 June 2024)")
-            st.info("SBO 3 Target: 31 conducts in any 7-week window")
-            st.info("🔄 **Sliding Window**: Week 1-7, then Week 2-8, Week 3-9, etc. until qualified")
+            # Calculate current week index based on Week 0 being 23-29 June
+            week_0_start = datetime(datetime.now().year, 6, 23).date()
+            current_week_index = (datetime.now().date() - week_0_start).days // 7
+            st.info(f"Current Week: {current_week_index} (Week 0 started on 23 June 2024)")
+            st.info("SBO 3 Target: 31 conducts in any 9-week window")
+            st.info("🔄 **Sliding Window**: Week 0-8, then Week 1-9, Week 2-10, etc. until qualified")
             
             if not everything_data or len(everything_data) < 2:
                 st.warning("The 'Everything' sheet is empty or has no data, so SBO 3 progress cannot be displayed.")
@@ -3760,16 +3760,16 @@ elif feature == "Analytics":
                 group_totals = {category: 0 for category in sbo3_requirements.keys()}
                 
                 def check_sliding_windows(person_row, headers, conduct_headers):
-                    """Check sliding 7-week windows until qualification or no more windows"""
-                    week_1_start = datetime(datetime.now().year, 6, 23).date()
+                    """Check sliding 9-week windows until qualification or no more windows"""
+                    week_0_start = datetime(datetime.now().year, 6, 23).date()
                     
-                    # Try sliding windows: Week 1-7, Week 2-8, Week 3-9, etc.
-                    for window_start in range(1, current_week + 1):
-                        window_end = window_start + 6  # 7-week window
+                    # Try sliding windows: Week 0-8, Week 1-9, Week 2-10, etc.
+                    for window_start in range(0, current_week_index + 1):
+                        window_end = window_start + 8  # 9-week window
                         
                         # Calculate date range for this window
-                        window_start_date = week_1_start + timedelta(days=(window_start - 1) * 7)
-                        window_end_date = week_1_start + timedelta(days=window_end * 7 - 1)
+                        window_start_date = week_0_start + timedelta(days=window_start * 7)
+                        window_end_date = week_0_start + timedelta(days=(window_end + 1) * 7 - 1)
                         
                         # Filter conducts in this window
                         window_conducts = []
@@ -3825,11 +3825,11 @@ elif feature == "Analytics":
                             }
                     
                     # If no qualification found, return latest window progress
-                    latest_window_start = max(1, current_week - 6)
-                    latest_window_end = current_week
+                    latest_window_start = max(0, current_week_index - 8)
+                    latest_window_end = current_week_index
                     
-                    latest_window_start_date = week_1_start + timedelta(days=(latest_window_start - 1) * 7)
-                    latest_window_end_date = week_1_start + timedelta(days=latest_window_end * 7 - 1)
+                    latest_window_start_date = week_0_start + timedelta(days=latest_window_start * 7)
+                    latest_window_end_date = week_0_start + timedelta(days=(latest_window_end + 1) * 7 - 1)
                     
                     # Get latest window conducts
                     latest_window_conducts = []
