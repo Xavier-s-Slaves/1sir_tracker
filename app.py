@@ -3599,32 +3599,25 @@ elif feature == "Analytics":
                     if not person_row:
                         continue
 
-                    credited_conducts = []
+                    attended_conducts = []
                     
-                    # Process one-off conducts
+                    # Process one-off conducts (only actual attendance)
                     for header in one_off_conducts:
                         col_idx = headers.index(header)
                         status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
                         if status == 'yes':
-                            credited_conducts.append(header)
+                            attended_conducts.append(header)
 
-                    # Process conduct series
+                    # Process conduct series (only sessions actually attended)
                     for base_name, sessions in all_conduct_series.items():
-                        yes_count = 0
                         for session_num, header in sessions.items():
                             col_idx = headers.index(header)
                             status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
                             if status == 'yes':
-                                yes_count += 1
-                        
-                        # Credit for the first `yes_count` sessions
-                        sorted_sessions = sorted(sessions.keys())
-                        for i in range(min(yes_count, len(sorted_sessions))):
-                            session_to_credit = sorted_sessions[i]
-                            credited_conducts.append(sessions[session_to_credit])
+                                attended_conducts.append(header)
 
                     # Apply the filter
-                    filtered_conducts = [c for c in credited_conducts if conduct_filter in c.lower()]
+                    filtered_conducts = [c for c in attended_conducts if conduct_filter in c.lower()]
 
                     nominal_info = nominal_map.get(name.lower(), {})
                     rank = nominal_info.get('rank', 'N/A')
@@ -3962,7 +3955,7 @@ elif feature == "Analytics":
 
     elif query_mode == "By Conduct":
         st.subheader("Query by Conduct")
-        st.info("Select a conduct to see the status of all personnel, including back-crediting to allow for progressive tracking.")
+        st.info("Select a conduct to see the status of all personnel based only on the actual marking for that conduct.")
 
         # Date range selection (same as Personnel mode)
         st.subheader("📅 Date Range Selection")
@@ -4120,39 +4113,8 @@ elif feature == "Analytics":
                     except (ValueError, IndexError):
                         pass # Keep as Not Marked
 
-                    if not is_series:
-                        status = original_status
-                    else:
-                        # Back-crediting logic
-                        series_sessions = all_conduct_series.get(base_name_selected, {})
-                        
-                        # Find which sessions were actually attended
-                        actually_attended_sessions = {}
-                        for s_num, s_header in series_sessions.items():
-                            try:
-                                s_col_idx = headers.index(s_header)
-                                if len(person_row) > s_col_idx and person_row[s_col_idx].strip().lower() == 'yes':
-                                    actually_attended_sessions[s_num] = s_header
-                            except (ValueError, IndexError):
-                                continue
-                        
-                        yes_count = len(actually_attended_sessions)
-                        source_of_credit_header = ""
-                        if actually_attended_sessions:
-                            latest_attended_num = max(actually_attended_sessions.keys())
-                            source_of_credit_header = actually_attended_sessions[latest_attended_num]
-
-                        # Determine which sessions the person is credited for
-                        sorted_sessions_nums = sorted(series_sessions.keys())
-                        credited_sessions = sorted_sessions_nums[:yes_count]
-
-                        if session_selected in credited_sessions:
-                            if session_selected in actually_attended_sessions:
-                                status = "Yes"
-                            else:
-                                status = f"Yes (from {source_of_credit_header})"
-                        else:
-                            status = "No" if original_status in ('yes', 'no') else "Not Marked"
+                    # For series and non-series, only show the actual marking for the specific session
+                    status = original_status
 
                 results.append({
                     "Rank": person.get('rank', 'N/A'),
