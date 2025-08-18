@@ -20,7 +20,7 @@ NON_CMD_RANKS = ["PTE", "LCP", "CPL", "CFC", "REC", "SCT"]
 
 # SSP personnel mapping by company
 SSP_PERSONNEL = {
-    "Support": ["SCT RAYNEN", "PTE AIRUL"],
+    "Support": ["SCT RAYNEN", "PTE AIRUL", "REC ERWYN"],
     "Charlie": ["PTE RYAN", "SCT HONG KAI"],
     "Bravo": ["PTE QIU BIN", "SCT SYAWAL"],
     "MSC": ["SCT GARETH WONG QING YI", "PTE AIRUL IMAN"],
