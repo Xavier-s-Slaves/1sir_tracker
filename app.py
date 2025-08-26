@@ -3219,13 +3219,11 @@ elif feature == "Analytics":
             if option not in special_options:
                 individual_selections.append(option)
         
-        # Apply AND logic: start with all personnel, then intersect with each criteria
+        # Combine groups by default using union (OR logic)
         if group_criteria:
-            # Start with the first criteria
-            names_to_query_set = group_criteria[0]
-            # Intersect with all other criteria (AND logic)
-            for criteria in group_criteria[1:]:
-                names_to_query_set = names_to_query_set.intersection(criteria)
+            names_to_query_set = set()
+            for criteria in group_criteria:
+                names_to_query_set.update(criteria)
         else:
             names_to_query_set = set()
         
