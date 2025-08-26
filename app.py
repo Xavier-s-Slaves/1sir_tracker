@@ -3843,8 +3843,15 @@ elif feature == "Analytics":
                     index=0,
                     help="Choose the earliest week to consider for SBO 3 calculations"
                 )
+                selected_start_day = st.selectbox(
+                    "Start day (0-6):",
+                    options=list(range(0, 7)),
+                    index=0,
+                    help="Day offset within the starting week (0 = first day of Week 0)"
+                )
             else:
                 selected_start_week = 0
+                selected_start_day = 0
             st.info("SBO 3 Target: 31 conducts in any 9-week window")
             # Dynamic info based on mode
             if window_mode == "Auto (sliding)":
@@ -3853,7 +3860,7 @@ elif feature == "Analytics":
                 )
             else:
                 st.info(
-                    f"🧭 **Fixed Window**: Week {selected_start_week}-{selected_start_week + 8} only"
+                    f"🧭 **Fixed Window**: Week {selected_start_week} Day {selected_start_day} to Week {selected_start_week + 8} Day {selected_start_day}"
                 )
             
             if not everything_data or len(everything_data) < 2:
@@ -3990,11 +3997,14 @@ elif feature == "Analytics":
                 def check_fixed_window(person_row, headers, conduct_headers):
                     """Evaluate only the fixed 9-week window starting at the selected start week"""
                     week_0_start = datetime(datetime.now().year, 6, 16).date()
-                    window_start = selected_start_week
-                    window_end = selected_start_week + 8
+                    window_start_week = selected_start_week
+                    window_end_week = selected_start_week + 8
 
-                    window_start_date = week_0_start + timedelta(days=window_start * 7)
-                    window_end_date = week_0_start + timedelta(days=(window_end + 1) * 7 - 1)
+                    # Include day offset within the starting week
+                    start_offset_days = window_start_week * 7 + selected_start_day
+                    window_start_date = week_0_start + timedelta(days=start_offset_days)
+                    # Fixed 9-week span inclusive (63 days total)
+                    window_end_date = window_start_date + timedelta(days=(9 * 7) - 1)
 
                     window_conducts = []
                     for conduct_header in conduct_headers:
@@ -4034,7 +4044,7 @@ elif feature == "Analytics":
 
                     return {
                         "qualified": all_components_qualified,
-                        "window": f"Week {window_start}-{window_end}",
+                        "window": f"Week {window_start_week}-{window_end_week} (Day {selected_start_day})",
                         "counts": window_counts,
                         "completed_conducts": window_completed_conducts,
                         "total": sum(window_counts.values())
