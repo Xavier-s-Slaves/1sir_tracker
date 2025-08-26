@@ -3829,17 +3829,34 @@ elif feature == "Analytics":
 
             # Allow user to choose the week to start SBO 3 calculations (0..current_week_index)
             start_week_options = list(range(max(0, current_week_index) + 1))
-            selected_start_week = st.selectbox(
-                "Start SBO 3 from week:",
-                options=start_week_options,
+            # Window selection mode first
+            window_mode = st.radio(
+                "Window mode",
+                options=["Auto (sliding)", "Manual (fixed)"],
                 index=0,
-                help="Choose the earliest week to consider for SBO 3 sliding windows"
+                horizontal=True,
+                help="Auto slides week by week until qualification is found. Manual uses only the selected 9-week window."
             )
+            # Conditionally show week selector only for Manual mode; Auto defaults to Week 0
+            if window_mode == "Manual (fixed)":
+                selected_start_week = st.selectbox(
+                    "Start SBO 3 from week:",
+                    options=start_week_options,
+                    index=0,
+                    help="Choose the earliest week to consider for SBO 3 calculations"
+                )
+            else:
+                selected_start_week = 0
             st.info("SBO 3 Target: 31 conducts in any 9-week window")
-            # Dynamic sliding window message based on selected start week
-            st.info(
-                f"🔄 **Sliding Window**: Week {selected_start_week}-{selected_start_week + 8}, then Week {selected_start_week + 1}-{selected_start_week + 9}, Week {selected_start_week + 2}-{selected_start_week + 10}, etc. until qualified"
-            )
+            # Dynamic info based on mode
+            if window_mode == "Auto (sliding)":
+                st.info(
+                    f"🔄 **Sliding Window**: Week {selected_start_week}-{selected_start_week + 8}, then Week {selected_start_week + 1}-{selected_start_week + 9}, Week {selected_start_week + 2}-{selected_start_week + 10}, etc. until qualified"
+                )
+            else:
+                st.info(
+                    f"🧭 **Fixed Window**: Week {selected_start_week}-{selected_start_week + 8} only"
+                )
             
             if not everything_data or len(everything_data) < 2:
                 st.warning("The 'Everything' sheet is empty or has no data, so SBO 3 progress cannot be displayed.")
@@ -3851,6 +3868,10 @@ elif feature == "Analytics":
                 
                 all_sbo3_records = []
                 group_totals = {category: 0 for category in sbo3_requirements.keys()}
+                
+                # Initialize session-level lock for qualified results
+                if 'sbo3_locked_results' not in st.session_state:
+                    st.session_state.sbo3_locked_results = {}
                 
                 def check_sliding_windows(person_row, headers, conduct_headers):
                     """Check sliding 9-week windows until qualification or no more windows"""
@@ -3967,13 +3988,77 @@ elif feature == "Analytics":
                         "completed_conducts": latest_completed_conducts,
                         "total": sum(latest_counts.values())
                     }
+
+                def check_fixed_window(person_row, headers, conduct_headers):
+                    """Evaluate only the fixed 9-week window starting at the selected start week"""
+                    week_0_start = datetime(datetime.now().year, 6, 16).date()
+                    window_start = selected_start_week
+                    window_end = selected_start_week + 8
+
+                    window_start_date = week_0_start + timedelta(days=window_start * 7)
+                    window_end_date = week_0_start + timedelta(days=(window_end + 1) * 7 - 1)
+
+                    window_conducts = []
+                    for conduct_header in conduct_headers:
+                        try:
+                            conduct_date_str = conduct_header.split(',')[0].strip()
+                            conduct_date = datetime.strptime(conduct_date_str, "%d%m%Y").date()
+                            if window_start_date <= conduct_date <= window_end_date:
+                                window_conducts.append(conduct_header)
+                        except (ValueError, IndexError):
+                            continue
+
+                    window_counts = {category: 0 for category in sbo3_requirements.keys()}
+                    window_completed_conducts = {category: [] for category in sbo3_requirements.keys()}
+
+                    for conduct_header in window_conducts:
+                        try:
+                            col_idx = headers.index(conduct_header)
+                            attendance_status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
+                            if attendance_status == "yes":
+                                conduct_name = conduct_header.lower()
+                                for category, requirements in sbo3_requirements.items():
+                                    if window_counts[category] >= requirements["target"]:
+                                        continue
+                                    for keyword in requirements["keywords"]:
+                                        if keyword.lower() in conduct_name:
+                                            window_counts[category] += 1
+                                            window_completed_conducts[category].append(conduct_header)
+                                            break
+                        except ValueError:
+                            continue
+
+                    all_components_qualified = True
+                    for category, requirements in sbo3_requirements.items():
+                        if window_counts[category] < requirements["target"]:
+                            all_components_qualified = False
+                            break
+
+                    return {
+                        "qualified": all_components_qualified,
+                        "window": f"Week {window_start}-{window_end}",
+                        "counts": window_counts,
+                        "completed_conducts": window_completed_conducts,
+                        "total": sum(window_counts.values())
+                    }
                 
                 for name in names_to_query:
                     person_row = attendance_map.get(name.lower())
                     nominal_info = nominal_map.get(name.lower(), {})
                     
                     if person_row:
-                        result = check_sliding_windows(person_row, headers, conduct_headers)
+                        # Use locked result if this person has already qualified previously
+                        name_key = f"{selected_company}:{name.lower()}"
+                        if name_key in st.session_state.sbo3_locked_results:
+                            result = st.session_state.sbo3_locked_results[name_key]
+                        else:
+                            if window_mode == "Auto (sliding)":
+                                result = check_sliding_windows(person_row, headers, conduct_headers)
+                            else:
+                                result = check_fixed_window(person_row, headers, conduct_headers)
+                            # Lock result if qualified so future week range changes won't alter it
+                            if result.get("qualified"):
+                                st.session_state.sbo3_locked_results[name_key] = result
                         
                         # Update group totals
                         for category, count in result["counts"].items():
