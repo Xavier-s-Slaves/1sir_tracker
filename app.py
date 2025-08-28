@@ -3642,61 +3642,36 @@ elif feature == "Analytics":
                     "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
                 }
                 
-                # Filter conduct headers based on date range (reuse the function from tab 4)
-                def conduct_in_date_range(conduct_header):
-                    """Check if a conduct header falls within the selected date range"""
+                # Use base SBO 3 start date and include all conducts from 16 June to today
+                attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
+                week_0_start = datetime(datetime.now().year, 6, 16).date()
+                today_date = datetime.now().date()
+
+                def parse_header_date(conduct_header):
                     try:
                         conduct_date_str = conduct_header.split(',')[0].strip()
-                        conduct_date = datetime.strptime(conduct_date_str, "%d%m%Y").date()
-                        return start_date <= conduct_date <= end_date
+                        return datetime.strptime(conduct_date_str, "%d%m%Y").date()
                     except (ValueError, IndexError):
-                        return False  # Skip malformed headers
-                
-                filtered_conduct_headers = [h for h in conduct_headers if conduct_in_date_range(h)]
-                
-                attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
-
-                conduct_filter = st.text_input("Filter conducts by name:", key="conduct_record_filter").lower()
-
-                # Pre-process filtered headers to group conduct series
-                all_conduct_series = defaultdict(dict)
-                one_off_conducts = []
-                for header in filtered_conduct_headers:
-                    try:
-                        conduct_name_part = header.split(', ')[1]
-                    except IndexError:
-                        conduct_name_part = header
-                    match = re.match(r'^(.*\S)\s+(\d+)$', conduct_name_part)
-                    if match:
-                        base_name, session = match.groups()
-                        all_conduct_series[base_name.strip()][int(session)] = header
-                    else:
-                        one_off_conducts.append(header)
+                        return None
 
                 for name in names_to_query:
                     person_row = attendance_map.get(name.lower())
                     if not person_row:
                         continue
 
-                    attended_conducts = []
-                    
-                    # Process one-off conducts (only actual attendance)
-                    for header in one_off_conducts:
-                        col_idx = headers.index(header)
-                        status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
-                        if status == 'yes':
-                            attended_conducts.append(header)
-
-                    # Process conduct series (only sessions actually attended)
-                    for base_name, sessions in all_conduct_series.items():
-                        for session_num, header in sessions.items():
+                    # Collect attended conducts from 16 June to today
+                    filtered_conducts = []
+                    for header in conduct_headers:
+                        conduct_date = parse_header_date(header)
+                        if not conduct_date or not (week_0_start <= conduct_date <= today_date):
+                            continue
+                        try:
                             col_idx = headers.index(header)
                             status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
                             if status == 'yes':
-                                attended_conducts.append(header)
-
-                    # Apply the filter
-                    filtered_conducts = [c for c in attended_conducts if conduct_filter in c.lower()]
+                                filtered_conducts.append(header)
+                        except ValueError:
+                            continue
 
                     nominal_info = nominal_map.get(name.lower(), {})
                     rank = nominal_info.get('rank', 'N/A')
@@ -3833,7 +3808,8 @@ elif feature == "Analytics":
                 options=["Auto (sliding)", "Manual (fixed)"],
                 index=0,
                 horizontal=True,
-                help="Auto slides week by week until qualification is found. Manual uses only the selected 9-week window."
+                help="Auto slides week by week until qualification is found. Manual uses only the selected 9-week window.",
+                key="sbo3_window_mode"
             )
             # Conditionally show week selector only for Manual mode; Auto defaults to Week 0
             if window_mode == "Manual (fixed)":
@@ -3841,17 +3817,21 @@ elif feature == "Analytics":
                     "Start SBO 3 from week:",
                     options=start_week_options,
                     index=0,
-                    help="Choose the earliest week to consider for SBO 3 calculations"
+                    help="Choose the earliest week to consider for SBO 3 calculations",
+                    key="sbo3_selected_start_week"
                 )
                 selected_start_day = st.selectbox(
                     "Start day (0-6):",
                     options=list(range(0, 7)),
                     index=0,
-                    help="Day offset within the starting week (0 = first day of Week 0)"
+                    help="Day offset within the starting week (0 = first day of Week 0)",
+                    key="sbo3_selected_start_day"
                 )
             else:
                 selected_start_week = 0
                 selected_start_day = 0
+                st.session_state.sbo3_selected_start_week = selected_start_week
+                st.session_state.sbo3_selected_start_day = selected_start_day
             st.info("SBO 3 Target: 31 conducts in any 9-week window")
             # Dynamic info based on mode
             if window_mode == "Auto (sliding)":
