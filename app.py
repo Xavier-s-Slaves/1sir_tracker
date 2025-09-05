@@ -3277,6 +3277,7 @@ elif feature == "Analytics":
 
             all_medical_summary = []
             group_totals = defaultdict(int)
+            group_fever_occurrences = 0
 
             for name in names_to_query:
                 person_parade_records = [
@@ -3290,6 +3291,8 @@ elif feature == "Analytics":
 
                 for record in person_parade_records:
                     status = record.get("status", "").lower()
+                    if "fever" in status:
+                        group_fever_occurrences += 1
                     for prefix in display_prefixes:
                         if status.startswith(prefix):
                             record_start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
@@ -3334,6 +3337,7 @@ elif feature == "Analytics":
                 st.subheader("Group Summary (Medical)")
                 num_people = len(names_to_query)
                 st.metric("Selected Personnel", f"{num_people}")
+                st.metric("Fever Occurrences", group_fever_occurrences)
                 st.markdown("---")
                 
                 prefix_map = {
