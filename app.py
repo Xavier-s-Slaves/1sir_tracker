@@ -3277,6 +3277,14 @@ elif feature == "Analytics":
 
             all_medical_summary = []
             group_totals = defaultdict(int)
+            group_musculoskeletal_occurrences = 0
+            group_pyschological_occurrences = 0
+            group_dermatological_occurrences = 0
+            group_headache_occurrences = 0
+            group_urti_occurrences = 0
+            group_ge_occurrences = 0
+            group_others_occurrences = 0
+            group_total_occurrences = 0
 
             for name in names_to_query:
                 person_parade_records = [
@@ -3290,6 +3298,27 @@ elif feature == "Analytics":
 
                 for record in person_parade_records:
                     status = record.get("status", "").lower()
+                    if "musculoskeletal" in status:
+                        group_musculoskeletal_occurrences += 1
+                        group_total_occurrences += 1
+                    if "pyschological" in status:
+                        group_pyschological_occurrences += 1
+                        group_total_occurrences += 1
+                    if "dermatological" in status:
+                        group_dermatological_occurrences += 1
+                        group_total_occurrences += 1
+                    if "headache" in status:
+                        group_headache_occurrences += 1
+                        group_total_occurrences += 1
+                    if "urti" in status:
+                        group_urti_occurrences += 1
+                        group_total_occurrences += 1
+                    if "ge" in status:
+                        group_ge_occurrences += 1
+                        group_total_occurrences += 1
+                    if "(others)" in status:
+                        group_others_occurrences += 1
+                        group_total_occurrences += 1
                     for prefix in display_prefixes:
                         if status.startswith(prefix):
                             record_start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
@@ -3333,7 +3362,29 @@ elif feature == "Analytics":
             if any(opt in selected_options for opt in special_options) and names_to_query:
                 st.subheader("Group Summary (Medical)")
                 num_people = len(names_to_query)
+                # Selected personnel in a separate row
                 st.metric("Selected Personnel", f"{num_people}")
+                # First row of metrics
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Musculoskeletal Cases", group_musculoskeletal_occurrences)
+                with col2:
+                    st.metric("Pyschological Cases", group_pyschological_occurrences)
+                with col3:
+                    st.metric("Dermatological Cases", group_dermatological_occurrences)
+                with col4:
+                    st.metric("Headache Cases", group_headache_occurrences)
+                
+                # Second row of metrics
+                col5, col6, col7, col8 = st.columns(4)
+                with col5:
+                    st.metric("URTI Cases", group_urti_occurrences)
+                with col6:
+                    st.metric("GE Cases", group_ge_occurrences)
+                with col7:
+                    st.metric("Other Cases", group_others_occurrences)
+                with col8:
+                    st.metric("Total Cases", group_total_occurrences)
                 st.markdown("---")
                 
                 prefix_map = {
