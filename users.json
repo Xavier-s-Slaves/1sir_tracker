@@ -3,6 +3,10 @@
         "password": "pass",
         "companies": ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ", "Wolf", "Pegasus"]
     },
+    "cpt_kevin": {
+        "password": "kevinP@ss1",
+        "companies": ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ", "Wolf", "Pegasus"]
+    },
     "cpt_don": {
         "password": "donP@ss1",
         "companies": ["Support"]
