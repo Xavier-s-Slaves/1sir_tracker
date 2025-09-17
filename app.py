@@ -1185,6 +1185,7 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
                 'Status': parade.get('status', ''),
                 'Start_Date': parade.get('start_date_ddmmyyyy', ''),
                 'End_Date': parade.get('end_date_ddmmyyyy', ''),
+                'Reason': '',  # Initialize Reason column
                 '_row_num': parade.get('_row_num')
             })
 
@@ -1196,6 +1197,7 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
             'Status': '',
             'Start_Date': '',
             'End_Date': '',
+            'Reason': '',  # Initialize Reason column
             '_row_num': None
         })
     
@@ -2807,7 +2809,7 @@ elif feature == "Update Parade":
 
     if st.session_state.parade_table:
         st.subheader("Edit Parade Data, Then Click 'Update'")
-        st.write("Fill in 'Status', 'Start_Date (DDMMYYYY)', 'End_Date (DDMMYYYY)'")
+        st.write("Fill in 'Status', 'Reason', 'Start_Date (DDMMYYYY)', 'End_Date (DDMMYYYY)'")
         st.write("To delete an existing status, please delete the values in 'Status', 'Start_Date (DDMMYYYY)', 'End_Date (DDMMYYYY)' only.")
         sorted_conduct_table = sorted(st.session_state.parade_table, 
                                  key=lambda x: "ZZZ" if x.get("Rank", "").upper() in NON_CMD_RANKS else x.get("Rank", ""))
@@ -2820,6 +2822,11 @@ elif feature == "Update Parade":
                 "Name": st.column_config.TextColumn("Name", disabled=True),
                 "4D_Number": st.column_config.TextColumn("4D_Number", disabled=True),
                 "Rank": st.column_config.TextColumn("Rank", disabled=True),
+                "Reason": st.column_config.SelectboxColumn(
+                    "Reason",
+                    options=["", "Musculoskeletal", "Psychological", "Dermatological", "Headache", "URTI", "GE", "Others"],
+                    required=False
+                ),
                 "_row_num": st.column_config.TextColumn("_row_num", disabled=True),
 
             }
@@ -2858,9 +2865,17 @@ elif feature == "Update Parade":
         for idx, row in enumerate(edited_data):
             name_val = ensure_str(row.get("Name", "")).strip()
             status_val = ensure_str(row.get("Status", "")).strip()
+            reason_val = ensure_str(row.get("Reason", "")).strip()
             start_val = ensure_str(row.get("Start_Date", "")).strip()
             end_val = ensure_str(row.get("End_Date", "")).strip()
             four_d = is_valid_4d(row.get("4D_Number", ""))
+            
+            # Combine status and reason for Google Sheets update
+            combined_status = status_val
+            if reason_val and status_val:
+                # Capitalize first letter of reason for display
+                reason_capitalized = reason_val.capitalize()
+                combined_status = f"{status_val} ({reason_capitalized})"
 
             rank = ensure_str(row.get("Rank", "")).strip()
             parade_entry = st.session_state.parade_table[idx]
@@ -2946,6 +2961,7 @@ elif feature == "Update Parade":
                 original_entry = st.session_state.parade_table[idx]
                 is_changed = (
                     row.get('Status', '') != original_entry.get('Status', '') or
+                    row.get('Reason', '') != original_entry.get('Reason', '') or
                     row.get('Start_Date', '') != original_entry.get('Start_Date', '') or
                     row.get('End_Date', '') != original_entry.get('End_Date', '')
                 )
@@ -2983,7 +2999,7 @@ elif feature == "Update Parade":
                             },
                             'rows': [{
                                 'values': [{
-                                    'userEnteredValue': {'stringValue': status_val}
+                                    'userEnteredValue': {'stringValue': combined_status}
                                 }]
                             }],
                             'fields': 'userEnteredValue'
@@ -3056,7 +3072,7 @@ elif feature == "Update Parade":
                     rank,
                     name_val,
                     four_d,
-                    status_val,
+                    combined_status,
                     formatted_start_val,
                     formatted_end_val,
                     submitted_by
@@ -3356,6 +3372,85 @@ elif feature == "Analytics":
                 st.dataframe(df_medical_summary, use_container_width=True, hide_index=True)
             else:
                 st.info("No medical status records found for the selected personnel.")
+
+            # MC/ML Status Overview Section
+            st.markdown("---")
+            st.subheader("MC/ML Status Overview")
+            
+            # Get all MC/ML records for selected personnel
+            mc_ml_records = []
+            
+            for name in names_to_query:
+                person_parade_records = [
+                    r for r in records_parade 
+                    if r.get('name', '').strip().lower() == name.strip().lower()
+                    and record_in_date_range(r, start_date, end_date)  # Apply date filtering
+                ]
+                
+                for record in person_parade_records:
+                    status = record.get("status", "").strip()
+                    status_lower = status.lower()
+                    
+                    # Check if status starts with MC or ML
+                    if status_lower.startswith("mc") or status_lower.startswith("ml"):
+                        # Extract the base status (MC or ML)
+                        base_status = "MC" if status_lower.startswith("mc") else "ML"
+                        
+                        # Extract reason from parentheses
+                        reason = "N/A"
+                        if "(" in status and ")" in status:
+                            start_paren = status.find("(")
+                            end_paren = status.find(")")
+                            if start_paren < end_paren:
+                                reason = status[start_paren + 1:end_paren].strip()
+                        
+                        # Get nominal info for rank
+                        nominal_info = nominal_map.get(name.lower(), {})
+                        
+                        # Calculate duration
+                        record_start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
+                        record_end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
+                        
+                        duration = "Unknown"
+                        if record_start_date and record_end_date and record_end_date >= record_start_date:
+                            # Calculate only the days within the selected range
+                            overlap_start = max(start_date, record_start_date.date())
+                            overlap_end = min(end_date, record_end_date.date())
+                            days = (overlap_end - overlap_start).days + 1
+                            duration = f"{days} day(s)"
+                        
+                        mc_ml_records.append({
+                            "Rank": nominal_info.get('rank', 'N/A'),
+                            "Name": name,
+                            "Status": base_status,
+                            "Reason": reason,
+                            "Start Date": record.get("start_date_ddmmyyyy", ""),
+                            "End Date": record.get("end_date_ddmmyyyy", ""),
+                            "Duration": duration
+                        })
+            
+            if mc_ml_records:
+                # Create summary statistics
+                mc_count = len([r for r in mc_ml_records if r["Status"] == "MC"])
+                ml_count = len([r for r in mc_ml_records if r["Status"] == "ML"])
+                total_count = len(mc_ml_records)
+                
+                # Display summary metrics
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total MC/ML Records", total_count)
+                with col2:
+                    st.metric("MC Records", mc_count)
+                with col3:
+                    st.metric("ML Records", ml_count)
+                
+                st.markdown("---")
+                
+                # Display the table
+                df_mc_ml = pd.DataFrame(mc_ml_records)
+                st.dataframe(df_mc_ml, use_container_width=True, hide_index=True)
+            else:
+                st.info("No MC or ML status records found for the selected personnel in the specified date range.")
 
         # TAB 2: LEAVE COUNTER
         with tab2:
