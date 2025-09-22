@@ -3373,84 +3373,6 @@ elif feature == "Analytics":
             else:
                 st.info("No medical status records found for the selected personnel.")
 
-            # MC/ML Status Overview Section
-            st.markdown("---")
-            st.subheader("MC/ML Status Overview")
-            
-            # Get all MC/ML records for selected personnel
-            mc_ml_records = []
-            
-            for name in names_to_query:
-                person_parade_records = [
-                    r for r in records_parade 
-                    if r.get('name', '').strip().lower() == name.strip().lower()
-                    and record_in_date_range(r, start_date, end_date)  # Apply date filtering
-                ]
-                
-                for record in person_parade_records:
-                    status = record.get("status", "").strip()
-                    status_lower = status.lower()
-                    
-                    # Check if status starts with MC or ML
-                    if status_lower.startswith("mc") or status_lower.startswith("ml"):
-                        # Extract the base status (MC or ML)
-                        base_status = "MC" if status_lower.startswith("mc") else "ML"
-                        
-                        # Extract reason from parentheses
-                        reason = "N/A"
-                        if "(" in status and ")" in status:
-                            start_paren = status.find("(")
-                            end_paren = status.find(")")
-                            if start_paren < end_paren:
-                                reason = status[start_paren + 1:end_paren].strip()
-                        
-                        # Get nominal info for rank
-                        nominal_info = nominal_map.get(name.lower(), {})
-                        
-                        # Calculate duration
-                        record_start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
-                        record_end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
-                        
-                        duration = "Unknown"
-                        if record_start_date and record_end_date and record_end_date >= record_start_date:
-                            # Calculate only the days within the selected range
-                            overlap_start = max(start_date, record_start_date.date())
-                            overlap_end = min(end_date, record_end_date.date())
-                            days = (overlap_end - overlap_start).days + 1
-                            duration = f"{days} day(s)"
-                        
-                        mc_ml_records.append({
-                            "Rank": nominal_info.get('rank', 'N/A'),
-                            "Name": name,
-                            "Status": base_status,
-                            "Reason": reason,
-                            "Start Date": record.get("start_date_ddmmyyyy", ""),
-                            "End Date": record.get("end_date_ddmmyyyy", ""),
-                            "Duration": duration
-                        })
-            
-            if mc_ml_records:
-                # Create summary statistics
-                mc_count = len([r for r in mc_ml_records if r["Status"] == "MC"])
-                ml_count = len([r for r in mc_ml_records if r["Status"] == "ML"])
-                total_count = len(mc_ml_records)
-                
-                # Display summary metrics
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total MC/ML Records", total_count)
-                with col2:
-                    st.metric("MC Records", mc_count)
-                with col3:
-                    st.metric("ML Records", ml_count)
-                
-                st.markdown("---")
-                
-                # Display the table
-                df_mc_ml = pd.DataFrame(mc_ml_records)
-                st.dataframe(df_mc_ml, use_container_width=True, hide_index=True)
-            else:
-                st.info("No MC or ML status records found for the selected personnel in the specified date range.")
 
         # TAB 2: LEAVE COUNTER
         with tab2:
@@ -3611,6 +3533,107 @@ elif feature == "Analytics":
                 st.dataframe(df_summary, use_container_width=True, hide_index=True)
             else:
                 st.info("No RSI/RSO records found for the selected personnel.")
+
+            # RSI/RSO Status Overview Section
+            st.markdown("---")
+            st.subheader("RSI/RSO Status Overview")
+            
+            # Get all RSI/RSO records for selected personnel
+            rsi_rso_records = []
+            
+            for name in names_to_query:
+                person_parade_records = [
+                    r for r in records_parade 
+                    if r.get('name', '').strip().lower() == name.strip().lower()
+                    and record_in_date_range(r, start_date, end_date)  # Apply date filtering
+                ]
+                
+                for record in person_parade_records:
+                    status = record.get("status", "").strip()
+                    status_lower = status.lower()
+                    
+                    # Check if status contains RSI or RSO (including cases like MC (RSO) (URTI))
+                    if "rsi" in status_lower or "rso" in status_lower:
+                        # Extract the base status (RSI or RSO)
+                        base_status = "RSI" if "rsi" in status_lower else "RSO"
+                        
+                        # Extract reason from parentheses - look for the last set of parentheses
+                        reason = "N/A"
+                        valid_reasons = ["Musculoskeletal", "Psychological", "Dermatological", "Headache", "URTI", "GE", "Others"]
+                        
+                        if "(" in status and ")" in status:
+                            # Find all parentheses pairs
+                            paren_pairs = []
+                            start = 0
+                            while True:
+                                start_paren = status.find("(", start)
+                                if start_paren == -1:
+                                    break
+                                end_paren = status.find(")", start_paren)
+                                if end_paren == -1:
+                                    break
+                                paren_pairs.append((start_paren, end_paren))
+                                start = end_paren + 1
+                            
+                            # Get the content of the last parentheses (which should be the reason)
+                            if paren_pairs:
+                                last_start, last_end = paren_pairs[-1]
+                                extracted_reason = status[last_start + 1:last_end].strip()
+                                
+                                # Validate that the extracted reason is one of the valid categories
+                                if extracted_reason in valid_reasons:
+                                    reason = extracted_reason
+                                else:
+                                    # If not a valid category, default to "Others"
+                                    reason = "Others"
+                        
+                        # Get nominal info for rank
+                        nominal_info = nominal_map.get(name.lower(), {})
+                        
+                        # Calculate duration
+                        record_start_date = parse_ddmmyyyy(record.get("start_date_ddmmyyyy", ""))
+                        record_end_date = parse_ddmmyyyy(record.get("end_date_ddmmyyyy", ""))
+                        
+                        duration = "Unknown"
+                        if record_start_date and record_end_date and record_end_date >= record_start_date:
+                            # Calculate only the days within the selected range
+                            overlap_start = max(start_date, record_start_date.date())
+                            overlap_end = min(end_date, record_end_date.date())
+                            days = (overlap_end - overlap_start).days + 1
+                            duration = f"{days} day(s)"
+                        
+                        rsi_rso_records.append({
+                            "Rank": nominal_info.get('rank', 'N/A'),
+                            "Name": name,
+                            "Status": base_status,
+                            "Reason": reason,
+                            "Start Date": record.get("start_date_ddmmyyyy", ""),
+                            "End Date": record.get("end_date_ddmmyyyy", ""),
+                            "Duration": duration
+                        })
+            
+            if rsi_rso_records:
+                # Create summary statistics
+                rsi_count = len([r for r in rsi_rso_records if r["Status"] == "RSI"])
+                rso_count = len([r for r in rsi_rso_records if r["Status"] == "RSO"])
+                total_count = len(rsi_rso_records)
+                
+                # Display summary metrics
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total RSI/RSO Records", total_count)
+                with col2:
+                    st.metric("RSI Records", rsi_count)
+                with col3:
+                    st.metric("RSO Records", rso_count)
+                
+                st.markdown("---")
+                
+                # Display the table
+                df_rsi_rso = pd.DataFrame(rsi_rso_records)
+                st.dataframe(df_rsi_rso, use_container_width=True, hide_index=True)
+            else:
+                st.info("No RSI or RSO status records found for the selected personnel in the specified date range.")
 
         # TAB 4: ATTENDANCE HISTORY
         with tab4:
