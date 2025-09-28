@@ -3266,7 +3266,7 @@ elif feature == "Analytics":
         nominal_map = {p['name'].lower(): p for p in records_nominal}
         
         # Create tabs
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Medical Statuses", "Leaves", "RSI/RSO", "Training Attendance", "Conduct Records", "Daily Attendance", "SBO 3"])
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["Medical Statuses", "Leaves", "RSI/RSO", "Training Attendance", "Conduct Records", "Daily Attendance", "SBO 3", "Pre Lancer"])
 
         # Helper function to parse dates
         def parse_ddmmyyyy(d):
@@ -4242,6 +4242,159 @@ elif feature == "Analytics":
                     st.dataframe(df_sbo3, use_container_width=True, hide_index=True)
                 else:
                     st.info("No SBO 3 records found for the selected personnel.")
+
+        # TAB 8: Pre Lancer
+        with tab8:
+            st.subheader("Pre Lancer Requirements Tracking")
+            
+            # Define Pre Lancer requirements
+            pre_lancer_requirements = {
+                "Strength & Power": {"target": 10, "keywords": ["strength and power", "strength & power", "s&p ", "s & p "], "current": 0},
+                "IPPT": {"target": 1, "keywords": ["ippt "], "current": 0},
+                "ACFC": {"target": 2, "keywords": ["acfc "], "current": 0},
+                "Oregon Circuit": {"target": 16, "keywords": ["oregon circuit ", "oc ", "oregon "], "current": 0},
+                "Combat": {"target": 7, "keywords": ["ifm ", "interval fast march ", "csb ", "combat skills badge ", "hill training ", "ht ", "tactical march ", "tm "], "current": 0}
+            }
+            
+            # Calculate tracking start date (15 Sep of current year)
+            pre_lancer_start = datetime(datetime.now().year, 9, 15).date()
+            current_date = datetime.now().date()
+            days_since_start = (current_date - pre_lancer_start).days
+            
+            st.info(f"Pre Lancer tracking started on 15 September {datetime.now().year}")
+            st.info(f"Days since tracking started: {days_since_start}")
+            
+            if not everything_data or len(everything_data) < 2:
+                st.warning("The 'Everything' sheet is empty or has no data, so Pre Lancer progress cannot be displayed.")
+            else:
+                headers = everything_data[0]
+                conduct_headers = headers[3:]
+                
+                attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
+                
+                all_pre_lancer_records = []
+                group_totals = {category: 0 for category in pre_lancer_requirements.keys()}
+                
+                # Filter conducts from 15 Sep onwards
+                def conduct_after_start_date(conduct_header):
+                    """Check if a conduct header is after the Pre Lancer start date"""
+                    try:
+                        conduct_date_str = conduct_header.split(',')[0].strip()
+                        conduct_date = datetime.strptime(conduct_date_str, "%d%m%Y").date()
+                        return conduct_date >= pre_lancer_start
+                    except (ValueError, IndexError):
+                        return False
+                
+                filtered_conduct_headers = [h for h in conduct_headers if conduct_after_start_date(h)]
+                
+                for name in names_to_query:
+                    person_row = attendance_map.get(name.lower())
+                    nominal_info = nominal_map.get(name.lower(), {})
+                    
+                    if person_row:
+                        # Count conducts for this person
+                        person_counts = {category: 0 for category in pre_lancer_requirements.keys()}
+                        person_completed_conducts = {category: [] for category in pre_lancer_requirements.keys()}
+                        
+                        for conduct_header in filtered_conduct_headers:
+                            try:
+                                col_idx = headers.index(conduct_header)
+                                attendance_status = person_row[col_idx].strip().lower() if len(person_row) > col_idx else ""
+                                
+                                if attendance_status == "yes":
+                                    conduct_name = conduct_header.lower()
+                                    
+                                    # Check which category this conduct belongs to
+                                    for category, requirements in pre_lancer_requirements.items():
+                                        # Stop counting if this category already reached its target
+                                        if person_counts[category] >= requirements["target"]:
+                                            continue
+                                        for keyword in requirements["keywords"]:
+                                            if keyword.lower() in conduct_name:
+                                                person_counts[category] += 1
+                                                person_completed_conducts[category].append(conduct_header)
+                                                break  # Only count once per category
+                            except ValueError:
+                                continue
+                        
+                        # Update group totals
+                        for category, count in person_counts.items():
+                            group_totals[category] += count
+                        
+                        # Calculate total and determine status
+                        total_completed = sum(person_counts.values())
+                        total_required = sum(req["target"] for req in pre_lancer_requirements.values())
+                        
+                        # Check if all requirements are met
+                        all_requirements_met = all(
+                            person_counts[category] >= requirements["target"] 
+                            for category, requirements in pre_lancer_requirements.items()
+                        )
+                        
+                        if all_requirements_met:
+                            status = "✅ QUALIFIED"
+                            completion_percentage = 100.0
+                        else:
+                            completion_percentage = (total_completed / total_required * 100) if total_completed > 0 else 0
+                            status = "❌ Not Qualified"
+                        
+                        all_pre_lancer_records.append({
+                            "Rank": nominal_info.get('rank', 'N/A'),
+                            "Name": name,
+                            "Status": status,
+                            "S&P": f"{person_counts['Strength & Power']}/10",
+                            "IPPT": f"{person_counts['IPPT']}/1",
+                            "ACFC": f"{person_counts['ACFC']}/2",
+                            "Oregon Circuit": f"{person_counts['Oregon Circuit']}/16",
+                            "Combat": f"{person_counts['Combat']}/7",
+                            "Total": f"{total_completed}/{total_required}",
+                            "Completion %": f"{completion_percentage:.1f}%"
+                        })
+                        
+                        # Show detailed breakdown for each person
+                        with st.expander(f"View Pre Lancer details for {name} - {status}"):
+                            for category, conducts in person_completed_conducts.items():
+                                if conducts:
+                                    st.write(f"**{category}** ({len(conducts)}/{pre_lancer_requirements[category]['target']}):")
+                                    for conduct in conducts:
+                                        st.write(f"  • {conduct}")
+                                else:
+                                    st.write(f"**{category}**: No conducts completed (0/{pre_lancer_requirements[category]['target']})")
+                    else:
+                        # Person not found in Everything sheet
+                        all_pre_lancer_records.append({
+                            "Rank": nominal_info.get('rank', 'N/A'),
+                            "Name": name,
+                            "Status": "❌ Not in Everything Sheet",
+                            "S&P": "0/10",
+                            "IPPT": "0/1",
+                            "ACFC": "0/2",
+                            "Oregon Circuit": "0/16",
+                            "Combat": "0/7",
+                            "Total": "0/36",
+                            "Completion %": "0.0%"
+                        })
+                
+                # Group Summary
+                if any(opt in selected_options for opt in special_options) and names_to_query:
+                    st.subheader("Group Summary (Pre Lancer)")
+                    num_people = len(names_to_query)
+                    qualified_count = sum(1 for record in all_pre_lancer_records if "✅ QUALIFIED" in record.get("Status", ""))
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Selected Personnel", num_people)
+                    with col2:
+                        st.metric("Qualified Personnel", qualified_count)
+                    with col3:
+                        st.metric("Qualification Rate", f"{(qualified_count/num_people*100):.1f}%" if num_people > 0 else "0%")
+                
+                if all_pre_lancer_records:
+                    st.subheader("Individual Pre Lancer Progress")
+                    df_pre_lancer = pd.DataFrame(all_pre_lancer_records)
+                    st.dataframe(df_pre_lancer, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No Pre Lancer records found for the selected personnel.")
 
     elif query_mode == "By Conduct":
         st.subheader("Query by Conduct")
