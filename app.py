@@ -232,6 +232,12 @@ COMPANY_SPREADSHEETS = {
     "Support": "Support",
     "MSC": "MSC",
     "HQ": "HQ",
+    "AlphaIVT": "AlphaIVT",
+    "BravoIVT": "BravoIVT",
+    "CharlieIVT": "CharlieIVT",
+    "SupportIVT": "SupportIVT",
+    "MSCIVT": "MSCIVT",
+    "HQIVT": "HQIVT",
 }
 
 
