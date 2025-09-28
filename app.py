@@ -671,7 +671,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                 "1": "SIGNAL PL",
                 "2": "SCOUT PL",
                 "3": "PIONEER PL",
-                "4": "OPFOR PL"
+                "4": "MORTAR PL"
             }
             platoon_label = support_platoon_map.get(platoon, f"Platoon {platoon}")
         elif selected_company == "HQ":
@@ -1984,7 +1984,7 @@ elif feature == "Add Ad-Hoc Conduct":
     def format_platoon_label(platoon_code: str) -> str:
         code = str(platoon_code).strip()
         if selected_company == "Support":
-            mapping = {"1": "SIGNAL PL", "2": "SCOUT PL", "3": "PIONEER PL", "4": "OPFOR PL"}
+            mapping = {"1": "SIGNAL PL", "2": "SCOUT PL", "3": "PIONEER PL", "4": "MORTAR PL"}
             return mapping.get(code, f"Platoon {code}")
         if selected_company == "HQ":
             mapping = {
@@ -3174,7 +3174,7 @@ elif feature == "Analytics":
             # Create user-friendly platoon labels
             if selected_company == "Support":
                 support_platoon_map = {
-                    "1": "SIGNAL PL", "2": "SCOUT PL", "3": "PIONEER PL", "4": "OPFOR PL"
+                    "1": "SIGNAL PL", "2": "SCOUT PL", "3": "PIONEER PL", "4": "MORTAR PL"
                 }
                 platoon_label = support_platoon_map.get(platoon, f"PLATOON {platoon}")
             elif selected_company == "HQ":
