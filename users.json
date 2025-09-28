@@ -1,370 +1,370 @@
 {
     "admin": {
         "password": "pass",
-        "companies": ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ", "Wolf", "Pegasus"]
+        "companies": ["Alpha", "AlphaIVT", "Bravo", "BravoIVT", "Charlie", "CharlieIVT", "Support", "SupportIVT", "MSC", "MSCIVT", "HQ", "HQIVT"]
     },
     "cpt_kevin": {
         "password": "kevinP@ss1",
-        "companies": ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ", "Wolf", "Pegasus"]
+        "companies": ["Alpha", "AlphaIVT", "Bravo", "BravoIVT", "Charlie", "CharlieIVT", "Support", "SupportIVT", "MSC", "MSCIVT", "HQ", "HQIVT"]
     },
     "cpt_don": {
         "password": "donP@ss1",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "3wo_asraf": {
         "password": "asrafP@ss2",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "2lt_zul": {
         "password": "zulP@ss3",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "3sg_yanhongg": {
         "password": "yanhonggP@ss4",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "1sg_jiazhen": {
         "password": "jiazhenP@ss5",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "2sg_lingesh": {
         "password": "lingeshP@ss6",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "2sg_kimi": {
         "password": "kimiP@ss7",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "3sg_ziyang": {
         "password": "ziyangP@ss8",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "3sg_yaozong": {
         "password": "yaozongP@ss9",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "3sg_kianyeng": {
         "password": "kianyengP@ss10",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "lta_yongze": {
         "password": "yongzeP@ss11",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "3sg_lionel": {
         "password": "lionelP@ss12",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "3sg_kevan": {
         "password": "kevanP@ss13",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "OC_Alpha": {
         "password": "Zx9#kL7mP!nR2vB",
-        "companies": ["Alpha", "Pegasus"]
+        "companies": ["Alpha", "AlphaIVT"]
     },
     "CSM_Alpha": {
         "password": "Qw8$hM3yN&eT6uI",
-        "companies": ["Alpha"]
+        "companies": ["Alpha", "AlphaIVT"]
     },
     "COS_Alpha": {
         "password": "Rt5%jK9xC*fG4oP",
-        "companies": ["Alpha", "Pegasus"]
+        "companies": ["Alpha", "AlphaIVT"]
     },
     "HQ_Alpha": {
         "password": "Lm2@bV7nH^dS9wE",
-        "companies": ["Alpha"]
+        "companies": ["Alpha", "AlphaIVT"]
     },
     "P1_Alpha": {
         "password": "Pu4#yJ8mR!qL3kN",
-        "companies": ["Alpha"]
+        "companies": ["Alpha", "AlphaIVT"]
     },
     "P2_Alpha": {
         "password": "Ow6&tF9xV$zM5aS",
-        "companies": ["Alpha"]
+        "companies": ["Alpha", "AlphaIVT"]
     },
     "P3_Alpha": {
         "password": "Iq3*hB7nG%cW8eR",
-        "companies": ["Alpha"]
+        "companies": ["Alpha", "AlphaIVT"]
     },
     "P4_Alpha": {
         "password": "Er1^mK5yL@pT9uI",
-        "companies": ["Alpha"]
+        "companies": ["Alpha", "AlphaIVT"]
     },
     "P5_Alpha": {
         "password": "Ty7#dN4xQ!vH6oP",
-        "companies": ["Alpha"]
+        "companies": ["Alpha", "AlphaIVT"]
     },
     "cpt_aravin": {
         "password": "aravinP@ss14",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "3wo_nelson": {
         "password": "nelsonP@ss15",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "2lt_chee": {
         "password": "cheeP@ss16",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "2lt_henrieco": {
         "password": "henriecoP@ss17",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "2lt_kumar": {
         "password": "kumarP@ss18",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "2sg_vishal": {
         "password": "vishalP@ss19",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "3sg_athul": {
         "password": "athulP@ss20",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "3sg_palaniappan": {
         "password": "palaniappanP@ss21",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "3sg_nazry": {
         "password": "nazryP@ss22",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "3sg_millard": {
         "password": "millardP@ss23",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "3sg_liang": {
         "password": "liangP@ss24",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "3sg_wong": {
         "password": "wongP@ss25",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "3sg_clifford": {
         "password": "cliffordP@ss26",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "2sg_kaarthik": {
         "password": "kaarthikP@ss39",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "MSC_HQ": {
         "password": "passMSCHQ",
-        "companies": ["MSC"]
+        "companies": ["MSC", "MSCIVT"]
     },
     "MSC_PLT1": {
         "password": "passMSC1",
-        "companies": ["MSC"]
+        "companies": ["MSC", "MSCIVT"]
     },
     "MSC_PLT2": {
         "password": "passMSC2",
-        "companies": ["MSC"]
+        "companies": ["MSC", "MSCIVT"]
     },
     "MSC_PLT3": {
         "password": "passMSC3",
-        "companies": ["MSC"]
+        "companies": ["MSC", "MSCIVT"]
     },
     "3sg_leroy":{
         "password": "pass",
-        "companies": ["Alpha", "Bravo", "Charlie", "Support", "MSC", "HQ"]
+        "companies": ["Alpha", "AlphaIVT", "Bravo", "BravoIVT", "Charlie", "CharlieIVT", "Support", "SupportIVT", "MSC", "MSCIVT", "HQ", "HQIVT"]
     },
     "3sg_bill":{
         "password": "pass",
-        "companies": ["HQ"]
+        "companies": ["HQ", "HQIVT"]
     },
     "3sg_nicholas":{
         "password": "pass",
-        "companies": ["HQ"]
+        "companies": ["HQ", "HQIVT"]
     },
     "hq1": {
         "password": "Vk8#mQ7nL!dR9xW",
-        "companies": ["HQ"]
+        "companies": ["HQ", "HQIVT"]
     },
     "hq2": {
         "password": "Nj5$pY3zF&hM8qT",
-        "companies": ["HQ"]
+        "companies": ["HQ", "HQIVT"]
     },
     "hq3": {
         "password": "Br2@kX6vS*gN4lP",
-        "companies": ["HQ"]
+        "companies": ["HQ", "HQIVT"]
     },
     "hq4": {
         "password": "Cw9%yJ1nR^mT7eL",
-        "companies": ["HQ"]
+        "companies": ["HQ", "HQIVT"]
     },
     "cpt_asyraf": {
         "password": "asyrafP@ss27",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "3wo_koung": {
         "password": "koungP@ss28",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "cpt_tan": {
         "password": "tanP@ss29",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "3sg_matthew": {
         "password": "matthewP@ss30",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "2sg_christian": {
         "password": "christianP@ss31",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "2lt_yuhao": {
         "password": "yuhaoP@ss32",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "2sg_azri": {
         "password": "azriP@ss33",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "2lt_ryan": {
         "password": "ryanP@ss34",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "3sg_chan": {
         "password": "chanP@ss35",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "1sg_sharanyugjit": {
         "password": "sharanyugjitP@ss36",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "3sg_lee": {
         "password": "leeP@ss37",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "3sg_lam": {
         "password": "lamP@ss38",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "DOO": {
         "password": "bnBosP@ss2024",
-        "companies": ["Battalion"]
+        "companies": ["Battalion", "BattalionIVT"]
     },
     "2lt_matthew": {
         "password": "matthewP@ss40",
-        "companies": ["HQ"]
+        "companies": ["HQ", "HQIVT"]
     },
     "2lt_aung": {
         "password": "aungP@ss41",
-        "companies": ["HQ"]
+        "companies": ["HQ", "HQIVT"]
     },
     "2lt_joshua": {
         "password": "joshuaP@ss42",
-        "companies": ["HQ"]
+        "companies": ["HQ", "HQIVT"]
     },
     "2lt_loh": {
         "password": "lohP@ss43",
-        "companies": ["HQ"]
+        "companies": ["HQ", "HQIVT"]
     },
     "2lt_emilio": {
         "password": "emilioP@ss44",
-        "companies": ["HQ"]
+        "companies": ["HQ", "HQIVT"]
     },
     "2lt_harshavardhan": {
         "password": "harshavardhanP@ss45",
-        "companies": ["HQ"]
+        "companies": ["HQ", "HQIVT"]
     },
     "2lt_chuah": {
         "password": "chuahP@ss46",
-        "companies": ["HQ"]
+        "companies": ["HQ", "HQIVT"]
     },
     "2lt_haiqal": {
         "password": "haiqalP@ss47",
-        "companies": ["Alpha"]
+        "companies": ["Alpha", "AlphaIVT"]
     },
     "2lt_kase": {
         "password": "kaseP@ss48",
-        "companies": ["Alpha"]
+        "companies": ["Alpha", "AlphaIVT"]
     },
     "2lt_chaohao": {
         "password": "chaohaoP@ss49",
-        "companies": ["Alpha"]
+        "companies": ["Alpha", "AlphaIVT"]
     },
     "2lt_rifqi": {
         "password": "rifqiP@ss50",
-        "companies": ["Alpha"]
+        "companies": ["Alpha", "AlphaIVT"]
     },
     "2lt_sam": {
         "password": "samP@ss51",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "2lt_limwei": {
         "password": "limweiP@ss52",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "2lt_shadrach": {
         "password": "shadrachP@ss53",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "2lt_seth": {
         "password": "sethP@ss54",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "2lt_alson": {
         "password": "alsonP@ss55",
-        "companies": ["Bravo"]
+        "companies": ["Bravo", "BravoIVT"]
     },
     "2lt_adwitya": {
         "password": "adwityaP@ss56",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "2lt_reinard": {
         "password": "reinardP@ss57",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "2lt_toh": {
         "password": "tohP@ss58",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "2lt_quek": {
         "password": "quekP@ss59",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "2lt_huang": {
         "password": "huangP@ss60",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "2lt_alexander": {
         "password": "alexanderP@ss61",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     },
     "2lt_lau": {
         "password": "lauP@ss62",
-        "companies": ["MSC"]
+        "companies": ["MSC", "MSCIVT"]
     },
     "2lt_harry": {
         "password": "harryP@ss63",
-        "companies": ["MSC"]
+        "companies": ["MSC", "MSCIVT"]
     },
     "2lt_hyder": {
         "password": "hyderP@ss64",
-        "companies": ["MSC"]
+        "companies": ["MSC", "MSCIVT"]
     },
     "2lt_danial": {
         "password": "danialP@ss65",
-        "companies": ["MSC"]
+        "companies": ["MSC", "MSCIVT"]
     },
     "2lt_kyle": {
         "password": "kyleP@ss66",
-        "companies": ["MSC"]
+        "companies": ["MSC", "MSCIVT"]
     },
     "3sg_shane": {
         "password": "shaneP@ss67",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "sc_charlie": {
         "password": "Ch@rlie9$xK3mN!wQ7",
-        "companies": ["Charlie"]
+        "companies": ["Charlie", "CharlieIVT"]
     },
     "2sg_jerrold": {
         "password": "jerroldP@ss68",
-        "companies": ["Support"]
+        "companies": ["Support", "SupportIVT"]
     }
 }
