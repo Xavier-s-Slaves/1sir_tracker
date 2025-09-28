@@ -232,7 +232,6 @@ COMPANY_SPREADSHEETS = {
     "Support": "Support",
     "MSC": "MSC",
     "HQ": "HQ",
-    "Pegasus": "Pegasus",
 }
 
 
