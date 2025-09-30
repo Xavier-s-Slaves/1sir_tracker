@@ -2746,9 +2746,15 @@ elif feature == "Update Parade":
         
         You can add any additional details in parentheses `()` after the prefix. For `RSI` and `RSO`, please write it like `MC (RSI)`.
 
+        **IMPORTANT: RSI/RSO Status Requirements**
+        - If your status contains `(RSI)` or `(RSO)` in brackets, you **MUST** select a reason from the Reason dropdown
+        - The system will not allow you to update the Parade State without providing a reason for RSI/RSO statuses
+        - Example: Status `MC (RSI)` requires you to select a reason like "Musculoskeletal", "Psychological", etc.
+
         **Examples:**
-        - `MC (RSO)`
-        - `ML (RSI)`
+        - `MC (RSO)`: Must select reason
+        - `ML (RSI)`: Must select reason
+        - `MC`: No reason required
         
         ---
         
@@ -2874,6 +2880,13 @@ elif feature == "Update Parade":
             start_val = ensure_str(row.get("Start_Date", "")).strip()
             end_val = ensure_str(row.get("End_Date", "")).strip()
             four_d = is_valid_4d(row.get("4D_Number", ""))
+            
+            # RSI/RSO validation: Check if status contains RSI or RSO in brackets
+            if status_val and ("(RSI)" in status_val.upper() or "(RSO)" in status_val.upper()):
+                if not reason_val:
+                    st.error(f"**RSI/RSO Reason Required**: For status '{status_val}', you must select a reason from the Reason dropdown for {name_val}. Please select a reason and try again.")
+                    logger.error(f"RSI/RSO status '{status_val}' for {name_val} in company '{selected_company}' requires a reason but none was provided.")
+                    st.stop()
             
             # Combine status and reason for Google Sheets update
             combined_status = status_val
