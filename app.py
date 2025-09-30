@@ -1183,6 +1183,33 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
         # Retrieve all parade statuses for the person (by name)
         person_parades = parade_map.get(name_key, [])
         for parade in person_parades:
+            # Derive Reason from existing status if it includes RSI/RSO with an additional reason in brackets
+            status_raw = ensure_str(parade.get('status', ''))
+            reason_val = ''
+            try:
+                import re
+                # Capture all parenthetical groups, e.g. (RSI) (Dermatological)
+                groups = re.findall(r"\(([^)]*)\)", status_raw)
+                if groups:
+                    # Filter out RSI/RSO markers
+                    non_rsi_rso = [g.strip() for g in groups if g.strip().upper() not in ['RSI', 'RSO']]
+                    if non_rsi_rso:
+                        # Map to canonical casing from dropdown options
+                        allowed = [
+                            "Musculoskeletal", "Psychological", "Dermatological",
+                            "Headache", "URTI", "GE", "Others"
+                        ]
+                        g_last = non_rsi_rso[-1]
+                        for opt in allowed:
+                            if g_last.lower() == opt.lower():
+                                reason_val = opt
+                                break
+                        if not reason_val:
+                            # If not matched, keep as-is
+                            reason_val = g_last
+            except Exception:
+                # On any parsing error, leave reason empty
+                reason_val = ''
             data_with_status.append({
                 'Rank': rank,
                 'Name': original_name,
@@ -1190,7 +1217,7 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
                 'Status': parade.get('status', ''),
                 'Start_Date': parade.get('start_date_ddmmyyyy', ''),
                 'End_Date': parade.get('end_date_ddmmyyyy', ''),
-                'Reason': '',  # Initialize Reason column
+                'Reason': reason_val,  # Auto-filled Reason when detectable
                 '_row_num': parade.get('_row_num')
             })
 
