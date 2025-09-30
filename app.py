@@ -1186,6 +1186,7 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
             # Derive Reason from existing status if it includes RSI/RSO with an additional reason in brackets
             status_raw = ensure_str(parade.get('status', ''))
             reason_val = ''
+            status_cleaned = status_raw
             try:
                 import re
                 # Capture all parenthetical groups, e.g. (RSI) (Dermatological)
@@ -1207,6 +1208,11 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
                         if not reason_val:
                             # If not matched, keep as-is
                             reason_val = g_last
+                        
+                        # Remove the reason from status, keep only RSI/RSO markers
+                        # e.g. "MC (RSI) (GE)" -> "MC (RSI)"
+                        for reason_group in non_rsi_rso:
+                            status_cleaned = status_cleaned.replace(f"({reason_group})", "").strip()
             except Exception:
                 # On any parsing error, leave reason empty
                 reason_val = ''
@@ -1214,7 +1220,7 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
                 'Rank': rank,
                 'Name': original_name,
                 '4D_Number': four_d,
-                'Status': parade.get('status', ''),
+                'Status': status_cleaned,
                 'Start_Date': parade.get('start_date_ddmmyyyy', ''),
                 'End_Date': parade.get('end_date_ddmmyyyy', ''),
                 'Reason': reason_val,  # Auto-filled Reason when detectable
