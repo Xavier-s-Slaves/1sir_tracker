@@ -247,6 +247,10 @@
         "password": "bnBosP@ss2024",
         "companies": ["Battalion", "BattalionIVT"]
     },
+    "cpt_hadi": {
+        "password": "hadiP@ss2024",
+        "companies": ["Charlie", "CharlieIVT"]
+    },
     "2lt_matthew": {
         "password": "matthewP@ss40",
         "companies": ["HQ", "HQIVT"]
