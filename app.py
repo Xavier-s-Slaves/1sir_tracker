@@ -241,6 +241,21 @@ COMPANY_SPREADSHEETS = {
 }
 
 
+# Columns used for the persistent Checklist sheet
+CHECKLIST_COLUMNS = [
+    "Conduct",
+    "Date",
+    "Points",
+    "Supervising Officer",
+    "Conducting Officer",
+    "Chief Safety Officer",
+    "Uploading of AI",
+    "Submission of PAR Pointers",
+    "Scanning and Uploading of RAW",
+    "Submission of ATMS QnC",
+]
+
+
 def extract_attendance_data(edited_data):
     """
     Extracts attendance data from the edited conduct data.
@@ -463,11 +478,24 @@ def get_sheets(selected_company: str):
     try:
         gc = gspread.authorize(creds)
         sh = gc.open(spreadsheet_name)
+
+        # Helper to get or create a worksheet; optionally seed headers
+        def _get_or_create(ws_title: str, headers: Optional[List[str]] = None):
+            try:
+                return sh.worksheet(ws_title)
+            except gspread.exceptions.WorksheetNotFound:
+                ws = sh.add_worksheet(title=ws_title, rows=1000, cols=26)
+                if headers:
+                    # Write header row
+                    ws.update('A1', [headers])
+                return ws
+
         return {
-            "nominal": sh.worksheet("Nominal_Roll"),
-            "parade": sh.worksheet("Parade_State"),
-            "conducts": sh.worksheet("Conducts"),
-            "everything": sh.worksheet("Everything"),
+            "nominal": _get_or_create("Nominal_Roll"),
+            "parade": _get_or_create("Parade_State"),
+            "conducts": _get_or_create("Conducts"),
+            "everything": _get_or_create("Everything"),
+            "checklist": _get_or_create("Checklist", CHECKLIST_COLUMNS),
         }
     except Exception as e:
         logger.error(f"Error accessing spreadsheet '{spreadsheet_name}': {e}")
@@ -1026,6 +1054,103 @@ def get_nominal_records(selected_company: str, _sheet_nominal):
     
     return normalized_records
 
+def get_checklist_records(_sheet_checklist):
+    """
+    Load existing Checklist rows into a dict keyed by (Date, Conduct).
+    Returns a dict: {(date_str, conduct_name): {<column>: value, ..., '_row_num': N}}
+    """
+    try:
+        all_vals = _sheet_checklist.get_all_values()
+    except Exception as e:
+        logger.error(f"Error reading Checklist sheet: {e}")
+        return {}
+
+    if not all_vals:
+        # Seed header if the sheet is empty
+        try:
+            _sheet_checklist.update('A1', [CHECKLIST_COLUMNS])
+        except Exception:
+            pass
+        return {}
+
+    header = [h.strip() for h in all_vals[0]]
+    # Map header names to indices (case-sensitive to match Google Sheet headers)
+    idx_map = {name: i for i, name in enumerate(header)}
+
+    records_map = {}
+    for row_idx, row in enumerate(all_vals[1:], start=2):
+        # Build a normalized record using known columns; if column is missing in sheet, default to ''
+        record = {}
+        for col in CHECKLIST_COLUMNS:
+            i = idx_map.get(col)
+            record[col] = row[i].strip() if (i is not None and i < len(row)) else ""
+
+        date_str = ensure_date_str(record.get('Date', ''))
+        conduct_name = ensure_str(record.get('Conduct', ''))
+        if not conduct_name:
+            continue
+        # Save original row number for update operations
+        record['_row_num'] = row_idx
+        records_map[(date_str, conduct_name)] = record
+
+    return records_map
+
+def save_checklist_records(_sheet_checklist, rows: List[Dict]):
+    """
+    Save a list of checklist rows to the Checklist sheet.
+    Each row is a dict with keys from CHECKLIST_COLUMNS.
+    If a row contains '_row_num', that row will be updated in-place; otherwise, it's appended.
+    Returns: (num_updated, num_appended)
+    """
+    try:
+        # Ensure header exists in the sheet
+        existing_values = _sheet_checklist.get_all_values()
+        if not existing_values:
+            _sheet_checklist.update('A1', [CHECKLIST_COLUMNS])
+            existing_values = [CHECKLIST_COLUMNS]
+        header = existing_values[0]
+    except Exception as e:
+        logger.error(f"Error accessing Checklist sheet for save: {e}")
+        st.error(f"Error accessing Checklist sheet: {e}")
+        return (0, 0)
+
+    updates = []
+    append_payload = []
+
+    for r in rows:
+        # Build row values in our canonical column order
+        values = [ensure_str(r.get(col, '')) for col in CHECKLIST_COLUMNS]
+        row_num = r.get('_row_num')
+        if row_num:
+            start = gspread.utils.rowcol_to_a1(int(row_num), 1)
+            end = gspread.utils.rowcol_to_a1(int(row_num), len(CHECKLIST_COLUMNS))
+            updates.append({
+                'range': f'{start}:{end}',
+                'values': [values]
+            })
+        else:
+            append_payload.append(values)
+
+    # Perform batch updates then appends
+    updated = 0
+    appended = 0
+    if updates:
+        try:
+            _sheet_checklist.batch_update(updates)
+            updated = len(updates)
+        except Exception as e:
+            logger.error(f"Error batch-updating Checklist rows: {e}")
+            st.error(f"Error updating Checklist rows: {e}")
+    for row_values in append_payload:
+        try:
+            _sheet_checklist.append_row(row_values)
+            appended += 1
+        except Exception as e:
+            logger.error(f"Error appending Checklist row: {e}")
+            st.error(f"Error appending Checklist row: {e}")
+
+    return (updated, appended)
+
 def get_parade_records(selected_company: str, _sheet_parade):
     """
     Returns all rows from Parade_State as a list of dicts, including row numbers.
@@ -1429,6 +1554,7 @@ else:
     SHEET_NOMINAL = worksheets["nominal"]
     SHEET_PARADE = worksheets["parade"]
     SHEET_CONDUCTS = worksheets["conducts"]
+    SHEET_CHECKLIST = worksheets["checklist"]
 
 if "conduct_date" not in st.session_state:
     st.session_state.conduct_date = ""
@@ -1476,7 +1602,7 @@ if selected_company == "Battalion":
     available_features = ["Message"]
 else:
     # Regular company users have access to all features
-    available_features = ["Add Conduct", "Add Ad-Hoc Conduct", "Update Conduct", "Update Parade", "Analytics", "Message"]
+    available_features = ["Add Conduct", "Add Ad-Hoc Conduct", "Update Conduct", "Update Parade", "Analytics", "Message", "Checklist"]
 
 feature = st.sidebar.selectbox(
     "Select Feature",
@@ -4649,4 +4775,430 @@ elif feature == "Message":
         # Generate the company-specific message
         company_message = generate_company_message(selected_company, company_nominal, company_parade, target_date=target_datetime)
         st.code(company_message, language='text')
+
+# ------------------------------------------------------------------------------
+# 15) Feature G: Checklist
+# ------------------------------------------------------------------------------
+elif feature == "Checklist":
+    st.header("Conduct Checklist Manager")
+    st.info("Track administrative requirements for all conducts including officer assignments, documentation, and platoon participation.")
+    
+    # Load conducts data
+    records_conducts = get_conduct_records(selected_company, SHEET_CONDUCTS)
+    
+    if not records_conducts:
+        st.warning(f"No conducts found for company '{selected_company}'.")
+        st.stop()
+    
+    # Load existing checklist rows for persistence
+    existing_checklist_map = get_checklist_records(SHEET_CHECKLIST)
+
+    # Load nominal records to get list of commanders
+    records_nominal = get_nominal_records(selected_company, SHEET_NOMINAL)
+    
+    # Get list of commanders (personnel not in NON_CMD_RANKS)
+    commanders = sorted([
+        f"{p['rank']} {p['name']}" 
+        for p in records_nominal 
+        if p.get('rank', '').upper() not in NON_CMD_RANKS and p.get('name', '').strip()
+    ])
+    
+    if not commanders:
+        st.warning("No commanders found in nominal roll.")
+        commanders = ["N/A"]
+    
+    # Load Everything sheet to check platoon participation
+    sheet_everything = worksheets.get("everything")
+    everything_data = sheet_everything.get_all_values() if sheet_everything else []
+    
+    # Determine platoon labels and identifiers once per company
+    if selected_company == "Support":
+        platoon_labels = ["SIGNAL PL", "SCOUT PL", "PIONEER PL", "MORTAR PL"]
+        platoon_numbers = ["1", "2", "3", "4"]
+    elif selected_company == "HQ":
+        platoon_labels = ["S1 Branch", "S2 Branch", "S3 Branch", "S4 Branch", "SSP", "BCS"]
+        platoon_numbers = ["S1", "S2", "S3", "S4", "SSP", "BCS"]
+    elif selected_company == "Bravo":
+        platoon_labels = ["Plt 6", "Plt 7", "Plt 8", "Plt 9", "Plt 10"]
+        platoon_numbers = ["1", "2", "3", "4", "5"]
+    elif selected_company == "Charlie":
+        platoon_labels = ["Plt 11", "Plt 12", "Plt 13", "Plt 14", "Plt 15"]
+        platoon_numbers = ["1", "2", "3", "4", "5"]
+    else:  # Alpha or default
+        platoon_labels = ["Platoon 1", "Platoon 2", "Platoon 3", "Platoon 4"]
+        platoon_numbers = ["1", "2", "3", "4"]
+
+    # Build checklist data
+    checklist_data = []
+    
+    for conduct in records_conducts:
+        conduct_name = conduct.get('conduct_name', '')
+        conduct_date = conduct.get('date', '')
+        
+        # Use existing checklist values if present; otherwise default
+        key = (ensure_date_str(conduct_date), ensure_str(conduct_name))
+        existing = existing_checklist_map.get(key, {})
+        # Get points: prefer existing, else from conduct record if available
+        points = ensure_str(existing.get('Points', '') or conduct.get('points', ''))
+        
+        # Initialize row data
+        row_data = {
+            'Conduct': conduct_name,
+            'Date': conduct_date,
+            'Points': points,
+            'Supervising Officer': ensure_str(existing.get('Supervising Officer', '')),
+            'Conducting Officer': ensure_str(existing.get('Conducting Officer', '')),
+            'Chief Safety Officer': ensure_str(existing.get('Chief Safety Officer', '')),
+            'Uploading of AI': ensure_str(existing.get('Uploading of AI', 'No')) or 'No',
+            'Submission of PAR Pointers': ensure_str(existing.get('Submission of PAR Pointers', 'No')) or 'No',
+            'Scanning and Uploading of RAW': ensure_str(existing.get('Scanning and Uploading of RAW', 'No')) or 'No',
+            'Submission of ATMS QnC': ensure_str(existing.get('Submission of ATMS QnC', 'No')) or 'No',
+            '_row_num': existing.get('_row_num', ''),
+        }
+        
+        # Check platoon participation from Everything sheet
+        if everything_data and len(everything_data) > 1:
+            headers = everything_data[0]
+            conduct_header = f"{conduct_date}, {conduct_name}"
+            
+            # Check if this conduct exists in Everything sheet
+            if conduct_header in headers:
+                conduct_col_idx = headers.index(conduct_header)
+                
+                # Check each platoon
+                for plt_label, plt_num in zip(platoon_labels, platoon_numbers):
+                    # Get nominal records for this platoon
+                    platoon_personnel = [
+                        p for p in records_nominal 
+                        if p.get('platoon', '') == plt_num
+                    ]
+                    
+                    if not platoon_personnel:
+                        row_data[f'{plt_label} Participating Strength'] = 'N/A'
+                        continue
+                    
+                    # Check if any personnel from this platoon have "Yes" status
+                    platoon_has_participation = False
+                    participating_count = 0
+                    total_count = len(platoon_personnel)
+                    
+                    for person in platoon_personnel:
+                        person_name = person.get('name', '').strip()
+                        # Find this person in everything_data
+                        for row in everything_data[1:]:
+                            if len(row) > 2 and row[2].strip().lower() == person_name.lower():
+                                if len(row) > conduct_col_idx:
+                                    status = row[conduct_col_idx].strip().lower()
+                                    if status == "yes":
+                                        platoon_has_participation = True
+                                        participating_count += 1
+                                break
+                    
+                    # Set Participating Strength
+                    if platoon_has_participation:
+                        row_data[f'{plt_label} Participating Strength'] = f'{participating_count}/{total_count}'
+                    else:
+                        row_data[f'{plt_label} Participating Strength'] = 'No'
+            else:
+                # Conduct not in Everything sheet
+                for plt_label in platoon_labels:
+                    row_data[f'{plt_label} Participating Strength'] = 'N/A'
+        else:
+            # No Everything data available
+            
+            for plt_label in platoon_labels:
+                row_data[f'{plt_label} Participating Strength'] = 'N/A'
+        
+        checklist_data.append(row_data)
+    
+    if not checklist_data:
+        st.warning("No checklist data to display.")
+        st.stop()
+    
+    # Create DataFrame
+    df_checklist = pd.DataFrame(checklist_data)
+    
+    # Initialize session state for checklist data to prevent loss on reruns
+    if 'checklist_df' not in st.session_state:
+        st.session_state.checklist_df = df_checklist
+    
+    # Display editable dataframe with tabs
+    st.subheader("Conduct Checklist")
+    
+    # Add button to reload fresh data from sheets
+    col_reload, col_spacer = st.columns([1, 5])
+    with col_reload:
+        if st.button("🔄 Reload Data"):
+            st.session_state.checklist_df = df_checklist
+            st.rerun()
+    
+    # Add platoon columns to config (read-only)
+    if selected_company == "Support":
+        platoon_labels = ["SIGNAL PL", "SCOUT PL", "PIONEER PL", "MORTAR PL"]
+    elif selected_company == "HQ":
+        platoon_labels = ["S1 Branch", "S2 Branch", "S3 Branch", "S4 Branch", "SSP", "BCS"]
+    elif selected_company == "Bravo":
+        platoon_labels = ["Plt 6", "Plt 7", "Plt 8", "Plt 9", "Plt 10"]
+    elif selected_company == "Charlie":
+        platoon_labels = ["Plt 11", "Plt 12", "Plt 13", "Plt 14", "Plt 15"]
+    else:
+        platoon_labels = ["Platoon 1", "Platoon 2", "Platoon 3", "Platoon 4"]
+    
+    # Create tabs for different sections
+    tab1, tab2, tab3 = st.tabs(["👥 Officer Assignments", "📋 Documentation", "🎯 Platoon Participation"])
+    
+    # Editor + Save wrapped in a form so edits don't trigger reruns until Save is pressed
+    with st.form("checklist_form"):
+        
+        # TAB 1: Officer Assignments
+        with tab1:
+            st.write("Assign officers for each conduct using the dropdowns below.")
+            column_config_officers = {
+                'Conduct': st.column_config.TextColumn('Conduct', width='medium'),
+                'Date': st.column_config.TextColumn('Date', width='small'),
+                'Points': st.column_config.TextColumn('Points', width='small'),
+                'Supervising Officer': st.column_config.SelectboxColumn(
+                    'Sup. Officer',
+                    options=commanders,
+                    width='small'
+                ),
+                'Conducting Officer': st.column_config.SelectboxColumn(
+                    'Cond. Officer',
+                    options=commanders,
+                    width='small'
+                ),
+                'Chief Safety Officer': st.column_config.SelectboxColumn(
+                    'CSO',
+                    options=commanders,
+                    width='small'
+                ),
+                '_row_num': None,
+            }
+            edited_checklist_officers = st.data_editor(
+                st.session_state.checklist_df,
+                column_config=column_config_officers,
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                column_order=['Conduct', 'Date', 'Points', 'Supervising Officer', 'Conducting Officer', 'Chief Safety Officer'],
+                key="officers_editor"
+            )
+            st.info("💡 You can add new rows to create new conducts. Fill in Conduct name and Date (DDMMYYYY format).")
+        
+        # TAB 2: Documentation
+        with tab2:
+            st.write("Track documentation status (Yes/No/N/A) for each conduct.")
+            column_config_docs = {
+                'Conduct': st.column_config.TextColumn('Conduct', width='medium'),
+                'Date': st.column_config.TextColumn('Date', width='small'),
+                'Uploading of AI': st.column_config.SelectboxColumn(
+                    'AI',
+                    options=['Yes', 'No', 'N/A'],
+                    width='small'
+                ),
+                'Submission of PAR Pointers': st.column_config.SelectboxColumn(
+                    'PAR',
+                    options=['Yes', 'No', 'N/A'],
+                    width='small'
+                ),
+                'Scanning and Uploading of RAW': st.column_config.SelectboxColumn(
+                    'RAW',
+                    options=['Yes', 'No', 'N/A'],
+                    width='small'
+                ),
+                'Submission of ATMS QnC': st.column_config.SelectboxColumn(
+                    'ATMS',
+                    options=['Yes', 'No', 'N/A'],
+                    width='small'
+                ),
+                '_row_num': None,
+            }
+            edited_checklist_docs = st.data_editor(
+                st.session_state.checklist_df,
+                column_config=column_config_docs,
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                column_order=['Conduct', 'Date', 'Uploading of AI', 'Submission of PAR Pointers', 'Scanning and Uploading of RAW', 'Submission of ATMS QnC'],
+                key="docs_editor"
+            )
+        
+        # TAB 3: Platoon Participation
+        with tab3:
+            st.write("View platoon participation (auto-calculated from Everything sheet).")
+            column_config_platoons = {
+                'Conduct': st.column_config.TextColumn('Conduct', disabled=True, width='medium'),
+                'Date': st.column_config.TextColumn('Date', disabled=True, width='small'),
+                '_row_num': None,
+            }
+            for plt_label in platoon_labels:
+                column_config_platoons[f'{plt_label} Participating Strength'] = st.column_config.TextColumn(
+                    f'{plt_label} Strength',
+                    disabled=True,
+                    width='small'
+                )
+            
+            st.data_editor(
+                st.session_state.checklist_df,
+                column_config=column_config_platoons,
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                column_order=[
+                    'Conduct', 'Date',
+                    *[f'{lbl} Participating Strength' for lbl in platoon_labels],
+                ],
+                key="platoons_viewer",
+                disabled=True
+            )
+        
+        save_clicked = st.form_submit_button("💾 Save Checklist", type="primary")
+
+    if save_clicked:
+        # Merge data from both tabs (officers and docs)
+        officers_dict = edited_checklist_officers.to_dict('records')
+        docs_dict = edited_checklist_docs.to_dict('records')
+        
+        # Get existing conducts to identify new ones
+        existing_conducts_set = {(ensure_date_str(c.get('date', '')), ensure_str(c.get('conduct_name', ''))) for c in records_conducts}
+        
+        # Track new conducts to create
+        new_conducts_to_create = []
+        
+        # Persist rows back to the Checklist sheet
+        records_to_save = []
+        for i in range(len(officers_dict)):
+            officer_row = officers_dict[i]
+            doc_row = docs_dict[i] if i < len(docs_dict) else {}
+            
+            conduct_name = ensure_str(officer_row.get('Conduct', ''))
+            conduct_date = ensure_date_str(officer_row.get('Date', ''))
+            
+            # Skip empty rows
+            if not conduct_name or not conduct_date:
+                continue
+            
+            record = {
+                'Conduct': conduct_name,
+                'Date': conduct_date,
+                'Points': ensure_str(officer_row.get('Points', '')),
+                'Supervising Officer': ensure_str(officer_row.get('Supervising Officer', '')),
+                'Conducting Officer': ensure_str(officer_row.get('Conducting Officer', '')),
+                'Chief Safety Officer': ensure_str(officer_row.get('Chief Safety Officer', '')),
+                'Uploading of AI': ensure_str(doc_row.get('Uploading of AI', 'No')),
+                'Submission of PAR Pointers': ensure_str(doc_row.get('Submission of PAR Pointers', 'No')),
+                'Scanning and Uploading of RAW': ensure_str(doc_row.get('Scanning and Uploading of RAW', 'No')),
+                'Submission of ATMS QnC': ensure_str(doc_row.get('Submission of ATMS QnC', 'No')),
+            }
+            
+            # Carry row number for in-place update if present
+            row_num = officer_row.get('_row_num')
+            if row_num is not None and pd.notna(row_num) and str(row_num).strip():
+                record['_row_num'] = row_num
+            
+            records_to_save.append(record)
+            
+            # Check if this is a new conduct
+            if (conduct_date, conduct_name) not in existing_conducts_set:
+                new_conducts_to_create.append({
+                    'conduct_name': conduct_name,
+                    'date': conduct_date,
+                    'points': ensure_str(officer_row.get('Points', ''))
+                })
+
+        # Create new conducts in Conducts and Everything sheets
+        if new_conducts_to_create:
+            try:
+                for new_conduct in new_conducts_to_create:
+                    conduct_name = new_conduct['conduct_name']
+                    conduct_date = new_conduct['date']
+                    points = new_conduct['points']
+                    
+                    # Add to Conducts sheet with default values (17 columns total)
+                    SHEET_CONDUCTS.append_row([
+                        conduct_date,           # Column 1: Date
+                        conduct_name,           # Column 2: Conduct_Name
+                        "0/0",                  # Column 3: P/T PLT1
+                        "0/0",                  # Column 4: P/T PLT2
+                        "0/0",                  # Column 5: P/T PLT3
+                        "0/0",                  # Column 6: P/T PLT4
+                        "0/0",                  # Column 7: P/T PLT5
+                        "0/0",                  # Column 8: P/T Coy HQ
+                        "non-cmd: 0/0\ncmd: 0/0\nTOTAL: 0/0",  # Column 9: P/T Total
+                        "None",                 # Column 10: PLT1 Outliers
+                        "None",                 # Column 11: PLT2 Outliers
+                        "None",                 # Column 12: PLT3 Outliers
+                        "None",                 # Column 13: PLT4 Outliers
+                        "None",                 # Column 14: PLT5 Outliers
+                        "None",                 # Column 15: Coy HQ Outliers
+                        "",                     # Column 16: Pointers
+                        st.session_state.username  # Column 17: Submitted_By
+                    ])
+                    
+                    # Add column to Everything sheet using the existing function
+                    SHEET_EVERYTHING = worksheets["everything"]
+                    
+                    # Create empty attendance data (all personnel with empty status)
+                    # This will create the column structure without marking anyone as present/absent
+                    attendance_data = []
+                    
+                    # Use the existing add_conduct_column_everything function
+                    add_conduct_column_everything(
+                        SHEET_EVERYTHING,
+                        conduct_date,
+                        conduct_name,
+                        attendance_data
+                    )
+                    logger.info(f"Added column '{conduct_date}, {conduct_name}' to Everything sheet")
+                    
+                    logger.info(f"Created new conduct '{conduct_name}' on {conduct_date} in company '{selected_company}' by user '{st.session_state.username}'.")
+                
+                st.success(f"✅ Created {len(new_conducts_to_create)} new conduct(s) in Conducts and Everything sheets!")
+            except Exception as e:
+                st.error(f"Error creating new conducts: {e}")
+                logger.error(f"Error creating new conducts: {e}")
+
+        updated, appended = save_checklist_records(SHEET_CHECKLIST, records_to_save)
+        st.success(f"Checklist saved. Updated: {updated}, Added: {appended}")
+        
+        # Clear session state to reload fresh data on next run
+        if 'checklist_df' in st.session_state:
+            del st.session_state.checklist_df
+        
+        # Display summary statistics
+        st.subheader("Checklist Summary")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            ai_complete = sum(1 for r in docs_dict if r.get('Uploading of AI') == 'Yes')
+            st.metric("AI Uploaded", f"{ai_complete}/{len(docs_dict)}")
+        
+        with col2:
+            par_complete = sum(1 for r in docs_dict if r.get('Submission of PAR Pointers') == 'Yes')
+            st.metric("PAR Pointers Submitted", f"{par_complete}/{len(docs_dict)}")
+        
+        with col3:
+            raw_complete = sum(1 for r in docs_dict if r.get('Scanning and Uploading of RAW') == 'Yes')
+            st.metric("RAW Uploaded", f"{raw_complete}/{len(docs_dict)}")
+        
+        with col4:
+            atms_complete = sum(1 for r in docs_dict if r.get('Submission of ATMS QnC') == 'Yes')
+            st.metric("ATMS QnC Submitted", f"{atms_complete}/{len(docs_dict)}")
+        
+        # Show conducts missing officer assignments
+        missing_officers_list = [
+            r for r in officers_dict 
+            if not r.get('Supervising Officer') or not r.get('Conducting Officer') or not r.get('Chief Safety Officer')
+        ]
+        
+        if missing_officers_list:
+            st.warning(f"⚠️ {len(missing_officers_list)} conduct(s) are missing officer assignments")
+            with st.expander("View conducts with missing officers"):
+                missing_df = pd.DataFrame(missing_officers_list)
+                st.dataframe(
+                    missing_df[['Conduct', 'Date', 'Supervising Officer', 'Conducting Officer', 'Chief Safety Officer']],
+                    use_container_width=True,
+                    hide_index=True
+                )
 
