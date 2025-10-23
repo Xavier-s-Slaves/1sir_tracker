@@ -3645,6 +3645,9 @@ elif feature == "Analytics":
             all_rsi_rso_summary = []
             group_total_rsi = 0
             group_total_rso = 0
+            
+            # Calculate number of weeks in the date range
+            num_weeks = ((end_date - start_date).days + 1) / 7
 
             for name in names_to_query:
                 person_parade_records = [
@@ -3687,11 +3690,17 @@ elif feature == "Analytics":
                 group_total_rsi += total_rsi
                 group_total_rso += total_rso
                 nominal_info = nominal_map.get(name.lower(), {})
+                
+                # Calculate individual per capita per week metrics (combined RSI/RSO)
+                total_rsi_rso = total_rsi + total_rso
+                individual_rsi_rso_per_week = (total_rsi_rso / num_weeks) if num_weeks > 0 else 0
+                
                 all_rsi_rso_summary.append({
                     "Rank": nominal_info.get('rank', 'N/A'),
                     "Name": name,
                     "RSI Count": total_rsi,
-                    "RSO Count": total_rso
+                    "RSO Count": total_rso,
+                    "RSI/RSO per Week": individual_rsi_rso_per_week
                 })
 
                 if rsi_rso_details:
@@ -3703,6 +3712,10 @@ elif feature == "Analytics":
                 num_people = len(names_to_query)
                 avg_rsi = group_total_rsi / num_people if num_people > 0 else 0
                 avg_rso = group_total_rso / num_people if num_people > 0 else 0
+                
+                # Calculate company-wide RSI/RSO per capita per week (combined)
+                total_rsi_rso_combined = group_total_rsi + group_total_rso
+                rsi_rso_per_capita_per_week = (total_rsi_rso_combined / num_people / num_weeks) if (num_people > 0 and num_weeks > 0) else 0
 
                 col1, col2, col3, col4, col5 = st.columns(5)
                 with col1:
@@ -3715,10 +3728,34 @@ elif feature == "Analytics":
                     st.metric("Total RSOs", group_total_rso)
                 with col5:
                     st.metric("Avg RSO / Person", f"{avg_rso:.2f}")
+                
+                # Second row of metrics for per capita per week
+                st.markdown("##### Weekly Metrics")
+                col6, col7 = st.columns(2)
+                with col6:
+                    st.metric("Weeks in Range", f"{num_weeks:.1f}")
+                with col7:
+                    st.metric("RSI/RSO per Capita per Week", f"{rsi_rso_per_capita_per_week:.3f}")
 
             if all_rsi_rso_summary:
                 df_summary = pd.DataFrame(all_rsi_rso_summary)
-                st.dataframe(df_summary, use_container_width=True, hide_index=True)
+                
+                # Add comparison indicators for group selections
+                if any(opt in selected_options for opt in special_options) and num_people > 1:
+                    # Add comparison column for combined RSI/RSO
+                    df_summary['RSI/RSO vs Avg'] = df_summary['RSI/RSO per Week'].apply(
+                        lambda x: f"{'🔴' if x > rsi_rso_per_capita_per_week else '🟢' if x < rsi_rso_per_capita_per_week else '⚪'} {x:.3f}"
+                    )
+                    
+                    # Reorder columns for better display
+                    display_df = df_summary[['Rank', 'Name', 'RSI Count', 'RSO Count', 'RSI/RSO vs Avg']]
+                    
+                    st.markdown("**Legend:** 🔴 Above average | 🟢 Below average | ⚪ At average")
+                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+                else:
+                    # For individual selections, just format the per-week column
+                    df_summary['RSI/RSO per Week'] = df_summary['RSI/RSO per Week'].apply(lambda x: f"{x:.3f}")
+                    st.dataframe(df_summary, use_container_width=True, hide_index=True)
             else:
                 st.info("No RSI/RSO records found for the selected personnel.")
 
@@ -3940,11 +3977,11 @@ elif feature == "Analytics":
                 
                 # Define SBO 3 requirements (same as TAB 7)
                 sbo3_requirements = {
-                    "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di ", " er ", " fl ", "oregon circuit ", "oc ", "oregon "], "current": 0},
+                    "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di ", " er ", " fl ", "oregon circuit", "oregon", " oc ", ",oc "], "current": 0},
                     "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
                     "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm ", "route march"], "current": 0},
                     "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
-                    "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft ", "mc ", "oregon circuit ", "oc ", "oregon "], "current": 0},
+                    "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft ", "mc ", "oregon circuit", "oregon", " oc ", ",oc "], "current": 0},
                     "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
                 }
                 
@@ -4093,11 +4130,11 @@ elif feature == "Analytics":
             
             # Define SBO 3 requirements
             sbo3_requirements = {
-                "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di ", " er ", " fl ", "oregon circuit ", "oc ", "oregon "], "current": 0},
+                "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di ", " er ", " fl ", "oregon circuit", "oregon", " oc ", ",oc "], "current": 0},
                 "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
                 "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm ", "route march"], "current": 0},
                 "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
-                "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft ", "mc ", "oregon circuit ", "oc ", "oregon "], "current": 0},
+                "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft ", "mc ", "oregon circuit", "oregon", " oc ", ",oc "], "current": 0},
                 "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
             }
             
@@ -4435,7 +4472,7 @@ elif feature == "Analytics":
                 "Strength & Power": {"target": 10, "keywords": ["strength and power", "strength & power", "s&p ", "s & p "], "current": 0},
                 "IPPT": {"target": 1, "keywords": ["ippt "], "current": 0},
                 "ACFC": {"target": 2, "keywords": ["acfc "], "current": 0},
-                "Oregon Circuit": {"target": 16, "keywords": ["oregon circuit ", "oc ", "oregon "], "current": 0},
+                "Oregon Circuit": {"target": 16, "keywords": ["oregon circuit", "oregon", " oc ", ",oc "], "current": 0},
                 "Combat": {"target": 7, "keywords": ["ifm ", "interval fast march ", "csb ", "combat skills badge ", "hill training ", "ht ", "tactical march ", "tm "], "current": 0}
             }
             
@@ -4617,11 +4654,11 @@ elif feature == "Analytics":
         
         # Define SBO 3 requirements (same as TAB 7)
         sbo3_requirements = {
-            "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di ", " er ", " fl ", "oregon circuit ", "oc ", "oregon "], "current": 0},
+            "Cardio": {"target": 10, "keywords": ["distance interval", "endurance run", "fartlek", "di ", " er ", " fl ", "oregon circuit", "oregon", " oc ", ",oc "], "current": 0},
             "Strength & Power": {"target": 12, "keywords": ["strength and power", "strength & power", "s&p", "s & p",], "current": 0},
             "Interval Fast March": {"target": 3, "keywords": ["interval fast march", "ifm ", "route march"], "current": 0},
             "Combat Circuit": {"target": 1, "keywords": ["combat circuit", "cc "], "current": 0},
-            "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft ", "mc ", "oregon circuit ", "oc ", "oregon "], "current": 0},
+            "Functional Training": {"target": 3, "keywords": ["functional training", "metabolic circuit", "ft ", "mc ", "oregon circuit", "oregon", " oc ", ",oc "], "current": 0},
             "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
         }
         
