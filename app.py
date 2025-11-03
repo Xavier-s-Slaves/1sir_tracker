@@ -787,13 +787,27 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                         'details': details
                     })
             else:
-                non_conformant_absentees.append({
-                    'rank': rank,
-                    '4d': d,
-                    'name': name,
-                    'status': status,
-                    'details': details
-                })
+                # Skip entries that are ONLY "RSI" or "RSO" (with or without reason in parentheses)
+                # Examples to skip: "RSI", "RSO", "RSI (Dermatological)", "RSO (Musculoskeletal)"
+                # Examples to keep: "EX HEAVY LOAD", "MC RSI", "ML RSO"
+                status_upper = status.strip().upper()
+                # Check if status starts with RSI or RSO (possibly followed by space and parentheses)
+                is_only_rsi_rso = (
+                    status_upper == 'RSI' or
+                    status_upper == 'RSO' or
+                    status_upper.startswith('RSI (') or
+                    status_upper.startswith('RSO (') or
+                    status_upper.startswith('(RSI') or
+                    status_upper.startswith('(RSO')
+                )
+                if not is_only_rsi_rso:
+                    non_conformant_absentees.append({
+                        'rank': rank,
+                        '4d': d,
+                        'name': name,
+                        'status': status,
+                        'details': details
+                    })
 
         # Total absent strength only counts conformant absentees
         commander_group = defaultdict(list)
@@ -2903,17 +2917,17 @@ elif feature == "Update Parade":
         **Please use one of the following standard prefixes for the status.** 
         **Please make sure to update the RSI/RSO status in the Parade State sheet.** 
         
-        You can add any additional details in parentheses `()` after the prefix. For `RSI` and `RSO`, please write it like `MC (RSI)`.
+        You can add any additional details in parentheses `()` after the prefix. For `RSI` and `RSO`, please write it like `MC RSI`.
 
         **Status Requirements**
-        - Statuses `MC`, `ML`, `RIB`, or `LD` must include `(RSI)` or `(RSO)` in brackets
-        - If your status contains `(RSI)` or `(RSO)` in brackets, you must select a reason from the Reason dropdown
+        - Statuses `MC`, `ML`, `RIB`, or `LD` must include `RSI` or `RSO`
+        - If your status contains `RSI` or `RSO`, you must select a reason from the Reason dropdown
         - The system will not allow you to update the Parade State without providing a reason for RSI/RSO statuses
-        - Example: Status `MC (RSI)` requires you to select a reason like "Musculoskeletal", "Psychological", etc.
+        - Example: Status `MC RSI` requires you to select a reason like "Musculoskeletal", "Psychological", etc.
 
         **Examples:**
-        - `MC (RSO)`: Must select reason
-        - `ML (RSI)`: Must select reason
+        - `MC RSO`: Must select reason
+        - `ML RSI`: Must select reason
         ---
         
         **Standard Prefixes:**
@@ -3039,23 +3053,23 @@ elif feature == "Update Parade":
             end_val = ensure_str(row.get("End_Date", "")).strip()
             four_d = is_valid_4d(row.get("4D_Number", ""))
             
-            # RSI/RSO validation: Check if status contains RSI or RSO in brackets
-            if status_val and ("(RSI)" in status_val.upper() or "(RSO)" in status_val.upper()):
+            # RSI/RSO validation: Check if status contains RSI or RSO
+            if status_val and ("RSI" in status_val.upper() or "RSO" in status_val.upper()):
                 if not reason_val:
                     st.error(f"**RSI/RSO Reason Required**: For status '{status_val}', you must select a reason from the Reason dropdown for {name_val}. Please select a reason and try again.")
                     logger.error(f"RSI/RSO status '{status_val}' for {name_val} in company '{selected_company}' requires a reason but none was provided.")
                     st.stop()
-            
-            # Status restriction validation: Check if status contains MC, ML, RIB, or LD without RSI/RSO brackets
+
+            # Status restriction validation: Check if status contains MC, ML, RIB, or LD without RSI/RSO
             if status_val:
                 status_upper = status_val.upper()
                 restricted_statuses = ["MC", "ML", "RIB", "LD"]
                 has_restricted_status = any(restricted in status_upper for restricted in restricted_statuses)
-                has_rsi_rso_brackets = "(RSI)" in status_upper or "(RSO)" in status_upper
-                
-                if has_restricted_status and not has_rsi_rso_brackets:
-                    st.error(f"**Status Restriction**: For status '{status_val}', you must include '(RSI)' or '(RSO)' in brackets for {name_val}. Examples: 'MC (RSI)', 'ML (RSO)'. Please update the status and try again.")
-                    logger.error(f"Restricted status '{status_val}' for {name_val} in company '{selected_company}' requires RSI/RSO brackets but none were provided.")
+                has_rsi_rso = "RSI" in status_upper or "RSO" in status_upper
+
+                if has_restricted_status and not has_rsi_rso:
+                    st.error(f"**Status Restriction**: For status '{status_val}', you must include 'RSI' or 'RSO' for {name_val}. Examples: 'MC RSI', 'ML RSO'. Please update the status and try again.")
+                    logger.error(f"Restricted status '{status_val}' for {name_val} in company '{selected_company}' requires RSI/RSO but none were provided.")
                     st.stop()
             
             # Combine status and reason for Google Sheets update
