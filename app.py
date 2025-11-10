@@ -4487,7 +4487,7 @@ elif feature == "Analytics":
                 "IPPT": {"target": 1, "keywords": ["ippt "], "current": 0},
                 "ACFC": {"target": 2, "keywords": ["acfc "], "current": 0},
                 "Oregon Circuit": {"target": 16, "keywords": ["oregon circuit", "oregon", " oc ", ",oc "], "current": 0},
-                "Combat": {"target": 7, "keywords": ["ifm ", "interval fast march ", "csb ", "combat skills badge ", "hill training ", "ht ", "tactical march ", "tm "], "current": 0}
+                "Combat": {"target": 7, "keywords": ["ifm ", "interval fast march ", "csb ", "combat skills badge ", "hill training ", " ht ", "tactical march ", "tm "], "current": 0}
             }
             
             # Calculate tracking start date (15 Sep of current year)
