@@ -149,7 +149,7 @@
     },
     "2sg_kaarthik": {
         "password": "kaarthikP@ss39",
-        "companies": ["Bravo", "BravoIVT"]
+        "companies": ["Bravo", "BravoIVT", "UIP"]
     },
     "MSC_HQ": {
         "password": "passMSCHQ",
@@ -370,5 +370,9 @@
     "2sg_jerrold": {
         "password": "jerroldP@ss68",
         "companies": ["Support", "SupportIVT"]
+    },
+    "cpt_chun": {
+        "password": "chunP@ss76",
+        "companies": ["Bravo", "BravoIVT", "UIP"]
     }
 }
