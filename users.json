@@ -374,5 +374,9 @@
     "cpt_chun": {
         "password": "chunP@ss76",
         "companies": ["Bravo", "BravoIVT", "UIP"]
+    },
+    "uip_specs": {
+        "password": "pass",
+        "companies": ["UIP"]
     }
 }
