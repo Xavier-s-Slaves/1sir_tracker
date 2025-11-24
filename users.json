@@ -1,7 +1,7 @@
 {
     "admin": {
         "password": "pass",
-        "companies": ["Alpha", "AlphaIVT", "Bravo", "BravoIVT", "Charlie", "CharlieIVT", "Support", "SupportIVT", "MSC", "MSCIVT", "HQ", "HQIVT"]
+        "companies": ["Alpha", "AlphaIVT", "Bravo", "BravoIVT", "Charlie", "CharlieIVT", "Support", "SupportIVT", "MSC", "MSCIVT", "HQ", "HQIVT", "UIP"]
     },
     "cpt_kevin": {
         "password": "kevinP@ss1",
