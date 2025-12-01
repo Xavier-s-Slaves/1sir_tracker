@@ -4484,10 +4484,10 @@ elif feature == "Analytics":
             
             # Define Pre Lancer requirements
             pre_lancer_requirements = {
-                "Strength & Power": {"target": 10, "keywords": ["strength and power", "strength & power", "s&p ", "s & p "], "current": 0},
+                "Strength & Power": {"target": 8, "keywords": ["strength and power", "strength & power", "s&p ", "s & p "], "current": 0},
                 "IPPT": {"target": 1, "keywords": ["ippt "], "current": 0},
                 "ACFC": {"target": 2, "keywords": ["acfc "], "current": 0},
-                "Oregon Circuit": {"target": 16, "keywords": ["oregon circuit", "oregon", " oc ", ",oc "], "current": 0},
+                "Oregon Circuit": {"target": 14, "keywords": ["oregon circuit", "oregon", " oc ", ",oc "], "current": 0},
                 "Combat": {"target": 7, "keywords": ["ifm ", "interval fast march ", "csb ", "combat skills badge ", "hill training ", " ht ", "tactical march ", "tm "], "current": 0}
             }
             
@@ -4577,10 +4577,10 @@ elif feature == "Analytics":
                             "Rank": nominal_info.get('rank', 'N/A'),
                             "Name": name,
                             "Status": status,
-                            "S&P": f"{person_counts['Strength & Power']}/10",
+                            "S&P": f"{person_counts['Strength & Power']}/8",
                             "IPPT": f"{person_counts['IPPT']}/1",
                             "ACFC": f"{person_counts['ACFC']}/2",
-                            "Oregon Circuit": f"{person_counts['Oregon Circuit']}/16",
+                            "Oregon Circuit": f"{person_counts['Oregon Circuit']}/14",
                             "Combat": f"{person_counts['Combat']}/7",
                             "Total": f"{total_completed}/{total_required}",
                             "Completion %": f"{completion_percentage:.1f}%"
@@ -4601,12 +4601,12 @@ elif feature == "Analytics":
                             "Rank": nominal_info.get('rank', 'N/A'),
                             "Name": name,
                             "Status": "❌ Not in Everything Sheet",
-                            "S&P": "0/10",
+                            "S&P": "0/8",
                             "IPPT": "0/1",
                             "ACFC": "0/2",
-                            "Oregon Circuit": "0/16",
+                            "Oregon Circuit": "0/14",
                             "Combat": "0/7",
-                            "Total": "0/36",
+                            "Total": "0/32",
                             "Completion %": "0.0%"
                         })
                 
