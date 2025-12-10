@@ -1326,6 +1326,7 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
             # Derive Reason from existing status if it includes RSI/RSO with an additional reason in brackets
             status_raw = ensure_str(parade.get('status', ''))
             reason_val = ''
+            others_reason_val = ''  # Custom reason when "Others" is selected
             status_cleaned = status_raw
             try:
                 import re
@@ -1340,22 +1341,50 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
                             "Musculoskeletal", "Psychological", "Dermatological",
                             "Headache", "URTI", "GE", "Others"
                         ]
-                        g_last = non_rsi_rso[-1]
-                        for opt in allowed:
-                            if g_last.lower() == opt.lower():
-                                reason_val = opt
+                        
+                        # Check if "Others" is in the groups
+                        others_index = -1
+                        for i, g in enumerate(non_rsi_rso):
+                            if g.lower() == "others":
+                                others_index = i
+                                reason_val = "Others"
                                 break
-                        if not reason_val:
-                            # If not matched, keep as-is
-                            reason_val = g_last
+                        
+                        # If "Others" found, check if there's a custom reason after it
+                        if others_index >= 0:
+                            # If there's a group after "Others", that's the custom reason
+                            if others_index < len(non_rsi_rso) - 1:
+                                others_reason_val = non_rsi_rso[-1]
+                            # Also check if "Others" itself contains custom text (e.g., "Others - Custom reason")
+                            elif len(non_rsi_rso[others_index]) > 6:
+                                parts = re.split(r'[-:]', non_rsi_rso[others_index], 1)
+                                if len(parts) > 1:
+                                    others_reason_val = parts[1].strip()
+                        else:
+                            # No "Others" found, try to match the last group
+                            g_last = non_rsi_rso[-1]
+                            for opt in allowed:
+                                if g_last.lower() == opt.lower():
+                                    reason_val = opt
+                                    break
+                            if not reason_val:
+                                # If not matched, keep as-is
+                                reason_val = g_last
                         
                         # Remove the reason from status, keep only RSI/RSO markers
                         # e.g. "MC (RSI) (GE)" -> "MC (RSI)"
+                        # For "Others", remove "Others" itself but keep custom reason if it was separate
                         for reason_group in non_rsi_rso:
-                            status_cleaned = status_cleaned.replace(f"({reason_group})", "").strip()
+                            # Don't remove the custom reason if it's separate from "Others"
+                            if reason_val.lower() == "others" and others_reason_val and reason_group == others_reason_val:
+                                continue
+                            # Remove "Others" and other standard reasons
+                            if reason_group.lower() != "others" or not others_reason_val:
+                                status_cleaned = status_cleaned.replace(f"({reason_group})", "").strip()
             except Exception:
                 # On any parsing error, leave reason empty
                 reason_val = ''
+                others_reason_val = ''
             data_with_status.append({
                 'Rank': rank,
                 'Name': original_name,
@@ -1364,6 +1393,7 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
                 'Start_Date': parade.get('start_date_ddmmyyyy', ''),
                 'End_Date': parade.get('end_date_ddmmyyyy', ''),
                 'Reason': reason_val,  # Auto-filled Reason when detectable
+                'Others_Reason': others_reason_val,  # Custom reason when "Others" is selected
                 '_row_num': parade.get('_row_num')
             })
 
@@ -1376,6 +1406,7 @@ def get_company_personnel(platoon: str, records_nominal, records_parade):
             'Start_Date': '',
             'End_Date': '',
             'Reason': '',  # Initialize Reason column
+            'Others_Reason': '',  # Initialize Others_Reason column
             '_row_num': None
         })
     
@@ -2994,6 +3025,7 @@ elif feature == "Update Parade":
     if st.session_state.parade_table:
         st.subheader("Edit Parade Data, Then Click 'Update'")
         st.write("Fill in 'Status', 'Reason', 'Start_Date (DDMMYYYY)', 'End_Date (DDMMYYYY)'")
+        st.write("**Note**: If you select 'Others' in the Reason column, you must fill in the 'Others Reason' field with your specific reason.")
         st.write("To delete an existing status, please delete the values in 'Status', 'Start_Date (DDMMYYYY)', 'End_Date (DDMMYYYY)' only.")
         sorted_conduct_table = sorted(st.session_state.parade_table, 
                                  key=lambda x: "ZZZ" if x.get("Rank", "").upper() in NON_CMD_RANKS else x.get("Rank", ""))
@@ -3009,6 +3041,11 @@ elif feature == "Update Parade":
                 "Reason": st.column_config.SelectboxColumn(
                     "Reason",
                     options=["", "Musculoskeletal", "Psychological", "Dermatological", "Headache", "URTI", "GE", "Others"],
+                    required=False
+                ),
+                "Others_Reason": st.column_config.TextColumn(
+                    "Others Reason (Required if Others selected)",
+                    help="Please specify your reason when 'Others' is selected in the Reason column",
                     required=False
                 ),
                 "_row_num": st.column_config.TextColumn("_row_num", disabled=True),
@@ -3050,6 +3087,7 @@ elif feature == "Update Parade":
             name_val = ensure_str(row.get("Name", "")).strip()
             status_val = ensure_str(row.get("Status", "")).strip()
             reason_val = ensure_str(row.get("Reason", "")).strip()
+            others_reason_val = ensure_str(row.get("Others_Reason", "")).strip()
             start_val = ensure_str(row.get("Start_Date", "")).strip()
             end_val = ensure_str(row.get("End_Date", "")).strip()
             four_d = is_valid_4d(row.get("4D_Number", ""))
@@ -3060,6 +3098,13 @@ elif feature == "Update Parade":
                     st.error(f"**RSI/RSO Reason Required**: For status '{status_val}', you must select a reason from the Reason dropdown for {name_val}. Please select a reason and try again.")
                     logger.error(f"RSI/RSO status '{status_val}' for {name_val} in company '{selected_company}' requires a reason but none was provided.")
                     st.stop()
+                
+                # Validation for "Others" reason: require custom reason to be specified
+                if reason_val.lower() == "others":
+                    if not others_reason_val:
+                        st.error(f"**Others Reason Required**: For {name_val}, you have selected 'Others' as the reason. Please specify your reason in the 'Others Reason' column before the parade state can be updated.")
+                        logger.error(f"'Others' reason selected for {name_val} in company '{selected_company}' but no custom reason was provided.")
+                        st.stop()
 
             # Status restriction validation: Check if status contains MC, ML, RIB, or LD without RSI/RSO
             if status_val:
@@ -3076,9 +3121,14 @@ elif feature == "Update Parade":
             # Combine status and reason for Google Sheets update
             combined_status = status_val
             if reason_val and status_val:
-                # Capitalize first letter of reason for display
-                reason_capitalized = reason_val.capitalize()
-                combined_status = f"{status_val} ({reason_capitalized})"
+                # If "Others" is selected, use the custom reason from Others_Reason field
+                if reason_val.lower() == "others" and others_reason_val:
+                    # Use the custom reason provided by the user
+                    combined_status = f"{status_val} (Others) ({others_reason_val})"
+                else:
+                    # Capitalize first letter of reason for display
+                    reason_capitalized = reason_val.capitalize()
+                    combined_status = f"{status_val} ({reason_capitalized})"
 
             rank = ensure_str(row.get("Rank", "")).strip()
             parade_entry = st.session_state.parade_table[idx]
@@ -3800,10 +3850,13 @@ elif feature == "Analytics":
                         # Extract reason from parentheses - look for the last set of parentheses
                         reason = "N/A"
                         valid_reasons = ["Musculoskeletal", "Psychological", "Dermatological", "Headache", "URTI", "GE", "Others"]
+                        # Create a case-insensitive mapping for comparison
+                        valid_reasons_lower = {r.lower(): r for r in valid_reasons}
                         
                         if "(" in status and ")" in status:
                             # Find all parentheses pairs
                             paren_pairs = []
+                            paren_contents = []
                             start = 0
                             while True:
                                 start_paren = status.find("(", start)
@@ -3813,6 +3866,8 @@ elif feature == "Analytics":
                                 if end_paren == -1:
                                     break
                                 paren_pairs.append((start_paren, end_paren))
+                                content = status[start_paren + 1:end_paren].strip()
+                                paren_contents.append(content)
                                 start = end_paren + 1
                             
                             # Get the content of the last parentheses (which should be the reason)
@@ -3820,11 +3875,19 @@ elif feature == "Analytics":
                                 last_start, last_end = paren_pairs[-1]
                                 extracted_reason = status[last_start + 1:last_end].strip()
                                 
-                                # Validate that the extracted reason is one of the valid categories
-                                if extracted_reason in valid_reasons:
-                                    reason = extracted_reason
+                                # Check if "Others" appears in any of the parentheses (for cases like "MC RSI (Others) (Custom reason)")
+                                has_others = any(content.lower() == "others" for content in paren_contents)
+                                
+                                # Validate that the extracted reason is one of the valid categories (case-insensitive)
+                                extracted_reason_lower = extracted_reason.lower()
+                                if extracted_reason_lower in valid_reasons_lower:
+                                    # Use the canonical casing from valid_reasons
+                                    reason = valid_reasons_lower[extracted_reason_lower]
+                                elif has_others:
+                                    # If "Others" is found in parentheses, it's an "Others" reason
+                                    reason = "Others"
                                 else:
-                                    # If not a valid category, default to "Others"
+                                    # If not a valid category and no "Others" found, default to "Others"
                                     reason = "Others"
                         
                         # Get nominal info for rank
