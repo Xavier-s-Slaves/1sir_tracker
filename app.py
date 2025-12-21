@@ -223,7 +223,7 @@ SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive'
 ]
-creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", SCOPES)
+creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], SCOPES)
 
 COMPANY_SPREADSHEETS = {
     "Alpha": "Alpha",
