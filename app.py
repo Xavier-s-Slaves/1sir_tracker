@@ -4551,7 +4551,9 @@ elif feature == "Analytics":
                 "IPPT": {"target": 1, "keywords": ["ippt "], "current": 0},
                 "ACFC": {"target": 2, "keywords": ["acfc "], "current": 0},
                 "Oregon Circuit": {"target": 14, "keywords": ["oregon circuit", "oregon", " oc ", ",oc "], "current": 0},
-                "Combat": {"target": 7, "keywords": ["ifm ", "interval fast march ", "hill training ", " ht ", "tactical march ", "tm "], "current": 0}
+                "HT": {"target": 3, "keywords": ["hill training ", " ht "], "current": 0},
+                "IFM": {"target": 2, "keywords": ["ifm ", "interval fast march "], "current": 0},
+                "TM": {"target": 1, "keywords": ["tactical march ", "tm "], "current": 0}
             }
             
             # Calculate tracking start date (15 Sep of current year)
@@ -4644,7 +4646,9 @@ elif feature == "Analytics":
                             "IPPT": f"{person_counts['IPPT']}/1",
                             "ACFC": f"{person_counts['ACFC']}/2",
                             "Oregon Circuit": f"{person_counts['Oregon Circuit']}/14",
-                            "Combat": f"{person_counts['Combat']}/7",
+                            "HT": f"{person_counts['HT']}/3",
+                            "IFM": f"{person_counts['IFM']}/2",
+                            "TM": f"{person_counts['TM']}/1",
                             "Total": f"{total_completed}/{total_required}",
                             "Completion %": f"{completion_percentage:.1f}%"
                         })
@@ -4668,8 +4672,10 @@ elif feature == "Analytics":
                             "IPPT": "0/1",
                             "ACFC": "0/2",
                             "Oregon Circuit": "0/14",
-                            "Combat": "0/7",
-                            "Total": "0/32",
+                            "HT": "0/3",
+                            "IFM": "0/2",
+                            "TM": "0/1",
+                            "Total": "0/31",
                             "Completion %": "0.0%"
                         })
                 
