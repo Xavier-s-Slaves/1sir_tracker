@@ -153,29 +153,39 @@ def parse_existing_outliers(existing_outliers_str):
         }
 
     return outliers_dict
-def load_user_db(path: str):
+def load_user_db():
     """
-    Load the user database from a JSON file.
+    Load the user database from Streamlit secrets.
+    Falls back to JSON file for local development if secrets not available.
     """
-    if not os.path.exists(path):
-        logger.error(f"User database file '{path}' not found.")
-        st.error(f"User database file '{path}' not found.")
-        return {}
     try:
-        with open(path, "r") as f:
-            user_db = json.load(f)
-        logger.info("User database loaded successfully.")
-        return user_db
-    except json.JSONDecodeError as e:
-        logger.error(f"Error decoding JSON from '{path}': {e}")
-        st.error(f"Error decoding JSON from '{path}': {e}")
-        return {}
+        # Try to load from Streamlit secrets first
+        if "users" in st.secrets:
+            user_db = {}
+            for username in st.secrets["users"]:
+                user_db[username] = {
+                    "password": st.secrets["users"][username]["password"],
+                    "companies": list(st.secrets["users"][username]["companies"])
+                }
+            logger.info("User database loaded from secrets successfully.")
+            return user_db
     except Exception as e:
-        logger.error(f"Unexpected error loading user database: {e}")
-        st.error(f"Unexpected error loading user database: {e}")
-        return {}
+        logger.warning(f"Could not load from secrets: {e}")
 
-USER_DB = load_user_db(USER_DB_PATH)
+    # Fallback to JSON file for local development
+    if os.path.exists(USER_DB_PATH):
+        try:
+            with open(USER_DB_PATH, "r") as f:
+                user_db = json.load(f)
+            logger.info("User database loaded from JSON file.")
+            return user_db
+        except Exception as e:
+            logger.error(f"Error loading user database from file: {e}")
+
+    st.error("User database not found. Please configure secrets or provide users.json.")
+    return {}
+
+USER_DB = load_user_db()
 
 
 if 'authenticated' not in st.session_state:
