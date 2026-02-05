@@ -4073,9 +4073,9 @@ elif feature == "Analytics":
                     "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
                 }
                 
-                # Use base SBO 3 start date and include all conducts from 16 June to today
+                # Use base SBO 3 start date and include all conducts from 16 June 2024 to today
                 attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
-                week_0_start = datetime(datetime.now().year, 6, 16).date()
+                week_0_start = datetime(2024, 6, 16).date()
                 today_date = datetime.now().date()
 
                 def parse_header_date(conduct_header):
@@ -4226,10 +4226,11 @@ elif feature == "Analytics":
                 "Sports & Games": {"target": 2, "keywords": ["sports and games", "sports & games", "s&g", "s & g",], "current": 0}
             }
             
-            # Calculate current week index based on Week 0 
-            week_0_start = datetime(datetime.now().year, 6, 16).date()
+            # Calculate current week index based on Week 0 (fixed 16 June 2024 so past conduct data is included)
+            SBO3_WEEK_0_YEAR = 2024
+            week_0_start = datetime(SBO3_WEEK_0_YEAR, 6, 16).date()
             current_week_index = (datetime.now().date() - week_0_start).days // 7
-            st.info(f"Current Week: {current_week_index} (Week 0 started on 16 June 2024)")
+            st.info(f"Current Week: {current_week_index} (Week 0 started on 16 June {SBO3_WEEK_0_YEAR})")
 
             # Allow user to choose the week to start SBO 3 calculations (0..current_week_index)
             start_week_options = list(range(max(0, current_week_index) + 1))
@@ -4291,7 +4292,7 @@ elif feature == "Analytics":
                 
                 def check_sliding_windows(person_row, headers, conduct_headers):
                     """Check sliding 9-week windows until qualification or no more windows"""
-                    week_0_start = datetime(datetime.now().year, 6, 16).date()
+                    week_0_start = datetime(SBO3_WEEK_0_YEAR, 6, 16).date()
                     
                     # Try sliding windows starting from the selected start week: Week S-(S+8), (S+1)-(S+9), ... up to current week
                     for window_start in range(selected_start_week, current_week_index + 1):
@@ -4407,7 +4408,7 @@ elif feature == "Analytics":
 
                 def check_fixed_window(person_row, headers, conduct_headers):
                     """Evaluate only the fixed 9-week window starting at the selected start week"""
-                    week_0_start = datetime(datetime.now().year, 6, 16).date()
+                    week_0_start = datetime(SBO3_WEEK_0_YEAR, 6, 16).date()
                     window_start_week = selected_start_week
                     window_end_week = selected_start_week + 8
 
