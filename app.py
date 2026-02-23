@@ -18,15 +18,6 @@ TIMEZONE = ZoneInfo('Asia/Singapore')
 USER_DB_PATH = "users.json"
 NON_CMD_RANKS = ["PTE", "LCP", "CPL", "CFC", "REC", "SCT"]
 
-# SSP personnel mapping by company
-SSP_PERSONNEL = {
-    "Support": ["REC ERWYN"],
-    "Charlie": ["LCP RYAN", "SCT HONG KAI"],
-    "Bravo": ["LCP QIU BIN", "SCT SYAWAL"],
-    "MSC": ["SCT GARETH WONG QING YI", "LCP AIRUL IMAN"],
-    "Alpha": ["PTE ANWAR YUSOF BIN HAIROLNIZAM", "3SG KARTIGANESH KARIKALAN"],
-    "HQ": ["REC MUHAMMAD SABRI BIN RAZALI", "REC THENESH SARAVANAN", "CPL DEVANAND S/O GANESAN", "CPL DERRICK TAN JIAN HUI", "PTE NG CHIN SEK, PTE BRYAN WONG JING HAO, PTE LIM ZI JUN"]
-}
 LEGEND_STATUS_PREFIXES = {
         "ol": "[OL]",   # Overseas Leave
         "ll": "[LL]",   # Local Leave
@@ -544,9 +535,6 @@ def generate_battalion_message(target_date: Optional[datetime] = None) -> str:
             
             # For battalion message, include all personnel including UIP from HQ
             
-            # Get SSP personnel for this company
-            company_ssp_personnel = SSP_PERSONNEL.get(company, [])
-            
             # Process each person in the company
             for record in company_nominal:
                 rank = record.get('rank', '').upper()
@@ -570,9 +558,8 @@ def generate_battalion_message(target_date: Optional[datetime] = None) -> str:
                         except ValueError:
                             continue
                 
-                # Check if person is SSP (by matching rank + name)
-                full_name_rank = f"{rank} {name}".upper()
-                is_ssp = any(ssp_person.upper() == full_name_rank for ssp_person in company_ssp_personnel)
+                # Check if person is SSP by their platoon assignment in the nominal roll
+                is_ssp = record.get('platoon', '').strip().upper() == 'SSP'
                 
                 # Categorize by rank/role (SSP personnel are counted ONLY in SSP, not in troopers)
                 officer_ranks = ["2LT", "LTA", "CPT", "MAJ", "LTC", "DX10"]
@@ -856,6 +843,7 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
 
         platoon_details.append({
             'label': platoon_label,
+            'platoon_key': platoon,
             'nominal': platoon_nominal,
             'unique_absent': platoon_absent,  # use the grouped count here
             'present': platoon_nominal - platoon_absent,
@@ -874,20 +862,20 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
     officer_present = officer_absent = 0
     wospec_present = wospec_absent = 0
     trooper_present = trooper_absent = 0
-    ssp_present = ssp_absent = 0
 
-    # Get SSP personnel for this company
-    company_ssp_personnel = SSP_PERSONNEL.get(selected_company, [])
-    
-    # Count present personnel by rank category
+    # Count present personnel by rank category, excluding SSP personnel from other buckets
     for record in company_nominal_records:
         # Skip platoon "1" for HQ company
         if selected_company == "HQ" and record.get('platoon', 'Coy HQ') == "1":
             continue
-            
+
         rank = record.get('rank', '').upper()
         name = record.get('name', '').strip()
-        
+
+        # SSP personnel are derived from platoon_details below; skip them here
+        if record.get('platoon', '').strip().upper() == 'SSP':
+            continue
+
         # Check if person is absent (has active parade status)
         is_absent = False
         name_key = name.lower()
@@ -905,19 +893,8 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
                             break
                 except ValueError:
                     continue
-        
-        # Check if person is SSP (by matching rank + name)
-        full_name_rank = f"{rank} {name}".upper()
-        is_ssp = any(ssp_person.upper() == full_name_rank for ssp_person in company_ssp_personnel)
-        
-        # Categorize by rank/role (SSP personnel are counted ONLY in SSP, not in troopers)
-        if is_ssp:
-            # SSP personnel - count here and skip other categories
-            if is_absent:
-                ssp_absent += 1
-            else:
-                ssp_present += 1
-        elif rank in officer_ranks:
+
+        if rank in officer_ranks:
             if is_absent:
                 officer_absent += 1
             else:
@@ -928,11 +905,15 @@ def generate_company_message(selected_company: str, nominal_records: List[Dict],
             else:
                 wospec_present += 1
         elif rank in NON_CMD_RANKS:
-            # Regular troopers (excluding SSP personnel)
             if is_absent:
                 trooper_absent += 1
             else:
                 trooper_present += 1
+
+    # Derive SSP counts directly from platoon_details so they always match the platoon section
+    ssp_details = [d for d in platoon_details if d['platoon_key'].strip().upper() == 'SSP']
+    ssp_present = sum(d['present'] for d in ssp_details)
+    ssp_absent = sum(d['unique_absent'] for d in ssp_details)
 
     # Start building the message header
     message_lines = []
