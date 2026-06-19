@@ -4263,7 +4263,12 @@ elif feature == "Analytics":
                 conduct_headers = headers[3:]
                 
                 attendance_map = {row[2].strip().lower(): row for row in everything_data[1:]}
-                
+
+                # Bound the SBO 3 analysis to the page's selected date range so conducts
+                # outside [start_date, end_date] (e.g. after the End Date) are excluded.
+                range_start_week = max(0, (start_date - week_0_start).days // 7)
+                range_end_week = max(range_start_week, (end_date - week_0_start).days // 7)
+
                 all_sbo3_records = []
                 group_totals = {category: 0 for category in sbo3_requirements.keys()}
                 
@@ -4275,8 +4280,9 @@ elif feature == "Analytics":
                     """Check sliding 9-week windows until qualification or no more windows"""
                     week_0_start = datetime(SBO3_WEEK_0_YEAR, 6, 16).date()
                     
-                    # Try sliding windows starting from the selected start week: Week S-(S+8), (S+1)-(S+9), ... up to current week
-                    for window_start in range(selected_start_week, current_week_index + 1):
+                    # Try sliding windows starting from the selected start week: Week S-(S+8), (S+1)-(S+9), ...
+                    # up to the week containing the selected End Date (not "today").
+                    for window_start in range(max(selected_start_week, range_start_week), range_end_week + 1):
                         window_end = window_start + 8  # 9-week window
                         
                         # Calculate date range for this window
@@ -4289,11 +4295,12 @@ elif feature == "Analytics":
                             try:
                                 conduct_date_str = conduct_header.split(',')[0].strip()
                                 conduct_date = datetime.strptime(conduct_date_str, "%d%m%Y").date()
-                                if window_start_date <= conduct_date <= window_end_date:
+                                if (window_start_date <= conduct_date <= window_end_date
+                                        and start_date <= conduct_date <= end_date):
                                     window_conducts.append(conduct_header)
                             except (ValueError, IndexError):
                                 continue
-                        
+
                         # Count conducts in this window
                         window_counts = {category: 0 for category in sbo3_requirements.keys()}
                         window_completed_conducts = {category: [] for category in sbo3_requirements.keys()}
@@ -4336,9 +4343,10 @@ elif feature == "Analytics":
                                 "total": sum(window_counts.values())
                             }
                     
-                    # If no qualification found, return latest window progress
-                    latest_window_start = max(selected_start_week, current_week_index - 8)
-                    latest_window_end = current_week_index
+                    # If no qualification found, return latest window progress (anchored to the
+                    # End Date's week, so the fallback window does not run past the selected range).
+                    latest_window_start = max(selected_start_week, range_start_week, range_end_week - 8)
+                    latest_window_end = range_end_week
                     
                     latest_window_start_date = week_0_start + timedelta(days=latest_window_start * 7)
                     latest_window_end_date = week_0_start + timedelta(days=(latest_window_end + 1) * 7 - 1)
@@ -4349,7 +4357,8 @@ elif feature == "Analytics":
                         try:
                             conduct_date_str = conduct_header.split(',')[0].strip()
                             conduct_date = datetime.strptime(conduct_date_str, "%d%m%Y").date()
-                            if latest_window_start_date <= conduct_date <= latest_window_end_date:
+                            if (latest_window_start_date <= conduct_date <= latest_window_end_date
+                                    and start_date <= conduct_date <= end_date):
                                 latest_window_conducts.append(conduct_header)
                         except (ValueError, IndexError):
                             continue
@@ -4404,7 +4413,8 @@ elif feature == "Analytics":
                         try:
                             conduct_date_str = conduct_header.split(',')[0].strip()
                             conduct_date = datetime.strptime(conduct_date_str, "%d%m%Y").date()
-                            if window_start_date <= conduct_date <= window_end_date:
+                            if (window_start_date <= conduct_date <= window_end_date
+                                    and start_date <= conduct_date <= end_date):
                                 window_conducts.append(conduct_header)
                         except (ValueError, IndexError):
                             continue
@@ -4448,8 +4458,10 @@ elif feature == "Analytics":
                     nominal_info = nominal_map.get(name.lower(), {})
                     
                     if person_row:
-                        # Use locked result if this person has already qualified previously
-                        name_key = f"{selected_company}:{name.lower()}"
+                        # Use locked result if this person has already qualified previously.
+                        # Scope the lock to the selected date range so narrowing/widening the range
+                        # recomputes instead of reusing conducts from outside the new range.
+                        name_key = f"{selected_company}:{name.lower()}:{start_date.isoformat()}:{end_date.isoformat()}"
                         if name_key in st.session_state.sbo3_locked_results:
                             result = st.session_state.sbo3_locked_results[name_key]
                         else:
